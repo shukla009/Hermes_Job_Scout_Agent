@@ -1,0 +1,4 @@
+google-genai
+duckduckgo-search
+python-dotenv
+requests
