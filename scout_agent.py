@@ -162,7 +162,7 @@ def search_linkedin_posts():
                 "engine": "google",
                 "q": q,
                 "api_key": SERPAPI_KEY,
-                "num": 10,
+                "num": 5,  # Reduced from 10 to 5 to lower total results
                 "hl": "en",
                 "gl": "in"
             }
@@ -215,7 +215,19 @@ def _is_job_board_url(url: str) -> bool:
         "orange.jobs", "getmereferred.com", "interviewchacha.com",
         "ambitionbox.com", "fishbowlapp.com", "capitalplacement.in",
         "jobnexusindia.com", "hicareer.com", "traveltechessentialist.com",
-        "n-ix.com", "unitedhealthgroup.com", "n-ix.com"
+        "n-ix.com", "unitedhealthgroup.com", "n-ix.com",
+        # Additional job boards and aggregators observed in the run
+        "michaelpage.co.in", "glassdoor.co.in", "instagram.com", "twitter.com",
+        "mobile.twitter.com", "wikipedia.org", "enhancv.com", "geeksforgeeks.org",
+        "cloud.google.com", "study.com", "bloomfire.com", "merriam-webster.com",
+        "diligent-actor-263.notion.site", "reddit.com", "ambitionbox.com",
+        "fishbowlapp.com", "getmereferred.com", "orange.jobs", "careers.n-ix.com",
+        "careers.unitedhealthgroup.com", "naukri.com", "indeed.com", "shine.com",
+        "friendsjob.in", "rojgargroup.com", "placementindia.com", "naukri.com",
+        "smartrecruiters.com", "myamcat.com", "capitalplacement.in",
+        "traveltechessentialist.com", "shine.com", "indeed.com", "cryptomize.com",
+        "glassdoor.co.in", "shine.com", "indeed.com", "reddit.com",
+        "interviewchacha.com", "glassdoor.co.in", "orange.jobs", "instagram.com"
     ]
     url_lower = url.lower()
     for domain in job_board_domains:
@@ -223,7 +235,7 @@ def _is_job_board_url(url: str) -> bool:
             return True
     return False
 
-def analyze_and_process_post(post):
+def analyze_and_process_post(post, chat):
     if not client:
         print("[Gemini Error] GEMINI_API_KEY is not configured in .env.")
         return None
@@ -232,19 +244,17 @@ def analyze_and_process_post(post):
     snippet = post.get("body", "")
     url = post.get("href", "")
 
-    # Load the candidate context for better matching
+    # Load a short candidate context for better matching
     candidate_context = ""
     try:
         with open("Resume/Shivank_Shukla_Career_Context.md", "r", encoding="utf-8") as f:
-            candidate_context = f.read()
+            # Read first 1000 characters to keep prompt short
+            candidate_context = f.read(1000)
     except:
         candidate_context = "Data Analyst with experience in SQL, Python, Power BI, and data visualization."
 
-    # Create chat session for better AFC compliance
-    chat = client.chats.create(model='gemini-3.5-flash')
-    
     prompt = f"""
-You are an expert job matcher. Analyze the LinkedIn/post below and extract ONLY if:
+You are an expert job matcher and email writer. Analyze the LinkedIn/post below and extract ONLY if:
 1. It's from a recruiter/hiring manager (not a job board or candidate post)
 2. Contains contact information (email or clear indication to DM/contact for the role)
 3. Is for a Data Analyst, Research Analyst, BI Analyst, Business Analyst, or similar analytics role in Delhi/NCR/Noida/Gurgaon/Gurugram/Remote/Hybrid
@@ -261,8 +271,8 @@ CRITICAL RULES:
 - Salary: Must NOT contradict 6.5-7 LPA range (if mentioned, must be within or close)
 - Employment: Must be full-time, day shift
 
-CANDIDATE PROFILE:
-{candidate_context[:2000]}
+CANDIDATE PROFILE (summary):
+{candidate_context}
 
 POST TO ANALYZE:
 Title: {title}
@@ -271,18 +281,12 @@ URL: {url}
 
 RETURN ONLY VALID JSON (no extra text):
 {{
-  "is_recruiter_post": true/false,
-  "role_title": "exact role title from post",
-  "company": "company name if mentioned",
-  "location": "location from post",
-  "salary_mentioned": true/false,
-  "salary_range": "if mentioned, else null",
-  "has_contact_info": true/false,
-  "contact_method": "email/dm/referral/contact",
-  "contact_value": "email address or null",
   "is_relevant": true/false,
-  "confidence": "high/medium/low",
-  "reasoning": "brief explanation"
+  "recruiter_email": "extracted_email_or_null",
+  "job_title": "extracted_job_title",
+  "company_name": "company_or_recruiter_name",
+  "email_subject": "Application for [Job Title] - Shivank Shukla",
+  "email_body": "Cold email body here... (120-150 words highlighting relevant skills for this specific role, referencing portfolio, and mentioning attached resume)"
 }}
 """
     
@@ -296,19 +300,9 @@ RETURN ONLY VALID JSON (no extra text):
         )
         result = json.loads(response.text)
         
-        # Additional validation
-        if result.get("is_recruiter_post") and result.get("has_contact_info") and result.get("is_relevant"):
-            # Extract email if present
-            email = result.get("contact_value")
-            if email and "@" in str(email):
-                return {
-                    "email": email.strip(),
-                    "role": result.get("role_title", ""),
-                    "company": result.get("company", ""),
-                    "location": result.get("location", ""),
-                    "url": url,
-                    "confidence": result.get("confidence", "medium")
-                }
+        # Validate we have the required fields for sending email
+        if result.get("is_relevant") and result.get("recruiter_email") and "@" in str(result.get("recruiter_email", "")):
+            return result
         
         return None
     except Exception as e:
@@ -332,7 +326,7 @@ def main():
     
     history = load_history()
     applied_emails = {entry.get("email") for entry in history if isinstance(entry, dict) and "email" in entry}
-
+    
     posts = search_linkedin_posts()
     total_posts = len(posts)
     print(f"[Search] Found {total_posts} potential post(s).")
@@ -344,46 +338,56 @@ def main():
         f"🔎 <b>Processing each post for relevance...</b>"
     )
     send_telegram(search_msg)
-
+    
+    # Create a single chat session for all posts to improve efficiency
+    if client:
+        chat = client.chats.create(model='gemini-3.5-flash')
+    else:
+        chat = None
+    
     new_applications = 0
     skipped_relevant = 0
     skipped_no_email = 0
     skipped_duplicate = 0
     skipped_irrelevant = 0
     errors = 0
-
+    
     for post in posts:
         url = post.get("href")
         print(f"\n[Processing] {url}")
         
-        parsed = analyze_and_process_post(post)
+        if chat is None:
+            errors += 1
+            continue
+            
+        parsed = analyze_and_process_post(post, chat)
         if not parsed:
             errors += 1
             continue
-
+        
         if not parsed.get("is_relevant"):
             print("[Skip] Post not relevant or location/role mismatch.")
             skipped_irrelevant += 1
             continue
-
+        
         email = parsed.get("recruiter_email")
         if not email or email == "extracted_email_or_null" or "@" not in email:
             print("[Skip] No direct recruiter email found in snippet.")
             skipped_no_email += 1
             continue
-
+        
         if email.lower() in applied_emails:
             print(f"[Skip] Already emailed recruiter at {email}.")
             skipped_duplicate += 1
             continue
-
+        
         job_title = parsed.get("job_title", "Data Analyst")
         subject = parsed.get("email_subject", f"Application for {job_title} - {CANDIDATE_NAME}")
         body = parsed.get("email_body", "")
-
+        
         print(f"🎯 [MATCH FOUND] Recruiter: {email} | Role: {job_title}")
         print(f"Subject: {subject}")
-
+        
         # Send Email
         success = send_email(email, subject, body)
         if success:
@@ -398,7 +402,7 @@ def main():
             applied_emails.add(email.lower())
             save_history(history)
             new_applications += 1
-
+            
             # Telegram Notification for each email
             tg_msg = (
                 f"🚀 <b>New Cold Email Sent!</b>\n\n"
@@ -412,7 +416,7 @@ def main():
             send_telegram(tg_msg)
         else:
             errors += 1
-
+    
     # Final Summary Notification
     summary_msg = (
         f"✅ <b>Job Scout Run Complete</b>\n\n"
@@ -428,8 +432,11 @@ def main():
         f"💡 <b>Total unique recruiters contacted:</b> {len(applied_emails)}"
     )
     send_telegram(summary_msg)
-
+    
     print(f"\n=== Run Complete. Total new applications sent: {new_applications} ===")
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
