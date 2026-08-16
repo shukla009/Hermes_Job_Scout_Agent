@@ -10,13 +10,12 @@ from email.mime.base import MIMEBase
 from email import encoders
 from dotenv import load_dotenv
 import requests
-from google import genai
-from google.genai import types
+from openai import OpenAI
 
 # Load environment variables
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 GMAIL_SENDER = os.getenv("GMAIL_SENDER_EMAIL")
 GMAIL_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -29,9 +28,17 @@ CANDIDATE_LINKEDIN = os.getenv("CANDIDATE_LINKEDIN", "https://www.linkedin.com/i
 HISTORY_FILE = "applied_history.json"
 RESUME_PATH = "resume.pdf"
 
-# Initialize Gemini Client
-if GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
-    client = genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1"})
+# Model to use on NVIDIA NIM
+NVIDIA_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
+# Fast model for post analysis (Llama 3.1 8B - very fast)
+NVIDIA_ANALYSIS_MODEL = "meta/llama-3.1-8b-instruct"
+
+# Initialize NVIDIA NIM Client (OpenAI-compatible)
+if NVIDIA_API_KEY and NVIDIA_API_KEY != "YOUR_NVIDIA_API_KEY_HERE":
+    client = OpenAI(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key=NVIDIA_API_KEY
+    )
 else:
     client = None
 
@@ -107,66 +114,186 @@ def send_email(to_email, subject, body_text):
         print(f"[Email Error] Failed to send to {to_email}: {e}")
         return False
 
+def generate_search_queries_ai(previous_results_summary: str = "") -> list:
+    """Use AI to generate optimized Google dorking queries for recruiter posts."""
+    if not client:
+        print("[AI Query Gen] No NVIDIA client, using fallback queries")
+        return get_fallback_queries()
+    
+    candidate_context = ""
+    try:
+        with open("Resume/Shivank_Shukla_Career_Context.md", "r", encoding="utf-8") as f:
+            candidate_context = f.read(1500)
+    except:
+        candidate_context = "Data Analyst with 2+ years experience in SQL, Python, Power BI, data visualization. Seeking Data Analyst/BI Analyst/Research Analyst/Business Analyst roles in Delhi NCR/Noida/Gurgaon/Remote. 6.5-7 LPA, day shift, full-time."
+    
+    prompt = f"""You are an expert at Google dorking for finding RECRUITER LinkedIn posts with direct contact info (email, phone, DM request).
+
+CANDIDATE PROFILE:
+{candidate_context}
+
+TARGET:
+- Recruiter/hiring manager posts (NOT job boards)
+- With DIRECT contact info: email, @handle, "DM me", "reach out", "contact", "referral"
+- Roles: Data Analyst, Business Analyst, BI Analyst, Research Analyst, Market Research Analyst, SQL Analyst, MIS Analyst
+- Locations: Delhi, Delhi NCR, Noida, Gurgaon, Gurugram, Remote, Hybrid
+- Must be full-time, day shift, 6.5-7 LPA range
+
+{previous_results_summary if previous_results_summary else "FIRST RUN - generate diverse initial queries"}
+
+Generate 5 OPTIMIZED Google search queries that will find recruiter posts with contact info.
+Each query must use site:linkedin.com/posts and include hiring signals + contact signals + location + role.
+
+Return ONLY valid JSON array of strings:
+["query1", "query2", "query3", "query4", "query5"]"""
+
+    try:
+        response = client.chat.completions.create(
+            model=NVIDIA_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.3,
+            max_tokens=1024
+        )
+        result = json.loads(response.choices[0].message.content)
+        # Handle both array and object with "queries" key
+        if isinstance(result, list):
+            return result
+        elif isinstance(result, dict) and "queries" in result:
+            return result["queries"]
+        else:
+            print("[AI Query Gen] Unexpected format, using fallback")
+            return get_fallback_queries()
+    except Exception as e:
+        print(f"[AI Query Gen Error] {e}")
+        return get_fallback_queries()
+
+def get_fallback_queries() -> list:
+    """Fallback hardcoded queries if AI fails."""
+    return [
+        'site:linkedin.com/posts "hiring" "Data Analyst" ("email" OR "@" OR "DM" OR "reach out" OR "contact") "Noida" OR "Delhi" OR "Gurgaon" OR "Gurugram" OR "Remote"',
+        'site:linkedin.com/posts "hiring" "Business Analyst" ("email" OR "@" OR "DM" OR "reach out" OR "contact") "Noida" OR "Delhi" OR "Gurgaon" OR "Gurugram" OR "Remote"',
+        'site:linkedin.com/posts "hiring" ("BI Analyst" OR "Business Intelligence" OR "Research Analyst" OR "Market Research") ("email" OR "@" OR "DM" OR "reach out" OR "contact") "Noida" OR "Delhi" OR "Gurgaon" OR "Remote"',
+        'site:linkedin.com/posts ("referral" OR "DM me" OR "reach out" OR "send resume") "Data Analyst" "Noida" OR "Delhi" OR "Gurgaon" OR "Remote"',
+        'site:linkedin.com/posts "we are hiring" "Data Analyst" "Noida" OR "Delhi" OR "Gurgaon" OR "Remote"',
+    ]
+
+def analyze_search_results_ai(results: list) -> str:
+    """Use AI to analyze search results and provide feedback for query refinement."""
+    # DISABLED: NVIDIA API calls too slow for SerpAPI rate limits
+    # Simple heuristic-based analysis instead
+    if not results:
+        return ""
+    
+    # Count results with contact-like patterns
+    contact_count = 0
+    for r in results[:10]:
+        body = r.get('body', '').lower()
+        if any(kw in body for kw in ['@', 'email', 'dm me', 'reach out', 'contact', 'referral', 'phone', 'mobile']):
+            contact_count += 1
+    
+    # Simple heuristic suggestions
+    if contact_count >= 3:
+        return json.dumps({
+            "analysis": f"Good results: {contact_count}/10 have contact info. Queries working well.",
+            "worked_patterns": ["site:linkedin.com/posts + hiring + role + location + contact signals"],
+            "failed_patterns": [],
+            "refined_queries": [
+                'site:linkedin.com/posts "hiring" "Data Analyst" ("email" OR "@" OR "DM" OR "contact") "Noida" OR "Gurgaon" OR "Delhi" OR "Remote"',
+                'site:linkedin.com/posts "referral" "Data Analyst" "Noida" OR "Gurgaon" OR "Delhi"',
+                'site:linkedin.com/posts "we are hiring" "Business Analyst" "Noida" OR "Gurgaon" OR "Remote"'
+            ]
+        }, indent=2)
+    else:
+        return json.dumps({
+            "analysis": f"Low contact info rate: {contact_count}/10. Need more specific contact signals.",
+            "worked_patterns": ["site:linkedin.com/posts + hiring + role + location"],
+            "failed_patterns": ["generic hiring posts without contact info"],
+            "refined_queries": [
+                'site:linkedin.com/posts "hiring" "Data Analyst" "email" "Noida" OR "Gurgaon"',
+                'site:linkedin.com/posts "DM me" "Data Analyst" "referral" "Delhi" OR "Noida"',
+                'site:linkedin.com/posts "contact" "hiring" "Business Analyst" "Gurgaon" OR "Remote"'
+            ]
+        }, indent=2)
+
 def search_linkedin_posts():
-    """Search for recruiter posts with contact info using SerpAPI."""
+    """Search for recruiter posts with contact info using AI-optimized queries."""
     if not SERPAPI_KEY:
         print("[Search] SERPAPI_KEY not configured. Falling back to empty results.")
         return []
-    
-    # Build comprehensive role query covering all target roles
-    all_roles = '"Data Analyst" OR "Research Analyst" OR "Business Intelligence Analyst" OR "BI Analyst" OR "Business Analyst" OR "Market Research Analyst" OR "Reporting Analyst" OR "Power BI Analyst" OR "SQL Analyst" OR "MIS Executive" OR "MIS Analyst" OR "Analytics Associate" OR "Data and Reporting Analyst" OR "Research Associate" OR "Insights Analyst" OR "Strategy and Analytics Associate" OR "Market Intelligence Analyst" OR "Competitive Intelligence Analyst" OR "Business Research Analyst" OR "Data Operations Analyst" OR "Junior Data Analyst" OR "Junior Business Analyst" OR "Dashboard Analyst" OR "Visualization Analyst" OR "Healthcare Data Analyst" OR "Revenue Operations Analyst"'
-    
-    # Target locations (properly grouped)
-    locations = '("Delhi" OR "Delhi NCR" OR "Noida" OR "Gurgaon" OR "Gurugram" OR "Remote" OR "Hybrid")'
-    
-    # Contact/intent signals (properly grouped)
-    contact_signals = '(\"email\" OR \"@\" OR \"reach out\" OR \"contact\" OR \"dm\" OR \"resume\" OR \"cv\" OR \"apply\" OR \"referral\" OR \"hiring\")'
-    
-    queries = [
-        # Main search: all roles + locations + contact signals
-        f'{all_roles} {locations} {contact_signals}',
-        # Social media search: LinkedIn/Twitter posts with roles and contact signals
-        f'(site:linkedin.com/posts OR site:twitter.com) ({all_roles}) {contact_signals}'
-    ]
 
-    results = []
-    for q in queries:
-        print(f"[Search] Executing query: {q}")
-        try:
-            params = {
-                "engine": "google",
-                "q": q,
-                "api_key": SERPAPI_KEY,
-                "num": 2,  # Reduced to 2 results per query to stay within SerpAPI limits
-                "hl": "en",
-                "gl": "in"
-            }
-            response = requests.get("https://serpapi.com/search", params=params, timeout=30)
-            data = response.json()
-            
-            organic_results = data.get("organic_results", [])
-            for r in organic_results:
-                url = r.get("link", "")
-                # Filter out job boards and aggregators - we want recruiter posts with contact info
-                if not _is_job_board_url(url):
-                    results.append({
-                        "title": r.get("title", ""),
-                        "body": r.get("snippet", ""),
-                        "href": url
-                    })
-        except Exception as e:
-            print(f"[Search Error] {e}")
-        time.sleep(2)  # Increased delay to be extra safe with rate limits
+    # AI-driven iterative search (max 2 iterations to stay within SerpAPI limits)
+    all_results = []
+    previous_summary = ""
+    max_iterations = 2  # Reduced from 3 to stay within rate limits
     
-    # Deduplicate by URL
-    seen = set()
-    unique_results = []
-    for r in results:
-        url = r.get("href")
-        if url and url not in seen:
-            seen.add(url)
-            unique_results.append(r)
-    return unique_results
+    for iteration in range(max_iterations):
+        print(f"\n[Search] === Iteration {iteration + 1}/{max_iterations} ===")
+        
+        # Generate queries (AI-powered after first iteration)
+        if iteration == 0:
+            queries = get_fallback_queries()  # Start with proven queries (5 queries)
+        else:
+            queries = generate_search_queries_ai(previous_summary)[:3]  # Max 3 refined queries
+        
+        print(f"[Search] Generated {len(queries)} queries for iteration {iteration + 1}")
+        
+        iteration_results = []
+        for q in queries:
+            print(f"[Search] Executing query...")
+            try:
+                params = {
+                    "engine": "google",
+                    "q": q,
+                    "api_key": SERPAPI_KEY,
+                    "num": 10,
+                    "hl": "en",
+                    "gl": "in"
+                }
+                response = requests.get("https://serpapi.com/search", params=params, timeout=30)
+                data = response.json()
+                
+                organic_results = data.get("organic_results", [])
+                for r in organic_results:
+                    url = r.get("link", "")
+                    if not _is_job_board_url(url):
+                        iteration_results.append({
+                            "title": r.get("title", ""),
+                            "body": r.get("snippet", ""),
+                            "href": url
+                        })
+            except Exception as e:
+                print(f"[Search Error] {e}")
+            time.sleep(2)  # Rate limit safety
+        
+        # Deduplicate within iteration
+        seen = set()
+        unique_iteration = []
+        for r in iteration_results:
+            url = r.get("href")
+            if url and url not in seen:
+                seen.add(url)
+                unique_iteration.append(r)
+        
+        print(f"[Search] Iteration {iteration + 1}: Found {len(unique_iteration)} unique recruiter posts")
+        
+        # Add to overall results (deduplicate across iterations)
+        for r in unique_iteration:
+            url = r.get("href")
+            if url not in [x.get("href") for x in all_results]:
+                all_results.append(r)
+        
+        # AI analysis for next iteration
+        if iteration < max_iterations - 1 and unique_iteration:
+            print(f"[Search] Analyzing results with AI for query refinement...")
+            previous_summary = analyze_search_results_ai(unique_iteration)
+            if previous_summary:
+                print(f"[Search] AI Analysis: {previous_summary[:200]}...")
+        else:
+            break  # No results or last iteration
+    
+    print(f"\n[Search] === COMPLETE: {len(all_results)} total unique recruiter post(s) ===")
+    return all_results
 
 
 def _is_job_board_url(url: str) -> bool:
@@ -210,9 +337,9 @@ def _is_job_board_url(url: str) -> bool:
             return True
     return False
 
-def analyze_and_process_post(post, chat, max_retries=3):
+def analyze_and_process_post(post, max_retries=3):
     if not client:
-        print("[Gemini Error] GEMINI_API_KEY is not configured in .env.")
+        print("[NVIDIA NIM Error] NVIDIA_API_KEY is not configured in .env.")
         return None
 
     title = post.get("title", "")
@@ -249,6 +376,14 @@ CRITICAL RULES:
 CANDIDATE PROFILE (summary):
 {candidate_context}
 
+CANDIDATE CONTACT INFO (use these EXACT details in the email signature - do NOT make up any contact info):
+- Name: {CANDIDATE_NAME}
+- Phone: +91 9013584218
+- Email: work.shuklashivank@gmail.com
+- Portfolio: {CANDIDATE_PORTFOLIO}
+- LinkedIn: {CANDIDATE_LINKEDIN}
+- GitHub: https://github.com/shukla009
+
 POST TO ANALYZE:
 Title: {title}
 Content: {snippet}
@@ -261,43 +396,43 @@ RETURN ONLY VALID JSON (no extra text):
   "job_title": "extracted_job_title",
   "company_name": "company_or_recruiter_name",
   "email_subject": "Application for [Job Title] - Shivank Shukla",
-  "email_body": "Cold email body here... (120-150 words highlighting relevant skills for this specific role, referencing portfolio, and mentioning attached resume)"
+  "email_body": "Cold email body here... (120-150 words highlighting relevant skills for this specific role, referencing portfolio, and mentioning attached resume. MUST use the exact candidate contact info provided above for the signature. Do NOT use placeholders like XXXXXXXXXX or fake emails.)"
 }}
 """
-    
-    # Retry logic for rate limits
+
+    # Retry logic for rate limits (NVIDIA NIM has 40 RPM, much higher than Gemini)
     for attempt in range(max_retries):
         try:
-            response = chat.send_message(
-                message=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.2
-                )
+            response = client.chat.completions.create(
+                model=NVIDIA_ANALYSIS_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.2,
+                max_tokens=2048
             )
-            result = json.loads(response.text)
-            
+            result = json.loads(response.choices[0].message.content)
+
             # Validate we have the required fields for sending email
             if result.get("is_relevant") and result.get("recruiter_email") and "@" in str(result.get("recruiter_email", "")):
                 return result
-            
+
             return None
         except Exception as e:
             error_str = str(e)
-            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                delay = 30 * (2 ** attempt)  # 30s, 60s, 120s
+            if "429" in error_str or "RATE_LIMIT" in error_str or "rate limit" in error_str.lower():
+                delay = 5 * (2 ** attempt)  # 5s, 10s, 20s (NIM has 40 RPM, so shorter delays)
                 print(f"[Rate Limit] Attempt {attempt + 1}/{max_retries} failed. Waiting {delay}s before retry...")
                 time.sleep(delay)
             else:
-                print(f"[Gemini Error] Failed to parse response: {e}")
+                print(f"[NVIDIA NIM Error] Failed to parse response: {e}")
                 return None
-    
-    print(f"[Gemini Error] All {max_retries} retries exhausted for rate limit")
+
+    print(f"[NVIDIA NIM Error] All {max_retries} retries exhausted for rate limit")
     return None
 
 def main():
     print("=== Starting Autonomous Job Scout Agent ===")
-    
+
     # Start notification
     start_msg = (
         f"🤖 <b>Job Scout Agent Started</b>\n\n"
@@ -309,14 +444,14 @@ def main():
         f"⏰ <b>Schedule:</b> 1 run/day (08:30 AM IST)"
     )
     send_telegram(start_msg)
-    
+
     history = load_history()
     applied_emails = {entry.get("email") for entry in history if isinstance(entry, dict) and "email" in entry}
-    
+
     posts = search_linkedin_posts()
     total_posts = len(posts)
     print(f"[Search] Found {total_posts} potential post(s).")
-    
+
     # Search summary notification
     search_msg = (
         f"🔍 <b>Search Complete</b>\n\n"
@@ -324,56 +459,50 @@ def main():
         f"🔎 <b>Processing each post for relevance...</b>"
     )
     send_telegram(search_msg)
-    
-    # Create a single chat session for all posts to improve efficiency
-    if client:
-        chat = client.chats.create(model='gemini-3.5-flash')
-    else:
-        chat = None
-    
+
     new_applications = 0
     skipped_relevant = 0
     skipped_no_email = 0
     skipped_duplicate = 0
     skipped_irrelevant = 0
     errors = 0
-    
+
     for post in posts:
         url = post.get("href")
         print(f"\n[Processing] {url}")
-        
-        if chat is None:
+
+        if client is None:
             errors += 1
             continue
-            
-        parsed = analyze_and_process_post(post, chat)
+
+        parsed = analyze_and_process_post(post)
         if not parsed:
             errors += 1
             continue
-        
+
         if not parsed.get("is_relevant"):
             print("[Skip] Post not relevant or location/role mismatch.")
             skipped_irrelevant += 1
             continue
-        
+
         email = parsed.get("recruiter_email")
         if not email or email == "extracted_email_or_null" or "@" not in email:
             print("[Skip] No direct recruiter email found in snippet.")
             skipped_no_email += 1
             continue
-        
+
         if email.lower() in applied_emails:
             print(f"[Skip] Already emailed recruiter at {email}.")
             skipped_duplicate += 1
             continue
-        
+
         job_title = parsed.get("job_title", "Data Analyst")
         subject = parsed.get("email_subject", f"Application for {job_title} - {CANDIDATE_NAME}")
         body = parsed.get("email_body", "")
-        
+
         print(f"🎯 [MATCH FOUND] Recruiter: {email} | Role: {job_title}")
         print(f"Subject: {subject}")
-        
+
         # Send Email
         success = send_email(email, subject, body)
         if success:
@@ -388,7 +517,7 @@ def main():
             applied_emails.add(email.lower())
             save_history(history)
             new_applications += 1
-            
+
             # Telegram Notification for each email
             tg_msg = (
                 f"🚀 <b>New Cold Email Sent!</b>\n\n"
@@ -402,10 +531,10 @@ def main():
             send_telegram(tg_msg)
         else:
             errors += 1
-        
-        # Small delay between posts to avoid rate limits
-        time.sleep(2)
-    
+
+        # Small delay between posts to be polite to API
+        time.sleep(1)
+
     # Final Summary Notification
     summary_msg = (
         f"✅ <b>Job Scout Run Complete</b>\n\n"
@@ -421,11 +550,8 @@ def main():
         f"💡 <b>Total unique recruiters contacted:</b> {len(applied_emails)}"
     )
     send_telegram(summary_msg)
-    
-    print(f"\n=== Run Complete. Total new applications sent: {new_applications} ===")
 
-if __name__ == "__main__":
-    main()
+    print(f"\n=== Run Complete. Total new applications sent: {new_applications} ===")
 
 if __name__ == "__main__":
     main()
