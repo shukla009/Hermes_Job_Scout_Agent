@@ -113,46 +113,21 @@ def search_linkedin_posts():
         print("[Search] SERPAPI_KEY not configured. Falling back to empty results.")
         return []
     
-    # All 23 target roles from career profile
-    target_roles = [
-        # Highest priority
-        "Data Analyst", "Research Analyst", "Business Intelligence Analyst", 
-        "BI Analyst", "Business Analyst", "Market Research Analyst", "Reporting Analyst",
-        # Additional suitable
-        "Power BI Analyst", "SQL Analyst", "MIS Executive", "MIS Analyst",
-        "Analytics Associate", "Data and Reporting Analyst", "Research Associate",
-        "Insights Analyst", "Strategy and Analytics Associate", "Market Intelligence Analyst",
-        "Competitive Intelligence Analyst", "Business Research Analyst", "Data Operations Analyst",
-        "Junior Data Analyst", "Junior Business Analyst", "Dashboard Analyst",
-        "Visualization Analyst", "Healthcare Data Analyst", "Revenue Operations Analyst"
-    ]
-    
-    # Build role query parts (grouped for API efficiency)
-    role_groups = [
-        '("Data Analyst" OR "Research Analyst" OR "Business Intelligence Analyst" OR "BI Analyst" OR "Business Analyst" OR "Market Research Analyst" OR "Reporting Analyst")',
-        '("Power BI Analyst" OR "SQL Analyst" OR "MIS Executive" OR "MIS Analyst" OR "Analytics Associate" OR "Data and Reporting Analyst" OR "Research Associate")',
-        '("Insights Analyst" OR "Strategy and Analytics Associate" OR "Market Intelligence Analyst" OR "Competitive Intelligence Analyst" OR "Business Research Analyst" OR "Data Operations Analyst")',
-        '("Junior Data Analyst" OR "Junior Business Analyst" OR "Dashboard Analyst" OR "Visualization Analyst" OR "Healthcare Data Analyst" OR "Revenue Operations Analyst")'
-    ]
+    # Build comprehensive role query covering all target roles
+    all_roles = '"Data Analyst" OR "Research Analyst" OR "Business Intelligence Analyst" OR "BI Analyst" OR "Business Analyst" OR "Market Research Analyst" OR "Reporting Analyst" OR "Power BI Analyst" OR "SQL Analyst" OR "MIS Executive" OR "MIS Analyst" OR "Analytics Associate" OR "Data and Reporting Analyst" OR "Research Associate" OR "Insights Analyst" OR "Strategy and Analytics Associate" OR "Market Intelligence Analyst" OR "Competitive Intelligence Analyst" OR "Business Research Analyst" OR "Data Operations Analyst" OR "Junior Data Analyst" OR "Junior Business Analyst" OR "Dashboard Analyst" OR "Visualization Analyst" OR "Healthcare Data Analyst" OR "Revenue Operations Analyst"'
     
     # Target locations (properly grouped)
     locations = '("Delhi" OR "Delhi NCR" OR "Noida" OR "Gurgaon" OR "Gurugram" OR "Remote" OR "Hybrid")'
     
     # Contact/intent signals (properly grouped)
-    contact_signals = '("email" OR "@" OR "reach out" OR "contact" OR "dm" OR "resume" OR "cv" OR "apply" OR "referral" OR "hiring")'
+    contact_signals = '(\"email\" OR \"@\" OR \"reach out\" OR \"contact\" OR \"dm\" OR \"resume\" OR \"cv\" OR \"apply\" OR \"referral\" OR \"hiring\")'
     
-    queries = []
-    for role_group in role_groups:
-        queries.append(f'{role_group} {locations} {contact_signals}')
-    
-    # Additional broad searches for recruiter posts on LinkedIn/Twitter
-    queries.extend([
-        f'site:linkedin.com/posts "Data Analyst" {locations} {contact_signals}',
-        f'site:linkedin.com/posts "Business Analyst" {locations} {contact_signals}',
-        f'site:twitter.com "Data Analyst" {locations} {contact_signals}',
-        f'"Data Analyst" "referral" {locations} "@"',
-        f'"Business Analyst" "referral" {locations} "@"',
-    ])
+    queries = [
+        # Main search: all roles + locations + contact signals
+        f'{all_roles} {locations} {contact_signals}',
+        # Social media search: LinkedIn/Twitter posts with roles and contact signals
+        f'(site:linkedin.com/posts OR site:twitter.com) ({all_roles}) {contact_signals}'
+    ]
 
     results = []
     for q in queries:
@@ -162,7 +137,7 @@ def search_linkedin_posts():
                 "engine": "google",
                 "q": q,
                 "api_key": SERPAPI_KEY,
-                "num": 5,  # Reduced from 10 to 5 to lower total results
+                "num": 2,  # Reduced to 2 results per query to stay within SerpAPI limits
                 "hl": "en",
                 "gl": "in"
             }
@@ -181,7 +156,7 @@ def search_linkedin_posts():
                     })
         except Exception as e:
             print(f"[Search Error] {e}")
-        time.sleep(1)  # Respect rate limits
+        time.sleep(2)  # Increased delay to be extra safe with rate limits
     
     # Deduplicate by URL
     seen = set()
@@ -317,10 +292,10 @@ def main():
         f"🤖 <b>Job Scout Agent Started</b>\n\n"
         f"👤 <b>Candidate:</b> {CANDIDATE_NAME}\n"
         f"🕐 <b>Time:</b> {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        f"🎯 <b>Searching for roles:</b> 23 target roles across 3 priority tiers\n"
+        f"🎯 <b>Searching for roles:</b> 23 target roles\n"
         f"📍 <b>Locations:</b> Delhi, NCR, Noida, Gurgaon, Remote, Hybrid\n"
         f"💰 <b>Salary:</b> ₹6.5-7 LPA | Day Shift | Full-time only\n"
-        f"⏰ <b>Schedule:</b> 2 runs/day (08:30 AM & 08:30 PM IST)"
+        f"⏰ <b>Schedule:</b> 1 run/day (08:30 AM IST)"
     )
     send_telegram(start_msg)
     

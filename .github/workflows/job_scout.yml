@@ -2,8 +2,7 @@ name: Autonomous Job Scout Agent
 
 on:
   schedule:
-    - cron: '0 3 * * *'   # 08:30 AM IST
-    - cron: '0 15 * * *'  # 08:30 PM IST
+    - cron: '0 3 * * *'   # 08:30 AM IST (once per day)
   workflow_dispatch:          # Allows manual trigger anytime from GitHub web/mobile UI
 
 jobs:
