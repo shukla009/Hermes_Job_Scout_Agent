@@ -232,90 +232,87 @@ def analyze_and_process_post(post):
     snippet = post.get("body", "")
     url = post.get("href", "")
 
+    # Load the candidate context for better matching
+    candidate_context = ""
+    try:
+        with open("Resume/Shivank_Shukla_Career_Context.md", "r", encoding="utf-8") as f:
+            candidate_context = f.read()
+    except:
+        candidate_context = "Data Analyst with experience in SQL, Python, Power BI, and data visualization."
+
+    # Create chat session for better AFC compliance
+    chat = client.chats.create(model='gemini-3.5-flash')
+    
     prompt = f"""
-You are an expert AI recruiter assistant for candidate {CANDIDATE_NAME}.
+You are an expert job matcher. Analyze the LinkedIn/post below and extract ONLY if:
+1. It's from a recruiter/hiring manager (not a job board or candidate post)
+2. Contains contact information (email or clear indication to DM/contact for the role)
+3. Is for a Data Analyst, Research Analyst, BI Analyst, Business Analyst, or similar analytics role in Delhi/NCR/Noida/Gurgaon/Gurugram/Remote/Hybrid
+4. Offers 6.5-7 LPA salary (or doesn't contradict this range)
+5. Is day shift, full-time
+6. Matches candidate profile below
 
-=== CANDIDATE PROFILE ===
-Name: Shivank Shukla
-Current Role: Research and Strategy Associate (Full-time) at ProSca Business Solutions, Delhi
-Recognized as Founding Team Member (July 2026)
-Previous: Research & Insights Intern at ProSca (Jan-Jul 2026), Data Analytics Intern at UptoSkills, IBM, Vodafone Idea Foundation
+CRITICAL RULES:
+- If unsure about recruiter/contact info, RETURN NULL
+- Must have EITHER explicit email OR clear call-to-action like "DM me", "contact", "reach out", "referral", "apply"
+- Reject if: "post your resume", "apply via link", "visit careers page", "send CV to HR" (no direct contact)
+- Reject senior/lead/manager roles unless explicitly junior/fresher
+- Location must match: Delhi, NCR, Noida, Gurgaon, Gurugram, Remote, Hybrid
+- Salary: Must NOT contradict 6.5-7 LPA range (if mentioned, must be within or close)
+- Employment: Must be full-time, day shift
 
-Education:
-- B.Sc. Data Analytics, Delhi Skill and Entrepreneurship University (DSEU), Jul 2023 - Jun 2026
-- BCA, Indira Gandhi National Open University (IGNOU), Jul 2021 - Jul 2024
+CANDIDATE PROFILE:
+{candidate_context[:2000]}
 
-Technical Skills:
-- Programming: Python, SQL
-- Data Analytics: Pandas, NumPy, Data Cleaning, ETL, Statistical Analysis, Data Wrangling, KPI Development
-- Business Intelligence: Power BI, Tableau, Excel (Pivot Tables, XLOOKUP, VLOOKUP), DAX, Dashboard Development, Data Visualization
-- Machine Learning: Scikit-learn, TensorFlow, Keras, LSTM, Regression, ARIMA, Prophet, Time Series Analysis, Forecasting
-- Research & Strategy: Primary Research, Secondary Research, Market Research, Competitive Analysis, Competitive Intelligence, Strategic Intelligence, Business Analysis, Report Writing, Presentation Development
-- Tools: Streamlit, Git, Jupyter Notebook, Google Sheets, MySQL, Oracle
-
-Key Achievements:
-- Delivered 12+ strategic intelligence reports across 5+ industry verticals (medical devices, textiles, food/export)
-- Reduced research turnaround time by 20% using standardized frameworks and AI-assisted workflows
-- Analyzed 10,000+ mental health records across 30 Karnataka districts (IBM internship)
-- Improved data acquisition efficiency by 40% for 1,000+ institutions (UptoSkills)
-- Cleaned and standardized datasets across 15+ variables, improving analytics reliability by 30%
-- Built Tableau/Power BI dashboards for institutional trends, healthcare outcomes, sales/inventory
-- LSTM stock forecasting project: 1.9% MAPE, deployed Streamlit app comparing 5 forecasting approaches
-
-Certifications: Cisco Data Analytics Essentials, Vodafone Idea Foundation Power BI, IBM Project Management & Data Fundamentals, Cambridge Communication Expert
-
-Portfolio: https://shivank-shukla-portfolio.vercel.app/
-LinkedIn: https://www.linkedin.com/in/shivank-shukla09
-
-=== JOB PREFERENCES (HARD FILTERS) ===
-Target Roles (in priority order):
-1. HIGHEST PRIORITY: Data Analyst, Research Analyst, Business Intelligence Analyst, BI Analyst, Business Analyst, Market Research Analyst, Reporting Analyst
-2. ADDITIONAL SUITABLE: Power BI Analyst, SQL Analyst, MIS Executive/Analyst, Analytics Associate, Data and Reporting Analyst, Research Associate, Insights Analyst, Strategy and Analytics Associate, Market Intelligence Analyst, Competitive Intelligence Analyst, Business Research Analyst, Data Operations Analyst, Junior Data Analyst, Junior Business Analyst, Dashboard/Visualization Analyst, Entry-level Healthcare Data Analyst, Analytics-focused Revenue Operations Analyst
-3. SELECTIVE FIT (only if requirements match): Junior Data Scientist, Product Analyst (analytics-heavy), Financial Analyst (data/reporting heavy), Junior ML roles
-
-Location: Delhi, Delhi NCR, Noida, Gurugram/Gurgaon, Remote, Hybrid (India-based only)
-Shift: Day shift only (IST morning-day hours)
-Employment: Full-time permanent only (no internships, contracts, part-time, commission, night shifts)
-Salary: ₹6.5-7 LPA
-Notice: 30 days
-
-EXCLUDE: Night/US shifts, rotational shifts, part-time, commission-only, internships, short contracts, US-only roles, roles requiring more experience, generic mass-hiring posts, fee-based schemes
-
-=== RECRUITER POST ===
+POST TO ANALYZE:
 Title: {title}
-Body: {snippet}
+Content: {snippet}
 URL: {url}
 
-=== TASK ===
-1. Determine if this post is a GENUINE job opening matching the candidate's target roles AND locations.
-2. Extract the direct recruiter email address from the snippet if present.
-3. If valid match AND email found, draft a compelling cold email (120-150 words) from Shivank Shukla highlighting relevant skills for this specific role, referencing portfolio, and mentioning attached resume.
-
-Return ONLY a JSON object with this exact structure:
+RETURN ONLY VALID JSON (no extra text):
 {{
+  "is_recruiter_post": true/false,
+  "role_title": "exact role title from post",
+  "company": "company name if mentioned",
+  "location": "location from post",
+  "salary_mentioned": true/false,
+  "salary_range": "if mentioned, else null",
+  "has_contact_info": true/false,
+  "contact_method": "email/dm/referral/contact",
+  "contact_value": "email address or null",
   "is_relevant": true/false,
-  "recruiter_email": "extracted_email_or_null",
-  "job_title": "extracted_job_title",
-  "company_name": "company_or_recruiter_name",
-  "email_subject": "Application for [Job Title] - Shivank Shukla",
-  "email_body": "Cold email body here..."
+  "confidence": "high/medium/low",
+  "reasoning": "brief explanation"
 }}
 """
-
+    
     try:
-        response = client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=prompt,
+        response = chat.send_message(
+            message=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 temperature=0.2
             )
         )
-
-        data = json.loads(response.text)
-        return data
+        result = json.loads(response.text)
+        
+        # Additional validation
+        if result.get("is_recruiter_post") and result.get("has_contact_info") and result.get("is_relevant"):
+            # Extract email if present
+            email = result.get("contact_value")
+            if email and "@" in str(email):
+                return {
+                    "email": email.strip(),
+                    "role": result.get("role_title", ""),
+                    "company": result.get("company", ""),
+                    "location": result.get("location", ""),
+                    "url": url,
+                    "confidence": result.get("confidence", "medium")
+                }
+        
+        return None
     except Exception as e:
-        print(f"[Gemini Parsing Error] {e}")
+        print(f"[Gemini Error] Failed to parse response: {e}")
         return None
 
 def main():
