@@ -31,7 +31,7 @@ RESUME_PATH = "resume.pdf"
 
 # Initialize Gemini Client
 if GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1"})
 else:
     client = None
 
@@ -166,7 +166,7 @@ def search_linkedin_posts():
                 "hl": "en",
                 "gl": "in"
             }
-            response = requests.get("https://serpapi.com/search", params=params, timeout=15)
+            response = requests.get("https://serpapi.com/search", params=params, timeout=30)
             data = response.json()
             
             organic_results = data.get("organic_results", [])
@@ -211,7 +211,11 @@ def _is_job_board_url(url: str) -> bool:
         "kellyservices.com", "adecco.com", "manpowergroup.com",
         "remotive.com", "remote.co", "workingnomads.com", "jobspresso.com",
         "himalayas.app", "remoteleaf.com", "jobgether.com", "arc.dev",
-        "capitalonecareers.com", "careers.", "jobs.", "job-", "recruit"
+        "capitalonecareers.com", "careers.", "jobs.", "job-", "recruit",
+        "orange.jobs", "getmereferred.com", "interviewchacha.com",
+        "ambitionbox.com", "fishbowlapp.com", "capitalplacement.in",
+        "jobnexusindia.com", "hicareer.com", "traveltechessentialist.com",
+        "n-ix.com", "unitedhealthgroup.com", "n-ix.com"
     ]
     url_lower = url.lower()
     for domain in job_board_domains:
@@ -300,7 +304,7 @@ Return ONLY a JSON object with this exact structure:
 
     try:
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-1.5-flash-002',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
