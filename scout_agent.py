@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from dotenv import load_dotenv
-from duckduckgo_search import DDGS
+import requests
 from google import genai
 from google.genai import types
 
@@ -21,6 +21,7 @@ GMAIL_SENDER = os.getenv("GMAIL_SENDER_EMAIL")
 GMAIL_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 CANDIDATE_NAME = os.getenv("CANDIDATE_NAME", "Shivank Shukla")
 CANDIDATE_PORTFOLIO = os.getenv("CANDIDATE_PORTFOLIO", "https://shivank-shukla-portfolio.vercel.app/")
 CANDIDATE_LINKEDIN = os.getenv("CANDIDATE_LINKEDIN", "https://www.linkedin.com/in/shivank-shukla09")
@@ -107,23 +108,77 @@ def send_email(to_email, subject, body_text):
         return False
 
 def search_linkedin_posts():
-    queries = [
-        'site:linkedin.com/posts "hiring" "Data Analyst" ("Delhi - NCR" OR "Noida" OR "Gurugram" OR "Gurgaon" OR "Remote") ("@gmail.com" OR "@" OR "send resume")',
-        'site:linkedin.com/posts "looking for" ("BI Analyst" OR "Business Analyst" OR "Data Analyst") ("Delhi - NCR" OR "Noida" OR "Gurugram" OR "Gurgaon" OR "Remote") "@"',
-        'site:linkedin.com/posts "hiring" ("Data Analyst" OR "Product Analyst") ("Delhi - NCR" OR "Noida" OR "Gurugram" OR "Gurgaon" OR "Remote" OR "Hybrid") "reach out"'
+    """Search for recruiter posts with contact info using SerpAPI."""
+    if not SERPAPI_KEY:
+        print("[Search] SERPAPI_KEY not configured. Falling back to empty results.")
+        return []
+    
+    # All 23 target roles from career profile
+    target_roles = [
+        # Highest priority
+        "Data Analyst", "Research Analyst", "Business Intelligence Analyst", 
+        "BI Analyst", "Business Analyst", "Market Research Analyst", "Reporting Analyst",
+        # Additional suitable
+        "Power BI Analyst", "SQL Analyst", "MIS Executive", "MIS Analyst",
+        "Analytics Associate", "Data and Reporting Analyst", "Research Associate",
+        "Insights Analyst", "Strategy and Analytics Associate", "Market Intelligence Analyst",
+        "Competitive Intelligence Analyst", "Business Research Analyst", "Data Operations Analyst",
+        "Junior Data Analyst", "Junior Business Analyst", "Dashboard Analyst",
+        "Visualization Analyst", "Healthcare Data Analyst", "Revenue Operations Analyst"
     ]
+    
+    # Build role query parts (grouped for API efficiency)
+    role_groups = [
+        '"Data Analyst" OR "Research Analyst" OR "Business Intelligence Analyst" OR "BI Analyst" OR "Business Analyst" OR "Market Research Analyst" OR "Reporting Analyst"',
+        '"Power BI Analyst" OR "SQL Analyst" OR "MIS Executive" OR "MIS Analyst" OR "Analytics Associate" OR "Data and Reporting Analyst" OR "Research Associate"',
+        '"Insights Analyst" OR "Strategy and Analytics Associate" OR "Market Intelligence Analyst" OR "Competitive Intelligence Analyst" OR "Business Research Analyst" OR "Data Operations Analyst"',
+        '"Junior Data Analyst" OR "Junior Business Analyst" OR "Dashboard Analyst" OR "Visualization Analyst" OR "Healthcare Data Analyst" OR "Revenue Operations Analyst"'
+    ]
+    
+    # Target locations
+    locations = '"Delhi" OR "Delhi NCR" OR "Noida" OR "Gurgaon" OR "Gurugram" OR "Remote" OR "Hybrid"'
+    
+    # Contact/intent signals
+    contact_signals = '"email" OR "@" OR "reach out" OR "contact" OR "dm" OR "resume" OR "cv" OR "apply" OR "referral" OR "hiring"'
+    
+    queries = []
+    for role_group in role_groups:
+        queries.append(f'({role_group}) {locations} {contact_signals}')
+    
+    # Additional broad searches for recruiter posts
+    queries.extend([
+        f'site:linkedin.com/posts "Data Analyst" {locations} {contact_signals}',
+        f'site:linkedin.com/posts "Business Analyst" {locations} {contact_signals}',
+        f'site:twitter.com "Data Analyst" {locations} {contact_signals}',
+        f'"Data Analyst" "referral" {locations} "@"',
+        f'"Business Analyst" "referral" {locations} "@"',
+    ])
 
     results = []
-    ddgs = DDGS()
     for q in queries:
         print(f"[Search] Executing query: {q}")
         try:
-            res = ddgs.text(q, max_results=10)
-            if res:
-                results.extend(res)
+            params = {
+                "engine": "google",
+                "q": q,
+                "api_key": SERPAPI_KEY,
+                "num": 10,
+                "hl": "en",
+                "gl": "in"
+            }
+            response = requests.get("https://serpapi.com/search", params=params, timeout=15)
+            data = response.json()
+            
+            organic_results = data.get("organic_results", [])
+            for r in organic_results:
+                results.append({
+                    "title": r.get("title", ""),
+                    "body": r.get("snippet", ""),
+                    "href": r.get("link", "")
+                })
         except Exception as e:
             print(f"[Search Error] {e}")
-        time.sleep(1)
+        time.sleep(1)  # Respect rate limits
     
     # Deduplicate by URL
     seen = set()
@@ -147,22 +202,61 @@ def analyze_and_process_post(post):
     prompt = f"""
 You are an expert AI recruiter assistant for candidate {CANDIDATE_NAME}.
 
-Candidate Background & Preferences:
-- Preferred Roles: Data Analyst, BI Analyst, Business Analyst, Product Analyst, Data Engineering Associate
-- Locations: Delhi-NCR, Noida, Gurgaon / Gurugram, Remote, Hybrid (Full-time Day Shift)
-- Target Salary: 6.5 - 7 LPA
-- Portfolio: {CANDIDATE_PORTFOLIO}
-- LinkedIn: {CANDIDATE_LINKEDIN}
+=== CANDIDATE PROFILE ===
+Name: Shivank Shukla
+Current Role: Research and Strategy Associate (Full-time) at ProSca Business Solutions, Delhi
+Recognized as Founding Team Member (July 2026)
+Previous: Research & Insights Intern at ProSca (Jan-Jul 2026), Data Analytics Intern at UptoSkills, IBM, Vodafone Idea Foundation
 
-Recruiter Post Snippet:
+Education:
+- B.Sc. Data Analytics, Delhi Skill and Entrepreneurship University (DSEU), Jul 2023 - Jun 2026
+- BCA, Indira Gandhi National Open University (IGNOU), Jul 2021 - Jul 2024
+
+Technical Skills:
+- Programming: Python, SQL
+- Data Analytics: Pandas, NumPy, Data Cleaning, ETL, Statistical Analysis, Data Wrangling, KPI Development
+- Business Intelligence: Power BI, Tableau, Excel (Pivot Tables, XLOOKUP, VLOOKUP), DAX, Dashboard Development, Data Visualization
+- Machine Learning: Scikit-learn, TensorFlow, Keras, LSTM, Regression, ARIMA, Prophet, Time Series Analysis, Forecasting
+- Research & Strategy: Primary Research, Secondary Research, Market Research, Competitive Analysis, Competitive Intelligence, Strategic Intelligence, Business Analysis, Report Writing, Presentation Development
+- Tools: Streamlit, Git, Jupyter Notebook, Google Sheets, MySQL, Oracle
+
+Key Achievements:
+- Delivered 12+ strategic intelligence reports across 5+ industry verticals (medical devices, textiles, food/export)
+- Reduced research turnaround time by 20% using standardized frameworks and AI-assisted workflows
+- Analyzed 10,000+ mental health records across 30 Karnataka districts (IBM internship)
+- Improved data acquisition efficiency by 40% for 1,000+ institutions (UptoSkills)
+- Cleaned and standardized datasets across 15+ variables, improving analytics reliability by 30%
+- Built Tableau/Power BI dashboards for institutional trends, healthcare outcomes, sales/inventory
+- LSTM stock forecasting project: 1.9% MAPE, deployed Streamlit app comparing 5 forecasting approaches
+
+Certifications: Cisco Data Analytics Essentials, Vodafone Idea Foundation Power BI, IBM Project Management & Data Fundamentals, Cambridge Communication Expert
+
+Portfolio: https://shivank-shukla-portfolio.vercel.app/
+LinkedIn: https://www.linkedin.com/in/shivank-shukla09
+
+=== JOB PREFERENCES (HARD FILTERS) ===
+Target Roles (in priority order):
+1. HIGHEST PRIORITY: Data Analyst, Research Analyst, Business Intelligence Analyst, BI Analyst, Business Analyst, Market Research Analyst, Reporting Analyst
+2. ADDITIONAL SUITABLE: Power BI Analyst, SQL Analyst, MIS Executive/Analyst, Analytics Associate, Data and Reporting Analyst, Research Associate, Insights Analyst, Strategy and Analytics Associate, Market Intelligence Analyst, Competitive Intelligence Analyst, Business Research Analyst, Data Operations Analyst, Junior Data Analyst, Junior Business Analyst, Dashboard/Visualization Analyst, Entry-level Healthcare Data Analyst, Analytics-focused Revenue Operations Analyst
+3. SELECTIVE FIT (only if requirements match): Junior Data Scientist, Product Analyst (analytics-heavy), Financial Analyst (data/reporting heavy), Junior ML roles
+
+Location: Delhi, Delhi NCR, Noida, Gurugram/Gurgaon, Remote, Hybrid (India-based only)
+Shift: Day shift only (IST morning-day hours)
+Employment: Full-time permanent only (no internships, contracts, part-time, commission, night shifts)
+Salary: ₹6.5-7 LPA
+Notice: 30 days
+
+EXCLUDE: Night/US shifts, rotational shifts, part-time, commission-only, internships, short contracts, US-only roles, roles requiring more experience, generic mass-hiring posts, fee-based schemes
+
+=== RECRUITER POST ===
 Title: {title}
 Body: {snippet}
 URL: {url}
 
-Task:
-1. Determine if this post is a genuine job opening matching the candidate's preferred roles & locations.
-2. Search and extract the direct recruiter email address from the text snippet if present (e.g., recruiter@company.com or company HR email).
-3. If valid and email is found, draft a concise, compelling cold email (120-150 words) from Shivank Shukla. Highlight key skills relevant to the post (Python, SQL, PowerBI, Data Visualization, EDA), reference their portfolio, and mention the attached resume.
+=== TASK ===
+1. Determine if this post is a GENUINE job opening matching the candidate's target roles AND locations.
+2. Extract the direct recruiter email address from the snippet if present.
+3. If valid match AND email found, draft a compelling cold email (120-150 words) from Shivank Shukla highlighting relevant skills for this specific role, referencing portfolio, and mentioning attached resume.
 
 Return ONLY a JSON object with this exact structure:
 {{
@@ -193,13 +287,40 @@ Return ONLY a JSON object with this exact structure:
 
 def main():
     print("=== Starting Autonomous Job Scout Agent ===")
+    
+    # Start notification
+    start_msg = (
+        f"🤖 <b>Job Scout Agent Started</b>\n\n"
+        f"👤 <b>Candidate:</b> {CANDIDATE_NAME}\n"
+        f"🕐 <b>Time:</b> {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"🎯 <b>Searching for roles:</b> 23 target roles across 3 priority tiers\n"
+        f"📍 <b>Locations:</b> Delhi, NCR, Noida, Gurgaon, Remote, Hybrid\n"
+        f"💰 <b>Salary:</b> ₹6.5-7 LPA | Day Shift | Full-time only\n"
+        f"⏰ <b>Schedule:</b> 2 runs/day (08:30 AM & 08:30 PM IST)"
+    )
+    send_telegram(start_msg)
+    
     history = load_history()
     applied_emails = {entry.get("email") for entry in history if isinstance(entry, dict) and "email" in entry}
 
     posts = search_linkedin_posts()
-    print(f"[Search] Found {len(posts)} potential post(s).")
+    total_posts = len(posts)
+    print(f"[Search] Found {total_posts} potential post(s).")
+    
+    # Search summary notification
+    search_msg = (
+        f"🔍 <b>Search Complete</b>\n\n"
+        f"📊 <b>Total posts found:</b> {total_posts}\n"
+        f"🔎 <b>Processing each post for relevance...</b>"
+    )
+    send_telegram(search_msg)
 
     new_applications = 0
+    skipped_relevant = 0
+    skipped_no_email = 0
+    skipped_duplicate = 0
+    skipped_irrelevant = 0
+    errors = 0
 
     for post in posts:
         url = post.get("href")
@@ -207,19 +328,23 @@ def main():
         
         parsed = analyze_and_process_post(post)
         if not parsed:
+            errors += 1
             continue
 
         if not parsed.get("is_relevant"):
             print("[Skip] Post not relevant or location/role mismatch.")
+            skipped_irrelevant += 1
             continue
 
         email = parsed.get("recruiter_email")
         if not email or email == "extracted_email_or_null" or "@" not in email:
             print("[Skip] No direct recruiter email found in snippet.")
+            skipped_no_email += 1
             continue
 
         if email.lower() in applied_emails:
             print(f"[Skip] Already emailed recruiter at {email}.")
+            skipped_duplicate += 1
             continue
 
         job_title = parsed.get("job_title", "Data Analyst")
@@ -244,7 +369,7 @@ def main():
             save_history(history)
             new_applications += 1
 
-            # Telegram Notification
+            # Telegram Notification for each email
             tg_msg = (
                 f"🚀 <b>New Cold Email Sent!</b>\n\n"
                 f"👤 <b>Candidate:</b> {CANDIDATE_NAME}\n"
@@ -255,6 +380,24 @@ def main():
                 f"✨ <b>Portfolio:</b> {CANDIDATE_PORTFOLIO}"
             )
             send_telegram(tg_msg)
+        else:
+            errors += 1
+
+    # Final Summary Notification
+    summary_msg = (
+        f"✅ <b>Job Scout Run Complete</b>\n\n"
+        f"👤 <b>Candidate:</b> {CANDIDATE_NAME}\n"
+        f"🕐 <b>Completed:</b> {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"📊 <b>Search Results:</b>\n"
+        f"   🔍 Posts found: <b>{total_posts}</b>\n"
+        f"   ❌ Irrelevant: {skipped_irrelevant}\n"
+        f"   📭 No email: {skipped_no_email}\n"
+        f"   🔄 Duplicate: {skipped_duplicate}\n"
+        f"   ⚠️ Errors: {errors}\n\n"
+        f"📧 <b>Emails Sent:</b> <b>{new_applications}</b>\n\n"
+        f"💡 <b>Total unique recruiters contacted:</b> {len(applied_emails)}"
+    )
+    send_telegram(summary_msg)
 
     print(f"\n=== Run Complete. Total new applications sent: {new_applications} ===")
 
