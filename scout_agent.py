@@ -353,7 +353,7 @@ def analyze_and_process_post(post, max_retries=3):
             # Read first 1000 characters to keep prompt short
             candidate_context = f.read(1000)
     except:
-        candidate_context = "Data Analyst with experience in SQL, Python, Power BI, and data visualization."
+        candidate_context = "Research and Strategy Associate at ProSca Business Solutions (Founding Team Member). ~1 year combined early-career experience across data analysis, business research, market intelligence, and dashboard development. Delivered 12+ strategic reports across 5 verticals. Analyzed 10,000+ healthcare records. Built LSTM stock forecasting model with 1.9% MAPE. Reduced research turnaround 20%, improved data collection efficiency 40%. Skilled in SQL, Python, Power BI, Tableau, Advanced Excel, DAX."
 
     prompt = f"""
 You are an expert job matcher and email writer. Analyze the LinkedIn/post below and extract ONLY if:
@@ -401,8 +401,8 @@ RETURN ONLY VALID JSON (no extra text):
   STRUCTURE:
   1. PERSONALIZED OPENING: Address the recruiter by name if visible in the post. Reference their SPECIFIC post title/role/company. Example: 'Hi Vanisha, Your post about the Full-Time Data Analyst role in Noida Sector 63 caught my attention...' or 'Hi [Name], The Research Analyst opening for market research at [Company] aligns perfectly with my background...'
   2. WHY THIS ROLE: Connect 2-3 SPECIFIC requirements from their post (tech stack, domain, location, salary, experience level) to your relevant experience. Quote details from their snippet.
-  3. CONCRETE EVIDENCE: Reference ONE specific portfolio project that matches THIS role (pick from: sales forecasting with 1.9% MAPE LSTM, customer churn analysis, KPI tracking dashboards, SQL/Python automation reducing manual effort 40%, Power BI dashboards for sales/ops). Say WHY it's relevant to their needs.
-  4. AVAILABILITY & FIT: Mention Delhi NCR base, immediate joining, day shift preference, 6.5-7 LPA alignment.
+  3. CONCRETE EVIDENCE: Reference ONE specific portfolio project that matches THIS role (pick from: LSTM stock forecasting with 1.9% MAPE, 12+ strategic intelligence reports across 5 verticals, 10,000+ healthcare records analysis, 40% data collection efficiency improvement across 1,000+ institutions, 20% research turnaround reduction, Power BI/Tableau dashboards). Say WHY it's relevant to their needs.
+  4. AVAILABILITY & FIT: Mention Delhi NCR base, immediate joining, day shift preference, 6.5-7 LPA alignment. Note: ~1 year early-career experience (ProSca Business Solutions, Founding Team Member + internships), not senior-level experience.
   5. PROFESSIONAL CLOSE: Clear call to action (e.g., 'I'd welcome a brief call to discuss how my SQL/Python/Power BI experience aligns with your team's needs').
   6. SIGNATURE: Use EXACT contact info provided above (no placeholders).
 
@@ -411,6 +411,9 @@ RETURN ONLY VALID JSON (no extra text):
   - 'I believe I would be a great/strong fit'
   - 'I am writing to express my interest'
   - 'As a Data Analyst with...'
+  - 'As a seasoned data analyst...'
+  - '2+ years of experience' / '2+ years experience'
+  - 'senior-level' / 'extensive experience' / 'deep expertise'
   - Generic templates
 
   TONE: Professional, confident, concise. Show you READ their post. Be specific about THEIR requirements.
