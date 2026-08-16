@@ -304,7 +304,7 @@ Return ONLY a JSON object with this exact structure:
 
     try:
         response = client.models.generate_content(
-            model='gemini-1.5-flash-002',
+            model='gemini-1.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
