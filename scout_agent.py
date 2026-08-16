@@ -129,23 +129,23 @@ def search_linkedin_posts():
     
     # Build role query parts (grouped for API efficiency)
     role_groups = [
-        '"Data Analyst" OR "Research Analyst" OR "Business Intelligence Analyst" OR "BI Analyst" OR "Business Analyst" OR "Market Research Analyst" OR "Reporting Analyst"',
-        '"Power BI Analyst" OR "SQL Analyst" OR "MIS Executive" OR "MIS Analyst" OR "Analytics Associate" OR "Data and Reporting Analyst" OR "Research Associate"',
-        '"Insights Analyst" OR "Strategy and Analytics Associate" OR "Market Intelligence Analyst" OR "Competitive Intelligence Analyst" OR "Business Research Analyst" OR "Data Operations Analyst"',
-        '"Junior Data Analyst" OR "Junior Business Analyst" OR "Dashboard Analyst" OR "Visualization Analyst" OR "Healthcare Data Analyst" OR "Revenue Operations Analyst"'
+        '("Data Analyst" OR "Research Analyst" OR "Business Intelligence Analyst" OR "BI Analyst" OR "Business Analyst" OR "Market Research Analyst" OR "Reporting Analyst")',
+        '("Power BI Analyst" OR "SQL Analyst" OR "MIS Executive" OR "MIS Analyst" OR "Analytics Associate" OR "Data and Reporting Analyst" OR "Research Associate")',
+        '("Insights Analyst" OR "Strategy and Analytics Associate" OR "Market Intelligence Analyst" OR "Competitive Intelligence Analyst" OR "Business Research Analyst" OR "Data Operations Analyst")',
+        '("Junior Data Analyst" OR "Junior Business Analyst" OR "Dashboard Analyst" OR "Visualization Analyst" OR "Healthcare Data Analyst" OR "Revenue Operations Analyst")'
     ]
     
-    # Target locations
-    locations = '"Delhi" OR "Delhi NCR" OR "Noida" OR "Gurgaon" OR "Gurugram" OR "Remote" OR "Hybrid"'
+    # Target locations (properly grouped)
+    locations = '("Delhi" OR "Delhi NCR" OR "Noida" OR "Gurgaon" OR "Gurugram" OR "Remote" OR "Hybrid")'
     
-    # Contact/intent signals
-    contact_signals = '"email" OR "@" OR "reach out" OR "contact" OR "dm" OR "resume" OR "cv" OR "apply" OR "referral" OR "hiring"'
+    # Contact/intent signals (properly grouped)
+    contact_signals = '("email" OR "@" OR "reach out" OR "contact" OR "dm" OR "resume" OR "cv" OR "apply" OR "referral" OR "hiring")'
     
     queries = []
     for role_group in role_groups:
-        queries.append(f'({role_group}) {locations} {contact_signals}')
+        queries.append(f'{role_group} {locations} {contact_signals}')
     
-    # Additional broad searches for recruiter posts
+    # Additional broad searches for recruiter posts on LinkedIn/Twitter
     queries.extend([
         f'site:linkedin.com/posts "Data Analyst" {locations} {contact_signals}',
         f'site:linkedin.com/posts "Business Analyst" {locations} {contact_signals}',
@@ -171,11 +171,14 @@ def search_linkedin_posts():
             
             organic_results = data.get("organic_results", [])
             for r in organic_results:
-                results.append({
-                    "title": r.get("title", ""),
-                    "body": r.get("snippet", ""),
-                    "href": r.get("link", "")
-                })
+                url = r.get("link", "")
+                # Filter out job boards and aggregators - we want recruiter posts with contact info
+                if not _is_job_board_url(url):
+                    results.append({
+                        "title": r.get("title", ""),
+                        "body": r.get("snippet", ""),
+                        "href": url
+                    })
         except Exception as e:
             print(f"[Search Error] {e}")
         time.sleep(1)  # Respect rate limits
@@ -189,6 +192,32 @@ def search_linkedin_posts():
             seen.add(url)
             unique_results.append(r)
     return unique_results
+
+
+def _is_job_board_url(url: str) -> bool:
+    """Filter out job board/aggregator URLs that won't have recruiter contact info."""
+    job_board_domains = [
+        "indeed.com", "naukri.com", "linkedin.com/jobs", "glassdoor.com",
+        "shine.com", "monster.com", "timesjobs.com", "placementindia.com",
+        "jobhai.com", "freshersworld.com", "cutshort.io", "instahyre.com",
+        "wellfound.com", "angel.co", "internshala.com", "upwork.com",
+        "freelancer.com", "toptal.com", "remoteok.com", "weworkremotely.com",
+        "flexjobs.com", "remoterocketship.com", "jobsearch.com",
+        "careerbuilder.com", "dice.com", "simplyhired.com", "ziprecruiter.com",
+        "jobvite.com", "lever.co", "greenhouse.io", "smartrecruiters.com",
+        "workday.com", "bamboohr.com", "icims.com", "taleo.net",
+        "myamcat.com", "capstone.com", "michaelpage.com", "roberthalf.com",
+        "robertwalters.com", "hays.com", "randstad.com", "manpower.com",
+        "kellyservices.com", "adecco.com", "manpowergroup.com",
+        "remotive.com", "remote.co", "workingnomads.com", "jobspresso.com",
+        "himalayas.app", "remoteleaf.com", "jobgether.com", "arc.dev",
+        "capitalonecareers.com", "careers.", "jobs.", "job-", "recruit"
+    ]
+    url_lower = url.lower()
+    for domain in job_board_domains:
+        if domain in url_lower:
+            return True
+    return False
 
 def analyze_and_process_post(post):
     if not client:
@@ -271,7 +300,7 @@ Return ONLY a JSON object with this exact structure:
 
     try:
         response = client.models.generate_content(
-            model='gemini-1.5-flash-latest',
+            model='gemini-1.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
