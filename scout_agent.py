@@ -210,7 +210,7 @@ def _is_job_board_url(url: str) -> bool:
             return True
     return False
 
-def analyze_and_process_post(post, chat):
+def analyze_and_process_post(post, chat, max_retries=3):
     if not client:
         print("[Gemini Error] GEMINI_API_KEY is not configured in .env.")
         return None
@@ -265,24 +265,35 @@ RETURN ONLY VALID JSON (no extra text):
 }}
 """
     
-    try:
-        response = chat.send_message(
-            message=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0.2
+    # Retry logic for rate limits
+    for attempt in range(max_retries):
+        try:
+            response = chat.send_message(
+                message=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.2
+                )
             )
-        )
-        result = json.loads(response.text)
-        
-        # Validate we have the required fields for sending email
-        if result.get("is_relevant") and result.get("recruiter_email") and "@" in str(result.get("recruiter_email", "")):
-            return result
-        
-        return None
-    except Exception as e:
-        print(f"[Gemini Error] Failed to parse response: {e}")
-        return None
+            result = json.loads(response.text)
+            
+            # Validate we have the required fields for sending email
+            if result.get("is_relevant") and result.get("recruiter_email") and "@" in str(result.get("recruiter_email", "")):
+                return result
+            
+            return None
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                delay = 30 * (2 ** attempt)  # 30s, 60s, 120s
+                print(f"[Rate Limit] Attempt {attempt + 1}/{max_retries} failed. Waiting {delay}s before retry...")
+                time.sleep(delay)
+            else:
+                print(f"[Gemini Error] Failed to parse response: {e}")
+                return None
+    
+    print(f"[Gemini Error] All {max_retries} retries exhausted for rate limit")
+    return None
 
 def main():
     print("=== Starting Autonomous Job Scout Agent ===")
@@ -391,6 +402,9 @@ def main():
             send_telegram(tg_msg)
         else:
             errors += 1
+        
+        # Small delay between posts to avoid rate limits
+        time.sleep(2)
     
     # Final Summary Notification
     summary_msg = (
