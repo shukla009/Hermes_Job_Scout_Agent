@@ -406,7 +406,7 @@ RETURN ONLY VALID JSON (no extra text):
   5. PROFESSIONAL CLOSE: Clear call to action (e.g., 'I'd welcome a brief call to discuss how my SQL/Python/Power BI experience aligns with your team's needs').
   6. SIGNATURE: Use EXACT contact info provided above (no placeholders).
 
-  BANNED PHRASES (do NOT use):
+  BANNED PHRASES (do NOT use - automatic rejection if found):
   - 'I came across your post'
   - 'I believe I would be a great/strong fit'
   - 'I am writing to express my interest'
@@ -414,7 +414,11 @@ RETURN ONLY VALID JSON (no extra text):
   - 'As a seasoned data analyst...'
   - '2+ years of experience' / '2+ years experience'
   - 'senior-level' / 'extensive experience' / 'deep expertise'
+  - 'Your company's emphasis' / 'Your company values' (recruiter is a PERSON, not a company)
+  - 'resonates with my experience' (generic filler)
   - Generic templates
+
+  STRICT: If any banned phrase appears, the email is INVALID. Do NOT use them.
 
   TONE: Professional, confident, concise. Show you READ their post. Be specific about THEIR requirements.
 
