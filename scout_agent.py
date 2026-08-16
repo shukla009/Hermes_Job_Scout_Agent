@@ -396,7 +396,27 @@ RETURN ONLY VALID JSON (no extra text):
   "job_title": "extracted_job_title",
   "company_name": "company_or_recruiter_name",
   "email_subject": "Application for [Job Title] - Shivank Shukla",
-  "email_body": "Cold email body here... (120-150 words highlighting relevant skills for this specific role, referencing portfolio, and mentioning attached resume. MUST use the exact candidate contact info provided above for the signature. Do NOT use placeholders like XXXXXXXXXX or fake emails.)"
+  "email_body": "Write a PERSONALIZED, professional cold email (120-180 words) that:
+
+  STRUCTURE:
+  1. PERSONALIZED OPENING: Address the recruiter by name if visible in the post. Reference their SPECIFIC post title/role/company. Example: 'Hi Vanisha, Your post about the Full-Time Data Analyst role in Noida Sector 63 caught my attention...' or 'Hi [Name], The Research Analyst opening for market research at [Company] aligns perfectly with my background...'
+  2. WHY THIS ROLE: Connect 2-3 SPECIFIC requirements from their post (tech stack, domain, location, salary, experience level) to your relevant experience. Quote details from their snippet.
+  3. CONCRETE EVIDENCE: Reference ONE specific portfolio project that matches THIS role (pick from: sales forecasting with 1.9% MAPE LSTM, customer churn analysis, KPI tracking dashboards, SQL/Python automation reducing manual effort 40%, Power BI dashboards for sales/ops). Say WHY it's relevant to their needs.
+  4. AVAILABILITY & FIT: Mention Delhi NCR base, immediate joining, day shift preference, 6.5-7 LPA alignment.
+  5. PROFESSIONAL CLOSE: Clear call to action (e.g., 'I'd welcome a brief call to discuss how my SQL/Python/Power BI experience aligns with your team's needs').
+  6. SIGNATURE: Use EXACT contact info provided above (no placeholders).
+
+  BANNED PHRASES (do NOT use):
+  - 'I came across your post'
+  - 'I believe I would be a great/strong fit'
+  - 'I am writing to express my interest'
+  - 'As a Data Analyst with...'
+  - Generic templates
+
+  TONE: Professional, confident, concise. Show you READ their post. Be specific about THEIR requirements.
+
+  MUST USE EXACT CONTACT INFO: Phone +91 9013584218, Email work.shuklashivank@gmail.com, Portfolio {CANDIDATE_PORTFOLIO}, LinkedIn {CANDIDATE_LINKEDIN}, GitHub https://github.com/shukla009
+  "
 }}
 """
 
