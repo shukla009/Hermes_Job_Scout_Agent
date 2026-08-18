@@ -73,17 +73,27 @@ def send_telegram(message):
     except Exception as e:
         print(f"[Telegram Error] {e}")
 
-def send_email(to_email, subject, body_text):
+def send_email(to_email, subject, body_text, body_html=None):
     if not GMAIL_SENDER or not GMAIL_PASSWORD:
         print("[Email Error] Missing Gmail credentials.")
         return False
 
-    msg = MIMEMultipart()
+    msg = MIMEMultipart('alternative')
     msg['From'] = f"{CANDIDATE_NAME} <{GMAIL_SENDER}>"
     msg['To'] = to_email
     msg['Subject'] = subject
 
+    # Plain text version
     msg.attach(MIMEText(body_text, 'plain'))
+
+    # HTML version (if provided, otherwise generate from plain text)
+    if body_html:
+        msg.attach(MIMEText(body_html, 'html'))
+    else:
+        # Convert plain text to basic HTML
+        html_body = body_text.replace('\n\n', '</p><p>').replace('\n', '<br>')
+        html_body = f"<html><body><p>{html_body}</p></body></html>"
+        msg.attach(MIMEText(html_body, 'html'))
 
     # Attach resume if available
     resume_source_path = "Shivank_Shukla_Data_Analyst.pdf"
@@ -398,32 +408,40 @@ RETURN ONLY VALID JSON (no extra text):
   "email_subject": "Application for [Job Title] - Shivank Shukla",
   "email_body": "Write a PERSONALIZED, professional cold email (120-180 words) that:
 
-  STRUCTURE:
-  1. PERSONALIZED OPENING: Address the recruiter by name if visible in the post. Reference their SPECIFIC post title/role/company. Example: 'Hi Vanisha, Your post about the Full-Time Data Analyst role in Noida Sector 63 caught my attention...' or 'Hi [Name], The Research Analyst opening for market research at [Company] aligns perfectly with my background...'
-  2. WHY THIS ROLE: Connect 2-3 SPECIFIC requirements from their post (tech stack, domain, location, salary, experience level) to your relevant experience. Quote details from their snippet.
-  3. CONCRETE EVIDENCE: Reference ONE specific portfolio project that matches THIS role (pick from: LSTM stock forecasting with 1.9% MAPE, 12+ strategic intelligence reports across 5 verticals, 10,000+ healthcare records analysis, 40% data collection efficiency improvement across 1,000+ institutions, 20% research turnaround reduction, Power BI/Tableau dashboards). Say WHY it's relevant to their needs.
-  4. AVAILABILITY & FIT: Mention Delhi NCR base, immediate joining, day shift preference, 6.5-7 LPA alignment. Note: ~1 year early-career experience (ProSca Business Solutions, Founding Team Member + internships), not senior-level experience.
-  5. PROFESSIONAL CLOSE: Clear call to action (e.g., 'I'd welcome a brief call to discuss how my SQL/Python/Power BI experience aligns with your team's needs').
-  6. SIGNATURE: Use EXACT contact info provided above (no placeholders).
+    STRUCTURE:
+    1. PERSONALIZED OPENING: Address the recruiter by name if visible in the post. Reference their SPECIFIC post title/role/company.
+    2. WHY THIS ROLE: Connect 2-3 SPECIFIC requirements from their post (tech stack, domain, location, salary, experience level) to your relevant experience. Quote details from their snippet.
+    3. CONCRETE EVIDENCE: Reference ONE specific portfolio project that matches THIS role (pick from: LSTM stock forecasting with 1.9% MAPE, 12+ strategic intelligence reports across 5 verticals, 10,000+ healthcare records analysis, 40% data collection efficiency improvement across 1,000+ institutions, 20% research turnaround reduction, Power BI/Tableau dashboards). Say WHY it's relevant to their needs.
+    4. AVAILABILITY & FIT: Mention Delhi NCR base, immediate joining, day shift preference, 6.5-7 LPA alignment. Note: ~1 year early-career experience (ProSca Business Solutions, Founding Team Member + internships), not senior-level experience.
+    5. PROFESSIONAL CLOSE: Clear call to action (e.g., 'I'd welcome a brief call to discuss how my SQL/Python/Power BI experience aligns with your team's needs').
+    6. SIGNATURE: Use EXACT contact info provided above (no placeholders).
 
-  BANNED PHRASES (do NOT use - automatic rejection if found):
-  - 'I came across your post'
-  - 'I believe I would be a great/strong fit'
-  - 'I am writing to express my interest'
-  - 'As a Data Analyst with...'
-  - 'As a seasoned data analyst...'
-  - '2+ years of experience' / '2+ years experience'
-  - 'senior-level' / 'extensive experience' / 'deep expertise'
-  - 'Your company's emphasis' / 'Your company values' (recruiter is a PERSON, not a company)
-  - 'resonates with my experience' (generic filler)
-  - Generic templates
+    BANNED PHRASES (do NOT use - automatic rejection if found):
+    - 'I came across your post'
+    - 'I believe I would be a great/strong fit'
+    - 'I am writing to express my interest'
+    - 'As a Data Analyst with...'
+    - 'As a seasoned data analyst...'
+    - '2+ years of experience' / '2+ years experience'
+    - 'senior-level' / 'extensive experience' / 'deep expertise'
+    - 'Your company's emphasis' / 'Your company values' (recruiter is a PERSON, not a company)
+    - 'resonates with my experience' (generic filler)
+    - Generic templates
 
-  STRICT: If any banned phrase appears, the email is INVALID. Do NOT use them.
+    STRICT: If any banned phrase appears, the email is INVALID. Do NOT use them.
 
-  TONE: Professional, confident, concise. Show you READ their post. Be specific about THEIR requirements.
+    TONE: Professional, confident, concise. Show you READ their post. Be specific about THEIR requirements.
 
-  MUST USE EXACT CONTACT INFO: Phone +91 9013584218, Email work.shuklashivank@gmail.com, Portfolio {CANDIDATE_PORTFOLIO}, LinkedIn {CANDIDATE_LINKEDIN}, GitHub https://github.com/shukla009
-  "
+    MUST USE EXACT CONTACT INFO: Phone +91 9013584218, Email work.shuklashivank@gmail.com, Portfolio {CANDIDATE_PORTFOLIO}, LinkedIn {CANDIDATE_LINKEDIN}, GitHub https://github.com/shukla009
+
+    URL FORMAT: Use plain URLs only (https://...). NO @url:... or markdown wrappers.
+
+    OUTPUT FORMAT: Return JSON with TWO fields:
+    - \"email_body\": plain text version
+    - \"email_body_html\": HTML version with proper formatting (paragraphs, line breaks, signature block)
+
+    Both versions must contain the same content, just different formats.
+    "
 }}
 """
 
@@ -441,6 +459,53 @@ RETURN ONLY VALID JSON (no extra text):
 
             # Validate we have the required fields for sending email
             if result.get("is_relevant") and result.get("recruiter_email") and "@" in str(result.get("recruiter_email", "")):
+                # Post-generation validation for banned phrases
+                banned_phrases = [
+                    # Original banned phrases
+                    "i came across your post",
+                    "i believe i would be a great fit",
+                    "i believe i would be a strong fit",
+                    "i am writing to express my interest",
+                    "as a data analyst with",
+                    "as a seasoned data analyst",
+                    "2+ years of experience",
+                    "2+ years experience",
+                    "senior-level",
+                    "extensive experience",
+                    "deep expertise",
+                    "your company's emphasis",
+                    "your company values",
+                    "resonates with my experience",
+                    # Additional patterns to catch unprofessional language
+                    "your post about the",
+                    "your post for the",
+                    "your post regarding the",
+                    "caught my attention",
+                    "i noticed that you're looking",
+                    "i noticed that you are looking",
+                    "i am confident that i can",
+                    "i am confident that i will",
+                    "i can bring value to",
+                    "i can add value to",
+                    "i am particularly drawn to",
+                    "i am excited about the opportunity",
+                    "i am excited to apply",
+                    "i believe my background aligns",
+                    "my background aligns perfectly",
+                    "i have built several",
+                    "i've built several",
+                    "i have worked on various",
+                    "i've worked on various",
+                ]
+                
+                email_text = result.get("email_body", "").lower()
+                email_html = result.get("email_body_html", "").lower()
+                
+                for phrase in banned_phrases:
+                    if phrase in email_text or phrase in email_html:
+                        print(f"[Validation Failed] Banned phrase detected: '{phrase}' - retrying...")
+                        raise ValueError(f"Banned phrase: {phrase}")
+                
                 return result
 
             return None
@@ -525,13 +590,14 @@ def main():
 
         job_title = parsed.get("job_title", "Data Analyst")
         subject = parsed.get("email_subject", f"Application for {job_title} - {CANDIDATE_NAME}")
-        body = parsed.get("email_body", "")
+        body_text = parsed.get("email_body", "")
+        body_html = parsed.get("email_body_html", "")
 
         print(f"🎯 [MATCH FOUND] Recruiter: {email} | Role: {job_title}")
         print(f"Subject: {subject}")
 
         # Send Email
-        success = send_email(email, subject, body)
+        success = send_email(email, subject, body_text, body_html)
         if success:
             print(f"✅ [EMAIL SENT] {email} | {job_title}")
             entry = {
