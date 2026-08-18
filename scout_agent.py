@@ -258,7 +258,8 @@ def search_linkedin_posts():
                     "api_key": SERPAPI_KEY,
                     "num": 10,
                     "hl": "en",
-                    "gl": "in"
+                    "gl": "in",
+                    "tbs": "qdr:d4"  # Past 4 days only
                 }
                 response = requests.get("https://serpapi.com/search", params=params, timeout=30)
                 data = response.json()
