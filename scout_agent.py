@@ -348,7 +348,7 @@ def _is_job_board_url(url: str) -> bool:
             return True
     return False
 
-def analyze_and_process_post(post, max_retries=3):
+def analyze_and_process_post(post, max_retries=5):
     if not client:
         print("[NVIDIA NIM Error] NVIDIA_API_KEY is not configured in .env.")
         return None
@@ -513,7 +513,7 @@ RETURN ONLY VALID JSON (no extra text):
         except Exception as e:
             error_str = str(e)
             if "429" in error_str or "RATE_LIMIT" in error_str or "rate limit" in error_str.lower():
-                delay = 5 * (2 ** attempt)  # 5s, 10s, 20s (NIM has 40 RPM, so shorter delays)
+                delay = 10 * (2 ** attempt)  # 10s, 20s, 40s (more conservative)
                 print(f"[Rate Limit] Attempt {attempt + 1}/{max_retries} failed. Waiting {delay}s before retry...")
                 time.sleep(delay)
             else:
@@ -545,6 +545,12 @@ def main():
     total_posts = len(posts)
     print(f"[Search] Found {total_posts} potential post(s).")
 
+    # Limit posts to process to avoid rate limits (40 RPM = ~40 calls/min, need ~3 calls/post = ~13 posts/min)
+    max_posts_per_run = 15
+    if len(posts) > max_posts_per_run:
+        print(f"[Search] Limiting to top {max_posts_per_run} posts to stay within rate limits")
+        posts = posts[:max_posts_per_run]
+
     # Search summary notification
     search_msg = (
         f"🔍 <b>Search Complete</b>\n\n"
@@ -560,13 +566,20 @@ def main():
     skipped_irrelevant = 0
     errors = 0
 
-    for post in posts:
+    for i, post in enumerate(posts):
         url = post.get("href")
+        # Clean up any @url: prefix that might come from search results
+        if url.startswith("@url:"):
+            url = url[5:].strip("`")
         print(f"\n[Processing] {url}")
 
         if client is None:
             errors += 1
             continue
+
+        # Add delay between LLM calls to avoid rate limits (NVIDIA NIM: 40 RPM = 1.5s/call)
+        if i > 0:
+            time.sleep(2)
 
         parsed = analyze_and_process_post(post)
         if not parsed:
