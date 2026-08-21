@@ -129,14 +129,14 @@ def generate_search_queries_ai(previous_results_summary: str = "") -> list:
     if not client:
         print("[AI Query Gen] No NVIDIA client, using fallback queries")
         return get_fallback_queries()
-    
+
     candidate_context = ""
     try:
         with open("Resume/Shivank_Shukla_Career_Context.md", "r", encoding="utf-8") as f:
             candidate_context = f.read(1500)
     except:
         candidate_context = "Data Analyst with 2+ years experience in SQL, Python, Power BI, data visualization. Seeking Data Analyst/BI Analyst/Research Analyst/Business Analyst roles in Delhi NCR/Noida/Gurgaon/Remote. 6.5-7 LPA, day shift, full-time."
-    
+
     prompt = f"""You are an expert at Google dorking for finding RECRUITER LinkedIn posts with direct contact info (email, phone, DM request).
 
 CANDIDATE PROFILE:
@@ -159,7 +159,7 @@ Return ONLY valid JSON array of strings:
 
     try:
         response = client.chat.completions.create(
-            model=NVIDIA_MODEL,
+            model=NVIDIA_ANALYSIS_MODEL,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
             temperature=0.3,
@@ -194,14 +194,14 @@ def analyze_search_results_ai(results: list) -> str:
     # Simple heuristic-based analysis instead
     if not results:
         return ""
-    
+
     # Count results with contact-like patterns
     contact_count = 0
     for r in results[:10]:
         body = r.get('body', '').lower()
         if any(kw in body for kw in ['@', 'email', 'dm me', 'reach out', 'contact', 'referral', 'phone', 'mobile']):
             contact_count += 1
-    
+
     # Simple heuristic suggestions
     if contact_count >= 3:
         return json.dumps({
@@ -236,18 +236,18 @@ def search_linkedin_posts():
     all_results = []
     previous_summary = ""
     max_iterations = 2  # Reduced from 3 to stay within rate limits
-    
+
     for iteration in range(max_iterations):
         print(f"\n[Search] === Iteration {iteration + 1}/{max_iterations} ===")
-        
+
         # Generate queries (AI-powered after first iteration)
         if iteration == 0:
             queries = get_fallback_queries()  # Start with proven queries (5 queries)
         else:
             queries = generate_search_queries_ai(previous_summary)[:3]  # Max 3 refined queries
-        
+
         print(f"[Search] Generated {len(queries)} queries for iteration {iteration + 1}")
-        
+
         iteration_results = []
         for q in queries:
             print(f"[Search] Executing query...")
@@ -263,7 +263,7 @@ def search_linkedin_posts():
                 }
                 response = requests.get("https://serpapi.com/search", params=params, timeout=30)
                 data = response.json()
-                
+
                 organic_results = data.get("organic_results", [])
                 for r in organic_results:
                     url = r.get("link", "")
@@ -276,7 +276,7 @@ def search_linkedin_posts():
             except Exception as e:
                 print(f"[Search Error] {e}")
             time.sleep(2)  # Rate limit safety
-        
+
         # Deduplicate within iteration
         seen = set()
         unique_iteration = []
@@ -285,15 +285,15 @@ def search_linkedin_posts():
             if url and url not in seen:
                 seen.add(url)
                 unique_iteration.append(r)
-        
+
         print(f"[Search] Iteration {iteration + 1}: Found {len(unique_iteration)} unique recruiter posts")
-        
+
         # Add to overall results (deduplicate across iterations)
         for r in unique_iteration:
             url = r.get("href")
             if url not in [x.get("href") for x in all_results]:
                 all_results.append(r)
-        
+
         # AI analysis for next iteration
         if iteration < max_iterations - 1 and unique_iteration:
             print(f"[Search] Analyzing results with AI for query refinement...")
@@ -302,7 +302,7 @@ def search_linkedin_posts():
                 print(f"[Search] AI Analysis: {previous_summary[:200]}...")
         else:
             break  # No results or last iteration
-    
+
     print(f"\n[Search] === COMPLETE: {len(all_results)} total unique recruiter post(s) ===")
     return all_results
 
@@ -410,14 +410,14 @@ RETURN ONLY VALID JSON (no extra text):
   "email_body": "Write a PERSONALIZED, professional cold email (120-180 words) that:
 
     STRUCTURE:
-    1. PERSONALIZED OPENING: Address the recruiter by name if visible in the post. Reference their SPECIFIC post title/role/company.
+    1. PERSONALIZED OPENING: Start DIRECTLY with the role and company - e.g., 'Your Data Analyst role at [Company] in Noida Sector 18 aligns with my background...' or 'Regarding your hiring post for Data Analyst in Gurgaon...' NEVER start with 'I came across your post' or similar generic openings.
     2. WHY THIS ROLE: Connect 2-3 SPECIFIC requirements from their post (tech stack, domain, location, salary, experience level) to your relevant experience. Quote details from their snippet.
     3. CONCRETE EVIDENCE: Reference ONE specific portfolio project that matches THIS role (pick from: LSTM stock forecasting with 1.9% MAPE, 12+ strategic intelligence reports across 5 verticals, 10,000+ healthcare records analysis, 40% data collection efficiency improvement across 1,000+ institutions, 20% research turnaround reduction, Power BI/Tableau dashboards). Say WHY it's relevant to their needs.
     4. AVAILABILITY & FIT: Mention Delhi NCR base, immediate joining, day shift preference, 6.5-7 LPA alignment. Note: ~1 year early-career experience (ProSca Business Solutions, Founding Team Member + internships), not senior-level experience.
-    5. PROFESSIONAL CLOSE: Clear call to action (e.g., 'I'd welcome a brief call to discuss how my SQL/Python/Power BI experience aligns with your team's needs').
+    5. PROFESSIONAL CLOSE: Clear call to action (e.g., 'I would welcome a brief call to discuss how my SQL/Python/Power BI experience aligns with your team needs').
     6. SIGNATURE: Use EXACT contact info provided above (no placeholders).
 
-    BANNED PHRASES (do NOT use - automatic rejection if found):
+    FORBIDDEN PHRASES - Using ANY of these will cause AUTOMATIC REJECTION:
     - 'I came across your post'
     - 'I believe I would be a great/strong fit'
     - 'I am writing to express my interest'
@@ -427,9 +427,10 @@ RETURN ONLY VALID JSON (no extra text):
     - 'senior-level' / 'extensive experience' / 'deep expertise'
     - 'Your company's emphasis' / 'Your company values' (recruiter is a PERSON, not a company)
     - 'resonates with my experience' (generic filler)
+    - 'caught my attention'
+    - 'I am confident that I can'
+    - 'I can bring value to'
     - Generic templates
-
-    STRICT: If any banned phrase appears, the email is INVALID. Do NOT use them.
 
     TONE: Professional, confident, concise. Show you READ their post. Be specific about THEIR requirements.
 
@@ -442,7 +443,7 @@ RETURN ONLY VALID JSON (no extra text):
     - \"email_body_html\": HTML version with proper formatting (paragraphs, line breaks, signature block)
 
     Both versions must contain the same content, just different formats.
-    "
+  "
 }}
 """
 
@@ -498,22 +499,22 @@ RETURN ONLY VALID JSON (no extra text):
                     "i have worked on various",
                     "i've worked on various",
                 ]
-                
+
                 email_text = result.get("email_body", "").lower()
                 email_html = result.get("email_body_html", "").lower()
-                
+
                 for phrase in banned_phrases:
                     if phrase in email_text or phrase in email_html:
                         print(f"[Validation Failed] Banned phrase detected: '{phrase}' - retrying...")
                         raise ValueError(f"Banned phrase: {phrase}")
-                
+
                 return result
 
             return None
         except Exception as e:
             error_str = str(e)
             if "429" in error_str or "RATE_LIMIT" in error_str or "rate limit" in error_str.lower():
-                delay = 10 * (2 ** attempt)  # 10s, 20s, 40s (more conservative)
+                delay = 10 * (2 ** attempt)  # 10s, 20s, 40s, 80s, 160s (more conservative)
                 print(f"[Rate Limit] Attempt {attempt + 1}/{max_retries} failed. Waiting {delay}s before retry...")
                 time.sleep(delay)
             else:
@@ -631,32 +632,34 @@ def main():
                 f"👤 <b>Candidate:</b> {CANDIDATE_NAME}\n"
                 f"📧 <b>Recruiter:</b> <code>{email}</code>\n"
                 f"💼 <b>Role:</b> {job_title}\n"
-                f"🔗 <b>Post:</b> <a href='{url}'>LinkedIn Post</a>\n"
-                f"📎 <b>Resume:</b> Attached PDF\n\n"
-                f"✨ <b>Portfolio:</b> {CANDIDATE_PORTFOLIO}"
+                f"🔗 <b>Post:</b> {url}\n"
+                f"🕐 <b>Time:</b> {time.strftime('%Y-%m-%d %H:%M:%S')}"
             )
             send_telegram(tg_msg)
-        else:
-            errors += 1
 
-        # Small delay between posts to be polite to API
-        time.sleep(1)
-
-    # Final Summary Notification
+    # Final summary
     summary_msg = (
         f"✅ <b>Job Scout Run Complete</b>\n\n"
-        f"👤 <b>Candidate:</b> {CANDIDATE_NAME}\n"
-        f"🕐 <b>Completed:</b> {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-        f"📊 <b>Search Results:</b>\n"
-        f"   🔍 Posts found: <b>{total_posts}</b>\n"
-        f"   ❌ Irrelevant: {skipped_irrelevant}\n"
-        f"   📭 No email: {skipped_no_email}\n"
-        f"   🔄 Duplicate: {skipped_duplicate}\n"
-        f"   ⚠️ Errors: {errors}\n\n"
-        f"📧 <b>Emails Sent:</b> <b>{new_applications}</b>\n\n"
-        f"💡 <b>Total unique recruiters contacted:</b> {len(applied_emails)}"
+        f"📊 <b>Posts searched:</b> {total_posts}\n"
+        f"🎯 <b>New emails sent:</b> {new_applications}\n"
+        f"⏭️ <b>Skipped (irrelevant):</b> {skipped_irrelevant}\n"
+        f"⏭️ <b>Skipped (no email):</b> {skipped_no_email}\n"
+        f"⏭️ <b>Skipped (duplicate):</b> {skipped_duplicate}\n"
+        f"❌ <b>Errors:</b> {errors}\n"
+        f"🕐 <b>Completed:</b> {time.strftime('%Y-%m-%d %H:%M:%S')}"
     )
     send_telegram(summary_msg)
+
+    # Commit history changes if any new applications
+    if new_applications > 0:
+        try:
+            import subprocess
+            subprocess.run(["git", "add", HISTORY_FILE], check=True)
+            subprocess.run(["git", "commit", "-m", f"update: applied jobs history ({new_applications} new)"], check=True)
+            subprocess.run(["git", "push", "origin", "main"], check=True)
+            print(f"[Git] Pushed history with {new_applications} new entries")
+        except Exception as e:
+            print(f"[Git Error] Failed to push history: {e}")
 
     print(f"\n=== Run Complete. Total new applications sent: {new_applications} ===")
 
