@@ -132,10 +132,10 @@ def generate_search_queries_ai(previous_results_summary: str = "") -> list:
 
     candidate_context = ""
     try:
-        with open("Resume/Shivank_Shukla_Career_Context.md", "r", encoding="utf-8") as f:
+        with open("Shivank_Shukla_Career_Context.md", "r", encoding="utf-8") as f:
             candidate_context = f.read(1500)
     except:
-        candidate_context = "Data Analyst with 2+ years experience in SQL, Python, Power BI, data visualization. Seeking Data Analyst/BI Analyst/Research Analyst/Business Analyst roles in Delhi NCR/Noida/Gurgaon/Remote. 6.5-7 LPA, day shift, full-time."
+        candidate_context = "Research and Strategy Associate at ProSca Business Solutions (Founding Team Member). ~1 year combined early-career experience across data analysis, business research, market intelligence, and dashboard development. Delivered 12+ strategic reports across 5 verticals. Analyzed 10,000+ healthcare records. Built LSTM stock forecasting model with 1.9% MAPE. Reduced research turnaround 20%, improved data collection efficiency 40%. Skilled in SQL, Python, Power BI, Tableau, Advanced Excel, DAX. Seeking Data Analyst/BI Analyst/Research Analyst/Business Analyst roles in Delhi NCR/Noida/Gurgaon/Remote. 6.5-7 LPA, day shift, full-time."
 
     prompt = f"""You are an expert at Google dorking for finding RECRUITER LinkedIn posts with direct contact info (email, phone, DM request).
 
@@ -163,17 +163,25 @@ Return ONLY valid JSON array of strings:
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
             temperature=0.3,
-            max_tokens=1024
+            max_tokens=2048
         )
         result = json.loads(response.choices[0].message.content)
-        # Handle both array and object with "queries" key
+        # Handle both array and object with "queries" key, or query1-query5 keys
         if isinstance(result, list):
             return result
-        elif isinstance(result, dict) and "queries" in result:
-            return result["queries"]
-        else:
-            print("[AI Query Gen] Unexpected format, using fallback")
-            return get_fallback_queries()
+        elif isinstance(result, dict):
+            if "queries" in result:
+                return result["queries"]
+            # Handle query1, query2, query3, query4, query5 format
+            queries = []
+            for i in range(1, 6):
+                key = f"query{i}"
+                if key in result:
+                    queries.append(result[key])
+            if queries:
+                return queries
+        print("[AI Query Gen] Unexpected format, using fallback")
+        return get_fallback_queries()
     except Exception as e:
         print(f"[AI Query Gen Error] {e}")
         return get_fallback_queries()
@@ -277,22 +285,41 @@ def search_linkedin_posts():
                 print(f"[Search Error] {e}")
             time.sleep(2)  # Rate limit safety
 
-        # Deduplicate within iteration
-        seen = set()
-        unique_iteration = []
+        # Deduplicate within iteration - PREFER results with emails in snippet
+        import re
+        url_to_best = {}
         for r in iteration_results:
             url = r.get("href")
-            if url and url not in seen:
-                seen.add(url)
-                unique_iteration.append(r)
+            if not url:
+                continue
+            snippet = r.get("body", "")
+            has_email = bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', snippet))
+            if url not in url_to_best or (has_email and not url_to_best[url][1]):
+                url_to_best[url] = (r, has_email)
+        
+        unique_iteration = [v[0] for v in url_to_best.values()]
 
         print(f"[Search] Iteration {iteration + 1}: Found {len(unique_iteration)} unique recruiter posts")
 
-        # Add to overall results (deduplicate across iterations)
+        # Add to overall results (deduplicate across iterations, prefer email-containing snippets)
+        url_to_best_overall = {}
+        for r in all_results:
+            url = r.get("href")
+            if url:
+                snippet = r.get("body", "")
+                has_email = bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', snippet))
+                url_to_best_overall[url] = (r, has_email)
+        
         for r in unique_iteration:
             url = r.get("href")
-            if url not in [x.get("href") for x in all_results]:
-                all_results.append(r)
+            if not url:
+                continue
+            snippet = r.get("body", "")
+            has_email = bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', snippet))
+            if url not in url_to_best_overall or (has_email and not url_to_best_overall[url][1]):
+                url_to_best_overall[url] = (r, has_email)
+        
+        all_results = [v[0] for v in url_to_best_overall.values()]
 
         # AI analysis for next iteration
         if iteration < max_iterations - 1 and unique_iteration:
@@ -357,10 +384,27 @@ def analyze_and_process_post(post, max_retries=5):
     snippet = post.get("body", "")
     url = post.get("href", "")
 
+    # Extract recruiter name from post title (LinkedIn format: "Name's Post" or "Name - Title")
+    import re
+    recruiter_name = "Unknown"
+    # Try patterns: "Name's Post", "Name posted this", "Name | Title", "Name - Title", "Name (Title) - Company"
+    name_patterns = [
+        r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)'s\s+Post",
+        r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+posted\s+this",
+        r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*[|-]\s",
+        r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*,",
+        r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*\([^)]+\)\s*[|-]\s",
+    ]
+    for pattern in name_patterns:
+        match = re.match(pattern, title.strip())
+        if match:
+            recruiter_name = match.group(1)
+            break
+    
     # Load a short candidate context for better matching
     candidate_context = ""
     try:
-        with open("Resume/Shivank_Shukla_Career_Context.md", "r", encoding="utf-8") as f:
+        with open("Shivank_Shukla_Career_Context.md", "r", encoding="utf-8") as f:
             # Read first 1000 characters to keep prompt short
             candidate_context = f.read(1000)
     except:
@@ -400,6 +444,8 @@ Title: {title}
 Content: {snippet}
 URL: {url}
 
+RECRUITER NAME (extracted from post author): {recruiter_name}
+
 RETURN ONLY VALID JSON (no extra text):
 {{
   "is_relevant": true/false,
@@ -410,7 +456,7 @@ RETURN ONLY VALID JSON (no extra text):
   "email_body": "Write a PERSONALIZED, professional cold email (120-180 words) that:
 
     STRUCTURE:
-    1. PERSONALIZED OPENING: Start DIRECTLY with the role and company - e.g., 'Your Data Analyst role at [Company] in Noida Sector 18 aligns with my background...' or 'Regarding your hiring post for Data Analyst in Gurgaon...' NEVER start with 'I came across your post' or similar generic openings.
+    1. PERSONALIZED OPENING: If RECRUITER NAME is provided (not "Unknown"), start with "Hi [Name]," on its own line, then blank line, then the role/company opening. If name is "Unknown" or missing, start DIRECTLY with the role and company - e.g., 'Your Data Analyst role at [Company] in Noida Sector 18 aligns with my background...' or 'Regarding your hiring post for Data Analyst in Gurgaon...' NEVER start with 'I came across your post' or similar generic openings.
     2. WHY THIS ROLE: Connect 2-3 SPECIFIC requirements from their post (tech stack, domain, location, salary, experience level) to your relevant experience. Quote details from their snippet.
     3. CONCRETE EVIDENCE: Reference ONE specific portfolio project that matches THIS role (pick from: LSTM stock forecasting with 1.9% MAPE, 12+ strategic intelligence reports across 5 verticals, 10,000+ healthcare records analysis, 40% data collection efficiency improvement across 1,000+ institutions, 20% research turnaround reduction, Power BI/Tableau dashboards). Say WHY it's relevant to their needs.
     4. AVAILABILITY & FIT: Mention Delhi NCR base, immediate joining, day shift preference, 6.5-7 LPA alignment. Note: ~1 year early-career experience (ProSca Business Solutions, Founding Team Member + internships), not senior-level experience.
@@ -434,15 +480,36 @@ RETURN ONLY VALID JSON (no extra text):
 
     TONE: Professional, confident, concise. Show you READ their post. Be specific about THEIR requirements.
 
-    MUST USE EXACT CONTACT INFO: Phone +91 9013584218, Email work.shuklashivank@gmail.com, Portfolio {CANDIDATE_PORTFOLIO}, LinkedIn {CANDIDATE_LINKEDIN}, GitHub https://github.com/shukla009
+    MUST USE EXACT CONTACT INFO: Phone +91 9013584218, Email work.shuklashivank@gmail.com, Portfolio https://shivank-shukla-portfolio.vercel.app/, LinkedIn https://www.linkedin.com/in/shivank-shukla09, GitHub https://github.com/shukla009
 
-    URL FORMAT: Use plain URLs only (https://...). NO @url:... or markdown wrappers.
+    FORMATTING REQUIREMENTS (CRITICAL):
+    - email_body: Plain text with BLANK LINES between paragraphs (exactly 5 paragraphs separated by blank lines). NO @url: wrappers. Plain URLs only.
+    - email_body_html: Proper HTML with <p> tags for each paragraph. Paragraph 5 (signature) uses <br> for line breaks. NO @url: wrappers. Use <a href="..."> for email, portfolio, LinkedIn, GitHub links.
+    - Signature block (Paragraph 5) MUST render each contact item on its own line in both formats.
+
+    EXAMPLE STRUCTURE:
+    Paragraph 1: Opening with role + company + location
+    Paragraph 2: Why this role - connect 2-3 requirements
+    Paragraph 3: Concrete evidence - one specific project
+    Paragraph 4: Availability & fit - Delhi NCR, immediate, day shift, salary
+    Paragraph 5: Professional close + signature block (EXACT format below)
+
+    SIGNATURE FORMAT (Paragraph 5) - USE THIS EXACT LAYOUT:
+    I would welcome a brief call to discuss how my SQL/Python/Power BI experience aligns with your team needs.
+
+    Best regards,
+    Shivank Shukla
+    +91 9013584218
+    work.shuklashivank@gmail.com
+    Portfolio: https://shivank-shukla-portfolio.vercel.app/
+    LinkedIn: https://www.linkedin.com/in/shivank-shukla09
+    GitHub: https://github.com/shukla009
 
     OUTPUT FORMAT: Return JSON with TWO fields:
-    - \"email_body\": plain text version
-    - \"email_body_html\": HTML version with proper formatting (paragraphs, line breaks, signature block)
+    - "email_body": plain text version (5 paragraphs, blank-line separated)
+    - "email_body_html": HTML version with <p> tags and proper signature formatting
 
-    Both versions must contain the same content, just different formats.
+    Both versions must contain the SAME content, just different formats.
   "
 }}
 """
@@ -455,10 +522,16 @@ RETURN ONLY VALID JSON (no extra text):
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
                 temperature=0.2,
-                max_tokens=2048
+                max_tokens=4096
             )
-            result = json.loads(response.choices[0].message.content)
-
+            raw_content = response.choices[0].message.content
+            try:
+                result = json.loads(raw_content)
+            except json.JSONDecodeError as je:
+                print(f"[JSON Parse Error] Invalid JSON from LLM: {je}")
+                print(f"[JSON Parse Error] Raw content (first 500 chars): {raw_content[:500]}")
+                raise ValueError(f"Invalid JSON: {je}")
+            
             # Validate we have the required fields for sending email
             if result.get("is_relevant") and result.get("recruiter_email") and "@" in str(result.get("recruiter_email", "")):
                 # Post-generation validation for banned phrases
@@ -498,6 +571,10 @@ RETURN ONLY VALID JSON (no extra text):
                     "i've built several",
                     "i have worked on various",
                     "i've worked on various",
+                    # Formatting issues
+                    "@url:",
+                    "@url:`",
+                    "`@url:",
                 ]
 
                 email_text = result.get("email_body", "").lower()
@@ -519,9 +596,13 @@ RETURN ONLY VALID JSON (no extra text):
                 time.sleep(delay)
             else:
                 print(f"[NVIDIA NIM Error] Failed to parse response: {e}")
+                # Don't return None immediately - retry on other errors too
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    continue
                 return None
 
-    print(f"[NVIDIA NIM Error] All {max_retries} retries exhausted for rate limit")
+    print(f"[NVIDIA NIM Error] All {max_retries} retries exhausted")
     return None
 
 def main():
