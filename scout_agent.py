@@ -208,13 +208,13 @@ def _is_job_board_url(url):
 
 
 # ----------------------------- Gemini Analysis ----------------------------
-def analyze_post(post, chat, max_retries=3):
+def analyze_post_verbose(post, chat, max_retries=3):
     """
-    Ask Gemini for a strict JSON verdict. We pre-extract emails with a regex
-    so Gemini only needs to confirm relevance. This keeps quota use low.
+    Returns (parsed_dict_or_None, verdict_str).
+    verdict is one of: 'ok', 'irrelevant', 'no_email', 'quota_error', 'error'
     """
     if not client:
-        return None
+        return None, "no_client"
 
     title, snippet, url = post["title"], post["body"], post["href"]
     found_emails = extract_emails(snippet + " " + title)
@@ -228,13 +228,13 @@ Post:
 Title: {title}
 Snippet: {snippet}
 URL: {url}
-Emails already found in text: {found_emails or 'none'}
+Emails found in text: {found_emails or 'none'}
 
 Rules:
-- Only mark relevant if it is clearly a recruiter/hiring post for the candidate's roles AND location.
-- Reject job boards, generic blogs, resume templates, ads, or anything with no way to contact a recruiter.
-- If no email is visible, reject (we will not DM via LinkedIn).
-- If relevant, write a short, polite cold email (100-130 words) referencing the role and mentioning the portfolio: {CANDIDATE_PORTFOLIO} and LinkedIn {CANDIDATE_LINKEDIN}.
+- Relevant ONLY if it is a recruiter/hiring post for the candidate's roles AND location.
+- Reject job boards, blogs, resume templates, ads, generic pages.
+- Reject if no visible recruiter email (we do NOT send LinkedIn DMs).
+- If relevant, write a short personalized cold email (100-130 words) referencing the role, mentioning portfolio {CANDIDATE_PORTFOLIO} and LinkedIn {CANDIDATE_LINKEDIN}.
 
 Return ONLY JSON:
 {{
@@ -261,22 +261,35 @@ Return ONLY JSON:
             if found_emails:
                 result["recruiter_email"] = found_emails[0]
 
-            if (result.get("is_relevant")
-                    and result.get("recruiter_email")
-                    and "@" in result["recruiter_email"]):
-                return result
-            print(f"  -> rejected: {result.get('reason', 'no reason')}")
-            return None
+            if not result.get("is_relevant"):
+                print(f"  -> rejected: {result.get('reason', 'irrelevant')}")
+                return None, "irrelevant"
+
+            if not result.get("recruiter_email") or "@" not in result["recruiter_email"]:
+                print("  -> rejected: no recruiter email visible")
+                return None, "no_email"
+
+            return result, "ok"
+
         except Exception as e:
             err = str(e)
             if "429" in err or "RESOURCE_EXHAUSTED" in err:
                 wait = 30 * (2 ** attempt)
-                print(f"  [Gemini 429] retry in {wait}s...")
+                print(f"  [Gemini 429] retry {attempt+1}/{max_retries} in {wait}s")
                 time.sleep(wait)
+                if attempt == max_retries - 1:
+                    return None, "quota_error"
             else:
-                print(f"  [Gemini Error] {err[:200]}")
-                return None
-    return None
+                print(f"  [Gemini Error] {err[:150]}")
+                return None, "error"
+
+    return None, "error"
+
+
+def analyze_post(post, chat):
+    """Backward-compat wrapper."""
+    parsed, _ = analyze_post_verbose(post, chat)
+    return parsed
 # -------------------------------------------------------------------------
 
 
@@ -308,7 +321,12 @@ def main():
     send_telegram(f"🔍 Search complete: <b>{total}</b> posts to analyse (1-by-1)…")
 
     chat = client.chats.create(model=GEMINI_MODEL) if client else None
-    sent = skipped = errors = 0
+    sent = 0
+    rejected_irrelevant = 0
+    rejected_no_email = 0
+    rejected_duplicate = 0
+    errors = 0
+    error_details = []
 
     for i, post in enumerate(posts, 1):
         url = post["href"]
@@ -316,17 +334,24 @@ def main():
 
         if not chat:
             errors += 1
+            error_details.append("no chat client")
             continue
 
-        parsed = analyze_post(post, chat)
-        if not parsed:
-            skipped += 1
+        parsed, verdict = analyze_post_verbose(post, chat)
+        if parsed is None:
+            if verdict == "irrelevant":
+                rejected_irrelevant += 1
+            elif verdict == "no_email":
+                rejected_no_email += 1
+            else:
+                errors += 1
+                error_details.append(verdict[:80])
             continue
 
         email = parsed["recruiter_email"].lower()
         if email in applied:
             print("  -> already contacted, skipping")
-            skipped += 1
+            rejected_duplicate += 1
             continue
 
         job_title = parsed.get("job_title", "Data Analyst")
@@ -351,17 +376,27 @@ def main():
             )
         else:
             errors += 1
+            error_details.append(f"email send failed → {email}")
 
         # Stay well under Gemini 5 RPM free tier
         time.sleep(13)
 
+    err_preview = ""
+    if error_details:
+        shown = "\n".join(f"   • {e}" for e in error_details[:5])
+        more = f"\n   …and {len(error_details) - 5} more" if len(error_details) > 5 else ""
+        err_preview = f"\n⚠️ <b>Error details:</b>\n{shown}{more}\n"
+
     summary = (
-        f"✅ <b>Run Complete</b>\n\n"
-        f"🔍 posts analysed: {total}\n"
-        f"⏭️ rejected/duplicates: {skipped}\n"
-        f"⚠️ errors: {errors}\n"
-        f"📧 <b>emails sent: {sent}</b>\n"
-        f"💡 total recruiters in history: {len(applied)}"
+        f"✅ <b>Run Complete — {time.strftime('%d %b %Y, %H:%M')}</b>\n\n"
+        f"🔍 Posts analysed: <b>{total}</b>\n"
+        f"🚫 Irrelevant/wrong role: {rejected_irrelevant}\n"
+        f"📭 No recruiter email visible: {rejected_no_email}\n"
+        f"🔄 Already contacted: {rejected_duplicate}\n"
+        f"⚠️ Errors: {errors}\n"
+        f"{err_preview}\n"
+        f"📧 <b>Emails sent this run: {sent}</b>\n"
+        f"💡 Total unique recruiters in history: {len(applied)}"
     )
     send_telegram(summary)
     print("=== Done ===")
