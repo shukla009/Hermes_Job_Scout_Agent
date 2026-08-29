@@ -235,6 +235,7 @@ Rules:
 - Reject job boards, blogs, resume templates, ads, generic pages.
 - Reject if no visible recruiter email (we do NOT send LinkedIn DMs).
 - If relevant, write a short personalized cold email (100-130 words) referencing the role, mentioning portfolio {CANDIDATE_PORTFOLIO} and LinkedIn {CANDIDATE_LINKEDIN}.
+- Email format: the portfolio link on its own line, then the LinkedIn link on the next line.
 
 Return ONLY JSON:
 {{
