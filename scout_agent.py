@@ -155,7 +155,10 @@ def search_recruiter_posts():
         print("[Search] SERPAPI_KEY not configured.")
         return []
 
-    roles = '("Data Analyst" OR "Business Analyst" OR "Research Analyst" OR "BI Analyst" OR "MIS Analyst")'
+    roles = ('("Data Analyst" OR "Business Analyst" OR "Research Analyst" '
+         'OR "BI Analyst" OR "BI Developer" OR "Power BI Developer" '
+         'OR "Reporting Analyst" OR "Data Operations Analyst" '
+         'OR "Junior Business Analyst" OR "MIS Analyst")')
     locations = '("Delhi" OR "Delhi NCR" OR "Noida" OR "Gurgaon" OR "Gurugram" OR "Remote" OR "Hybrid")'
     contact = '("email" OR "@" OR "reach out" OR "dm" OR "resume" OR "cv" OR "referral" OR "hiring")'
 
@@ -173,7 +176,7 @@ def search_recruiter_posts():
             r = requests.get(
                 "https://serpapi.com/search",
                 params={"engine": "google", "q": q, "api_key": SERPAPI_KEY,
-                        "num": 10, "hl": "en", "gl": "in"},
+                        "num": 10, "hl": "en", "gl": "in", "tbs": "qdr:d4"},
                 timeout=30,
             )
             data = r.json()
@@ -219,7 +222,7 @@ def analyze_post_verbose(post, max_retries=3):
     prompt = f"""You are a strict job-filter for candidate {CANDIDATE_NAME}.
 
 Candidate: Data Analyst | SQL, Python, Power BI, Tableau, Excel, research/reporting.
-Wants: Data/Research/BI/Business Analyst roles in Delhi/NCR/Noida/Gurgaon/Remote/Hybrid. Day shift, full-time, ~6.5-7 LPA.
+Wants: Data/Research/BI/Business Analyst roles in Delhi/NCR/Noida/Gurgaon/Remote/Hybrid. Day shift, full-time, 6-7 LPA (negotiable for right role).
 
 Post:
 Title: {title}
