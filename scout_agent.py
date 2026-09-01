@@ -11,13 +11,12 @@ from email.mime.base import MIMEBase
 from email import encoders
 from dotenv import load_dotenv
 import requests
-from google import genai
-from google.genai import types
+from openai import OpenAI
 
 # ----------------------------- Config -----------------------------------
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 GMAIL_SENDER = os.getenv("GMAIL_SENDER_EMAIL")
 GMAIL_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -29,11 +28,11 @@ CANDIDATE_LINKEDIN = os.getenv("CANDIDATE_LINKEDIN", "https://www.linkedin.com/i
 
 HISTORY_FILE = "applied_history.json"
 RESUME_PATH = "Shivank_Shukla_Data_Analyst.pdf"
-GEMINI_MODEL = "gemini-3.6-flash"
+NVIDIA_MODEL = "nemotron-3-8b-instruct"  # Fast, light model for analysis
 
 client = None
-if GEMINI_API_KEY:
-    client = genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1"})
+if NVIDIA_API_KEY:
+    client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_API_KEY)
 # -------------------------------------------------------------------------
 
 
@@ -110,12 +109,38 @@ def send_email(to_email, subject, body_text):
 
 
 def extract_emails(text):
-    """Cheap regex pass — catches most recruiter emails without using Gemini."""
+    """Cheap regex pass — catches most recruiter emails without using LLM."""
     if not text:
         return []
     pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
     return list(dict.fromkeys(re.findall(pattern, text)))
-# -------------------------------------------------------------------------
+
+
+def _is_job_board_url(url):
+    blocked = [
+        "indeed.", "naukri.", "linkedin.com/jobs", "glassdoor.", "shine.",
+        "monster.", "timesjobs.", "placementindia.", "jobhai.", "freshersworld.",
+        "cutshort.", "instahyre.", "wellfound.", "internshala.", "upwork.",
+        "freelancer.", "remoteok.", "weworkremotely.", "flexjobs.",
+        "remoterocketship.", "jobsearch.", "careerbuilder.", "dice.",
+        "simplyhired.", "ziprecruiter.", "jobvite.", "lever.co", "greenhouse.",
+        "smartrecruiters.", "workday.", "bamboohr.", "icims.", "taleo.",
+        "myamcat.", "michaelpage.", "roberthalf.", "robertwalters.", "hays.",
+        "randstad.", "manpower.", "kellyservices.", "adecco.", "remotive.",
+        "remote.co", "workingnomads.", "jobspresso.", "himalayas.",
+        "remoteleaf.", "jobgether.", "arc.dev", "capitalonecareers.",
+        "careers.", "jobs.", "job-", "recruit", "orange.jobs",
+        "getmereferred.", "interviewchacha.", "ambitionbox.", "fishbowlapp.",
+        "capitalplacement.", "jobnexusindia.", "hicareer.",
+        "traveltechessentialist.", "n-ix.com", "unitedhealthgroup.",
+        "instagram.", "twitter.", "mobile.twitter.", "wikipedia.",
+        "enhancv.", "geeksforgeeks.", "cloud.google.", "study.com",
+        "bloomfire.", "merriam-webster.", "diligent-actor-263.notion.site",
+        "reddit.", "cryptomize.", "friendsjob.", "rojgargroup.",
+        "dataanalyst.com", "uplers.",
+    ]
+    u = url.lower()
+    return any(d in u for d in blocked)
 
 
 # ----------------------------- Search -------------------------------------
@@ -179,36 +204,8 @@ def search_recruiter_posts():
     return unique
 
 
-def _is_job_board_url(url):
-    blocked = [
-        "indeed.", "naukri.", "linkedin.com/jobs", "glassdoor.", "shine.",
-        "monster.", "timesjobs.", "placementindia.", "jobhai.", "freshersworld.",
-        "cutshort.", "instahyre.", "wellfound.", "internshala.", "upwork.",
-        "freelancer.", "remoteok.", "weworkremotely.", "flexjobs.",
-        "remoterocketship.", "jobsearch.", "careerbuilder.", "dice.",
-        "simplyhired.", "ziprecruiter.", "jobvite.", "lever.co", "greenhouse.",
-        "smartrecruiters.", "workday.", "bamboohr.", "icims.", "taleo.",
-        "myamcat.", "michaelpage.", "roberthalf.", "robertwalters.", "hays.",
-        "randstad.", "manpower.", "kellyservices.", "adecco.", "remotive.",
-        "remote.co", "workingnomads.", "jobspresso.", "himalayas.",
-        "remoteleaf.", "jobgether.", "arc.dev", "capitalonecareers.",
-        "careers.", "jobs.", "job-", "recruit", "orange.jobs",
-        "getmereferred.", "interviewchacha.", "ambitionbox.", "fishbowlapp.",
-        "capitalplacement.", "jobnexusindia.", "hicareer.",
-        "traveltechessentialist.", "n-ix.com", "unitedhealthgroup.",
-        "instagram.", "twitter.", "mobile.twitter.", "wikipedia.",
-        "enhancv.", "geeksforgeeks.", "cloud.google.", "study.com",
-        "bloomfire.", "merriam-webster.", "diligent-actor-263.notion.site",
-        "reddit.", "cryptomize.", "friendsjob.", "rojgargroup.",
-        "dataanalyst.com", "uplers.",
-    ]
-    u = url.lower()
-    return any(d in u for d in blocked)
-# -------------------------------------------------------------------------
-
-
-# ----------------------------- Gemini Analysis ----------------------------
-def analyze_post_verbose(post, chat, max_retries=3):
+# ----------------------------- NVIDIA NIM Analysis ----------------------------
+def analyze_post_verbose(post, max_retries=3):
     """
     Returns (parsed_dict_or_None, verdict_str).
     verdict is one of: 'ok', 'irrelevant', 'no_email', 'quota_error', 'error'
@@ -250,13 +247,14 @@ Return ONLY JSON:
 
     for attempt in range(max_retries):
         try:
-            resp = chat.send_message(
-                message=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json", temperature=0.1
-                ),
+            resp = client.chat.completions.create(
+                model=NVIDIA_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.1,
+                max_tokens=2048,
             )
-            result = json.loads(resp.text)
+            result = json.loads(resp.choices[0].message.content)
 
             # Prefer regex-extracted email over model guess
             if found_emails:
@@ -274,31 +272,24 @@ Return ONLY JSON:
 
         except Exception as e:
             err = str(e)
-            if "429" in err or "RESOURCE_EXHAUSTED" in err:
+            if "429" in err or "rate limit" in err.lower() or "RPM" in err:
                 wait = 30 * (2 ** attempt)
-                print(f"  [Gemini 429] retry {attempt+1}/{max_retries} in {wait}s")
+                print(f"  [NVIDIA 429] retry {attempt+1}/{max_retries} in {wait}s")
                 time.sleep(wait)
                 if attempt == max_retries - 1:
                     return None, "quota_error"
             else:
-                print(f"  [Gemini Error] {err[:150]}")
+                print(f"  [NVIDIA Error] {err[:150]}")
                 return None, "error"
 
     return None, "error"
-
-
-def analyze_post(post, chat):
-    """Backward-compat wrapper."""
-    parsed, _ = analyze_post_verbose(post, chat)
-    return parsed
-# -------------------------------------------------------------------------
 
 
 # ----------------------------- Main ----------------------------------------
 def main():
     print("=== Job Scout Agent Starting ===")
 
-    if not all([GEMINI_API_KEY, SERPAPI_KEY, GMAIL_SENDER, GMAIL_PASSWORD,
+    if not all([NVIDIA_API_KEY, SERPAPI_KEY, GMAIL_SENDER, GMAIL_PASSWORD,
                 TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]):
         print("[Fatal] One or more required env vars are missing.")
         send_telegram("❗ Job Scout stopped: missing API keys/secrets.")
@@ -309,7 +300,8 @@ def main():
         f"👤 {CANDIDATE_NAME}\n"
         f"🕐 {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
         f"🎯 Roles: Data / Research / BI / Business Analyst\n"
-        f"📍 Delhi-NCR / Remote / Hybrid | ₹6.5-7 LPA"
+        f"📍 Delhi-NCR / Remote / Hybrid | ₹6.5-7 LPA\n"
+        f"🧠 Model: {NVIDIA_MODEL}"
     )
     send_telegram(start_msg)
 
@@ -321,7 +313,6 @@ def main():
     print(f"[Search] {total} candidate posts after filtering")
     send_telegram(f"🔍 Search complete: <b>{total}</b> posts to analyse (1-by-1)…")
 
-    chat = client.chats.create(model=GEMINI_MODEL) if client else None
     sent = 0
     rejected_irrelevant = 0
     rejected_no_email = 0
@@ -333,12 +324,7 @@ def main():
         url = post["href"]
         print(f"\n[{i}/{total}] {url}")
 
-        if not chat:
-            errors += 1
-            error_details.append("no chat client")
-            continue
-
-        parsed, verdict = analyze_post_verbose(post, chat)
+        parsed, verdict = analyze_post_verbose(post)
         if parsed is None:
             if verdict == "irrelevant":
                 rejected_irrelevant += 1
@@ -379,8 +365,8 @@ def main():
             errors += 1
             error_details.append(f"email send failed → {email}")
 
-        # Stay well under Gemini 5 RPM free tier
-        time.sleep(13)
+        # Stay well under NVIDIA NIM free tier (40 RPM)
+        time.sleep(2)
 
     err_preview = ""
     if error_details:
