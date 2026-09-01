@@ -28,7 +28,7 @@ CANDIDATE_LINKEDIN = os.getenv("CANDIDATE_LINKEDIN", "https://www.linkedin.com/i
 
 HISTORY_FILE = "applied_history.json"
 RESUME_PATH = "Shivank_Shukla_Data_Analyst.pdf"
-NVIDIA_MODEL = "nemotron-3-8b-instruct"  # Fast, light model for analysis
+NVIDIA_MODEL = "nvidia/nemotron-3-super-120b-a12b"  # Fast, accurate model for analysis
 
 client = None
 if NVIDIA_API_KEY:
