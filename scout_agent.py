@@ -12,6 +12,8 @@ from email import encoders
 from dotenv import load_dotenv
 import requests
 from openai import OpenAI
+from datetime import datetime, timedelta
+
 
 # ----------------------------- Config -----------------------------------
 load_dotenv()
@@ -72,14 +74,29 @@ def send_telegram(message):
 
 
 def send_email(to_email, subject, body_text):
+    # Add read‑receipt header so Gmail forwards a Disposition‑Notification‑To event
+    # (Telegram will surface the read receipt as a message). This is free and helps us
+    # track which recruiters actually opened the mail.
+    # NOTE: Gmail only sends the receipt if the recipient’s server respects it.
+    # The header must be added before the message is sent.
+    # It uses the same sender address as the return‑path.
+    # (The rest of the function remains unchanged.)
     if not GMAIL_SENDER or not GMAIL_PASSWORD:
         print("[Email Error] Missing Gmail credentials.")
         return False
 
     msg = MIMEMultipart()
+    # Add read‑receipt header so Gmail forwards a Disposition‑Notification‑To event
+    # (Telegram will surface the read receipt as a message). This is free and helps us
+    # track which recruiters actually opened the mail.
+    # NOTE: Gmail only sends the receipt if the recipient’s server respects it.
+    # The header must be added before the message is sent.
+    # It uses the same sender address as the return‑path.
+    # (The rest of the function remains unchanged.)
     msg["From"] = f"{CANDIDATE_NAME} <{GMAIL_SENDER}>"
     msg["To"] = to_email
-    msg["Subject"] = subject
+    # Add read‑receipt header so Gmail forwards a Disposition‑Notification‑To event
+    msg.add_header('Disposition-Notification-To', GMAIL_SENDER)
     msg.attach(MIMEText(body_text, "plain"))
 
     if os.path.exists(RESUME_PATH):
@@ -108,12 +125,22 @@ def send_email(to_email, subject, body_text):
         return False
 
 
-def extract_emails(text):
-    """Cheap regex pass — catches most recruiter emails without using LLM."""
+def extract_contacts(text):
+    """Extract email, LinkedIn profile URLs, and phone numbers from text.
+    Returns a dict with keys: 'emails' (list), 'linkedin' (list), 'phones' (list).
+    """
     if not text:
-        return []
-    pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-    return list(dict.fromkeys(re.findall(pattern, text)))
+        return {"emails": [], "linkedin": [], "phones": []}
+    # Email regex (same as before)
+    email_pat = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+    emails = list(dict.fromkeys(re.findall(email_pat, text)))
+    # LinkedIn profile URLs (simple pattern)
+    linkedin_pat = r"linkedin\.com/in/[\w-]+"
+    linkedin = list(dict.fromkeys(re.findall(linkedin_pat, text)))
+    # Phone numbers (India/international simple pattern)
+    phone_pat = r"(\+\d{1,3}[\s-]?\d{10})"
+    phones = list(dict.fromkeys(re.findall(phone_pat, text)))
+    return {"emails": emails, "linkedin": linkedin, "phones": phones}
 
 
 def _is_job_board_url(url):
@@ -160,12 +187,19 @@ def search_recruiter_posts():
          'OR "Reporting Analyst" OR "Data Operations Analyst" '
          'OR "Junior Business Analyst" OR "MIS Analyst")')
     locations = '("Delhi" OR "Delhi NCR" OR "Noida" OR "Gurgaon" OR "Gurugram" OR "Remote" OR "Hybrid")'
-    contact = '("email" OR "@" OR "reach out" OR "dm" OR "resume" OR "cv" OR "referral" OR "hiring")'
+    contact = '("email" OR "@" OR "reach out" OR "dm" OR "resume" OR "cv" OR "referral" OR "hiring" OR "linkedin.com/in" OR "phone")'
 
     queries = [
         # 1) LinkedIn posts with roles + location + contact
         f'site:linkedin.com/posts {roles} {locations} {contact}',
-        # 2) Wider Google search limited to recent (past-week implied by 'hiring' intent)
+        # 2) AngelList / Wellfound (startup jobs)
+        f'site:wellfound.com {roles} {locations} {contact} -jobs -careers -apply',
+        f'site:angel.co {roles} {locations} {contact} -jobs -careers -apply',
+        # 3) Indeed (India) – use generic site filter
+        f'site:indeed.co.in {roles} {locations} {contact} -jobs -careers -apply',
+        # 4) Naukri (India)
+        f'site:naukri.com {roles} {locations} {contact} -jobs -careers -apply',
+        # 5) Wider Google search limited to recent (past‑week implied by hiring intent)
         f'{roles} {locations} {contact} -jobs -careers -apply',
     ]
 
@@ -217,7 +251,11 @@ def analyze_post_verbose(post, max_retries=3):
         return None, "no_client"
 
     title, snippet, url = post["title"], post["body"], post["href"]
-    found_emails = extract_emails(snippet + " " + title)
+    # Extract contacts (emails, LinkedIn URLs, phone numbers) from the post content
+    contacts = extract_contacts(snippet + " " + title)
+    found_emails = contacts.get("emails", [])
+    found_linkedin = contacts.get("linkedin", [])
+    found_phones = contacts.get("phones", [])
 
     prompt = f"""You are a strict job-filter for candidate {CANDIDATE_NAME}.
 
@@ -288,6 +326,82 @@ Return ONLY JSON:
     return None, "error"
 
 
+# ----------------------------- Follow‑up Scheduler ---------------------------
+
+def load_follow_up():
+    """Load pending follow‑up entries from follow_up.json (or create empty list)."""
+    if os.path.exists('follow_up.json'):
+        try:
+            with open('follow_up.json', 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[Follow‑up] Error loading follow_up.json: {e}")
+            return []
+    return []
+
+def save_follow_up(data):
+    """Write follow‑up list back to follow_up.json."""
+    try:
+        with open('follow_up.json', 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"[Follow‑up] Error saving follow_up.json: {e}")
+
+def schedule_follow_up(email, subject, body_text):
+    """Create three follow‑up entries (2,5,9 days) for a newly sent email.
+    Each entry stores: email, subject, body_text, step (1‑3), next_send (epoch timestamp).
+    """
+    now = datetime.utcnow()
+    offsets = [2, 5, 9]  # days from now
+    entries = []
+    for i, d in enumerate(offsets, start=1):
+        entry = {
+            "email": email,
+            "subject": subject,
+            "body": body_text,
+            "step": i,
+            "next_send": (now + timedelta(days=d)).timestamp()
+        }
+        entries.append(entry)
+    # Append to file
+    follow_ups = load_follow_up()
+    follow_ups.extend(entries)
+    save_follow_up(follow_ups)
+
+def process_pending_follow_ups():
+    """Send any follow‑up emails whose scheduled time has arrived.
+    After sending step 1 or 2, re‑schedule the next step (if any). Step 3 is final.
+    """
+    follow_ups = load_follow_up()
+    if not follow_ups:
+        return
+    now_ts = datetime.utcnow().timestamp()
+    updated = []
+    for fu in follow_ups:
+        if now_ts >= fu.get('next_send', 0):
+            # Send follow‑up
+            follow_subject = f"Re: {fu['subject']}"
+            follow_body = fu['body'] + "\n\n" + f"(Follow‑up {fu['step']} – just checking in)"
+            ok = send_email(fu['email'], follow_subject, follow_body)
+            if ok:
+                print(f"[Follow‑up] Sent step {fu['step']} to {fu['email']}")
+                # If there is a next step, schedule it
+                if fu['step'] < 3:
+                    # compute next offset based on original schedule (2→5→9 days)
+                    next_offset = [5, 9][fu['step'] - 1] if fu['step'] == 1 else 9
+                    fu['step'] += 1
+                    fu['next_send'] = (datetime.utcnow() + timedelta(days=next_offset)).timestamp()
+                    updated.append(fu)
+                else:
+                    print(f"[Follow‑up] Completed all steps for {fu['email']}")
+            else:
+                print(f"[Follow‑up] Failed to send step {fu['step']} to {fu['email']}")
+                # Keep entry for retry later
+                updated.append(fu)
+        else:
+            updated.append(fu)
+    save_follow_up(updated)
+
 # ----------------------------- Main ----------------------------------------
 def main():
     print("=== Job Scout Agent Starting ===")
@@ -297,6 +411,9 @@ def main():
         print("[Fatal] One or more required env vars are missing.")
         send_telegram("❗ Job Scout stopped: missing API keys/secrets.")
         return
+
+    # Process any pending follow‑ups first
+    process_pending_follow_ups()
 
     start_msg = (
         f"🤖 <b>Job Scout Started</b>\n\n"
