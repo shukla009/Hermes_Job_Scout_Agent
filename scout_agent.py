@@ -295,7 +295,10 @@ Return ONLY JSON:
                 temperature=0.1,
                 max_tokens=2048,
             )
-            result = json.loads(resp.choices[0].message.content)
+            content = resp.choices[0].message.content
+            if not content or not content.strip():
+                raise ValueError("Empty response from LLM")
+            result = json.loads(content)
 
             # Prefer regex-extracted email over model guess
             if found_emails:
@@ -311,6 +314,14 @@ Return ONLY JSON:
 
             return result, "ok"
 
+        except (json.JSONDecodeError, ValueError) as e:
+            err = str(e)
+            if attempt < max_retries - 1:
+                print(f"  [NVIDIA JSON Error] {err} — retry {attempt+2}/{max_retries}")
+                time.sleep(3)
+                continue
+            print(f"  [NVIDIA JSON Error] {err} — giving up")
+            return None, f"json_error: {err[:100]}"
         except Exception as e:
             err = str(e)
             if "429" in err or "rate limit" in err.lower() or "RPM" in err:
@@ -321,7 +332,7 @@ Return ONLY JSON:
                     return None, "quota_error"
             else:
                 print(f"  [NVIDIA Error] {err[:150]}")
-                return None, "error"
+                return None, f"llm_error: {err[:100]}"
 
     return None, "error"
 
