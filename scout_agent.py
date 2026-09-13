@@ -250,7 +250,7 @@ def search_recruiter_posts():
     if quota_errors == total_queries and total_queries > 0:
         err_msg = "SerpAPI monthly quota exhausted — no searches possible this month."
         print(f"[Fatal] {err_msg}")
-        send_telegram(f"🛑 <b>Job Scout stopped</b>\\n{err_msg}")
+        send_telegram(f"🛑 <b>Job Scout stopped</b>\n{err_msg}")
         sys.exit(1)
 
     # Deduplicate
@@ -520,21 +520,21 @@ def main():
         print(f"\n[{i}/{total}] {url}")
 
         parsed, verdict = analyze_post_verbose(post)
-                if parsed is None:
-                    if verdict == "irrelevant":
-                        rejected_irrelevant += 1
-                    elif verdict == "no_email":
-                        rejected_no_email += 1
-                    elif verdict == "auth_error":
-                        # Fatal error: stop the run
-                        errors += 1
-                        error_details.append(verdict[:80])
-                        send_telegram(f"🛑 <b>Job Scout stopped</b>\\nNVIDIA API authentication failed. Please check your NVIDIA_API_KEY environment variable.")
-                        break  # break out of the for loop
-                    else:
-                        errors += 1
-                        error_details.append(verdict[:80])
-                    continue
+        if parsed is None:
+            if verdict == "irrelevant":
+                rejected_irrelevant += 1
+            elif verdict == "no_email":
+                rejected_no_email += 1
+            elif verdict == "auth_error":
+                # Fatal error: stop the run
+                errors += 1
+                error_details.append(verdict[:80])
+                send_telegram(f"🛑 <b>Job Scout stopped</b>\nNVIDIA API authentication failed. Please check your NVIDIA_API_KEY environment variable.")
+                break  # break out of the for loop
+            else:
+                errors += 1
+                error_details.append(verdict[:80])
+            continue
 
         email = parsed["recruiter_email"].lower()
         if email in applied:
