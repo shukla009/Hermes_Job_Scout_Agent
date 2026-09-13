@@ -1,5 +1,6 @@
 import os
 import re
+import html
 import json
 import time
 import smtplib
@@ -13,7 +14,7 @@ from email import encoders
 from dotenv import load_dotenv
 import requests
 from openai import OpenAI
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 # ----------------------------- Config -----------------------------------
@@ -32,6 +33,7 @@ CANDIDATE_LINKEDIN = os.getenv("CANDIDATE_LINKEDIN", "https://www.linkedin.com/i
 HISTORY_FILE = "applied_history.json"
 RESUME_PATH = "Shivank_Shukla_Data_Analyst.pdf"
 NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")  # tested/working model; override via env
+MAX_POST_AGE_DAYS = int(os.getenv("MAX_POST_AGE_DAYS", "4"))  # freshness gate: only email leads posted within this window
 
 client = None
 if NVIDIA_API_KEY:
@@ -45,7 +47,8 @@ def load_history():
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
+        except Exception as e:
+            print(f"[History Warning] applied_history.json unreadable ({e}) - starting with empty history")
             return []
     return []
 
@@ -79,6 +82,8 @@ def send_email(to_email, subject, body_text):
         print("[Email Error] Missing Gmail credentials.")
         return False
 
+    # Sanitize LLM-provided subject: collapse whitespace/newlines (CRLF could break the header)
+    subject = " ".join(str(subject).split())
     msg = MIMEMultipart()
     msg["From"] = f"{CANDIDATE_NAME} <{GMAIL_SENDER}>"
     msg["To"] = to_email
@@ -139,12 +144,14 @@ def _valid_recruiter_email(email):
     if len(parts) != 2 or not parts[0]:
         return False
     domain = parts[1].lower()
-    placeholders = [
+    placeholder_domains = {
         "company.com", "example.com", "email.com", "yourcompany.com",
-        "placeholder.", "sample.", "acme.com",
+        "placeholder.com", "sample.com", "acme.com",
         "xyz.com", "abc.com", "mail.com", "none.com",
-    ]
-    if any(p in domain for p in placeholders):
+    }
+    # Exact-domain match: substring matching wrongly rejected gmail.com,
+    # hotmail.com, googlemail.com, rediffmail.com ('mail.com' is a substring).
+    if domain in placeholder_domains:
         print(f"  -> rejected: placeholder email domain ({domain})")
         return False
     # Reject bare TLD-less domains (e.g. name@gmail, name@outlook) — must have a dot
@@ -181,6 +188,52 @@ def _is_job_board_url(url):
     return any(d in u for d in blocked)
 
 
+def _parse_serpapi_date_days(date_str):
+    """Parse SerpAPI relative date strings ('3 days ago', '2 weeks ago', '12 hours ago')
+    into an age in days. Returns None when absent or unparseable."""
+    if not date_str:
+        return None
+    s = str(date_str).lower().strip()
+    if "yesterday" in s:
+        return 1.0
+    if "today" in s or "hour" in s or "minute" in s:
+        return 0.0
+    m = re.match(r"(\d+)\s*(day|week|month|year)s?\s+ago", s)
+    if not m:
+        return None
+    n = int(m.group(1))
+    unit = m.group(2)
+    return float(n) * {"day": 1, "week": 7, "month": 30, "year": 365}[unit]
+
+
+def _linkedin_post_age_days(url):
+    """Decode a LinkedIn activity/ugcPost snowflake ID from the URL into the post's
+    age in days (LinkedIn IDs encode epoch-ms in the top 41 bits: id >> 22).
+    Returns None when the URL carries no decodable ID."""
+    if not url:
+        return None
+    m = re.search(r"(?:activity|ugcPost)[-_](\d{15,25})", url)
+    if not m:
+        return None
+    try:
+        ms = int(m.group(1)) >> 22
+        post_dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+        return (datetime.now(timezone.utc) - post_dt).total_seconds() / 86400
+    except Exception:
+        return None
+
+
+def _is_stale_post(url, date_str):
+    """Freshness gate: True when the post is older than MAX_POST_AGE_DAYS or its age
+    cannot be verified. Only provably fresh posts pass (fresh leads only)."""
+    age = _parse_serpapi_date_days(date_str)
+    if age is None:
+        age = _linkedin_post_age_days(url)
+    if age is None:
+        return True  # unverifiable age -> treat as stale
+    return age > MAX_POST_AGE_DAYS
+
+
 # ----------------------------- Search -------------------------------------
 def search_recruiter_posts():
     """
@@ -201,16 +254,11 @@ def search_recruiter_posts():
     contact = '("email" OR "@" OR "reach out" OR "dm" OR "resume" OR "cv" OR "referral" OR "hiring" OR "linkedin.com/in" OR "phone")'
 
     queries = [
-        # 1) LinkedIn posts with roles + location + contact
+        # 1) LinkedIn posts with roles + location + contact (primary source)
         f'site:linkedin.com/posts {roles} {locations} {contact}',
-        # 2) AngelList / Wellfound (startup jobs)
-        f'site:wellfound.com {roles} {locations} {contact} -jobs -careers -apply',
+        # 2) AngelList (startup posts; not blocked by the job-board filter)
         f'site:angel.co {roles} {locations} {contact} -jobs -careers -apply',
-        # 3) Indeed (India) – use generic site filter
-        f'site:indeed.co.in {roles} {locations} {contact} -jobs -careers -apply',
-        # 4) Naukri (India)
-        f'site:naukri.com {roles} {locations} {contact} -jobs -careers -apply',
-        # 5) Wider Google search limited to recent (past‑week implied by hiring intent)
+        # 3) Wider Google search (freshness gate filters stale hits)
         f'{roles} {locations} {contact} -jobs -careers -apply',
     ]
 
@@ -236,6 +284,9 @@ def search_recruiter_posts():
             for item in data.get("organic_results", []):
                 url = item.get("link", "")
                 if _is_job_board_url(url):
+                    continue
+                if _is_stale_post(url, item.get("date", "")):
+                    print(f"  [Freshness] rejected (> {MAX_POST_AGE_DAYS}d or unverifiable age): {url[:80]}")
                     continue
                 results.append({
                     "title": item.get("title", ""),
@@ -300,6 +351,7 @@ def analyze_post_verbose(post, max_retries=3):
     - Accept ONLY if it is a genuine recruiter/hiring post matching the candidate's roles AND locations.
     - Reject job boards, blogs, resume templates, ads, awareness/advice posts (e.g. job scam warnings, "how to get hired", tips), candidate self-promotion.
     - Reject senior/lead/manager roles unless explicitly junior/fresher level.
+    - Reject if the post is clearly old (posted/apply-by dates in the past, "last month", "weeks ago") - we only email active, recent openings.
     - Reject if there is NO real recruiter email visible in the post text (we do NOT send LinkedIn DMs). A "DM me"/"comment" CTA with no email = reject.
     - NEVER invent an email. If none is in the post, set recruiter_email to null.
 
@@ -342,7 +394,7 @@ def analyze_post_verbose(post, max_retries=3):
       "company": "...",
       "email_subject": "Application for [Job Title] - {CANDIDATE_NAME}",
       "email_body": "...",
-      "reason": "one line why accepted/rejected
+      "reason": "one line why accepted/rejected"
     }}"""
 
     for attempt in range(max_retries):
@@ -485,7 +537,7 @@ def main():
                 TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]):
         print("[Fatal] One or more required env vars are missing.")
         send_telegram("❗ Job Scout stopped: missing API keys/secrets.")
-        return
+        sys.exit(1)
 
     # Process any pending follow‑ups first
     process_pending_follow_ups()
@@ -555,11 +607,12 @@ def main():
             history.append(entry)
             applied.add(email)
             save_history(history)
+            schedule_follow_up(email, subject, body)
             sent += 1
             send_telegram(
                 f"🚀 <b>Email sent</b>\n"
                 f"📧 <code>{email}</code>\n"
-                f"💼 {job_title}\n"
+                f"💼 {html.escape(str(job_title))}\n"
                 f"🔗 <a href='{url}'>post</a>"
             )
         else:

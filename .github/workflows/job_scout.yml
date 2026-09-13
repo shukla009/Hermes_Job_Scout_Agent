@@ -5,9 +5,17 @@ on:
     - cron: '0 3 * * *'   # 08:30 AM IST (once per day)
   workflow_dispatch:          # Allows manual trigger anytime from GitHub web/mobile UI
 
+permissions:
+  contents: write
+
+concurrency:
+  group: job-scout
+  cancel-in-progress: true
+
 jobs:
   run-scout:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -36,6 +44,7 @@ jobs:
         run: python scout_agent.py
 
       - name: Commit & Push Updated Applied History
+        if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

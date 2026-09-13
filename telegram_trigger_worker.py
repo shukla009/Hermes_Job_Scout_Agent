@@ -12,10 +12,10 @@ from js import Response
 # ============================================================
 # CONFIGURATION - SET THESE IN CLOUDFLARE WORKER ENV VARS
 # ============================================================
-# TELEGRAM_BOT_TOKEN = "8838558466:AAEHW82-XA17OpIRsWp_p1_qUQjbwbmOuuE"
+# TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN"
 # TELEGRAM_CHAT_ID = "807588151"  # Only allow your chat ID
 # GITHUB_PAT = "github_pat_XXXXXXXXXXXX"  # Fine-grained PAT with workflow scope
-# GITHUB_REPO = "YOUR_GITHUB_USERNAME/hermes-job-scout"
+# GITHUB_REPO = "shukla009/Hermes_Job_Scout_Agent"
 # GITHUB_WORKFLOW_FILE = "job_scout.yml"  # or workflow_id
 # ============================================================
 

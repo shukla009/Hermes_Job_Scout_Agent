@@ -15,10 +15,10 @@ In Worker settings → **Variables and Secrets** → **Add variable** (mark as *
 
 | Variable Name | Value | Secret? |
 |--------------|-------|---------|
-| `TELEGRAM_BOT_TOKEN` | `8838558466:AAEHW82-XA17OpIRsWp_p1_qUQjbwbmOuuE` | ✅ Yes |
+| `TELEGRAM_BOT_TOKEN` | `YOUR_BOT_TOKEN` | ✅ Yes |
 | `TELEGRAM_CHAT_ID` | `807588151` | ✅ Yes |
 | `GITHUB_PAT` | `github_pat_XXXXXXXXXXXX` (your fine-grained PAT) | ✅ Yes |
-| `GITHUB_REPO` | `YOUR_GITHUB_USERNAME/hermes-job-scout` | No |
+| `GITHUB_REPO` | `shukla009/Hermes_Job_Scout_Agent` | No |
 | `GITHUB_WORKFLOW_FILE` | `job_scout.yml` | No |
 
 ## 4. Deploy Worker
@@ -29,9 +29,9 @@ Click **Save and Deploy**. Note your Worker URL:
 Run this ONE command in your terminal (replace YOUR_WORKER_URL):
 
 ```bash
-curl -X POST "https://api.telegram.org/bot8838558466:AAEHW82-XA17OpIRsWp_p1_qUQjbwbmOuuE/setWebhook" \
+curl -X POST "https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook" \
      -H "Content-Type: application/json" \
-     -d '{"url": "https://telegram-job-scout-trigger.YOUR_SUBDOMAIN.workers.dev", "allowed_updates": ["message"]}'
+     -d '{"url": "https://telegram-job-scout-trigger.YOUR_SUBDOMAIN.workers.dev", "secret_token": "YOUR_WEBHOOK_SECRET", "allowed_updates": ["message"]}'
 ```
 
 Expected response: `{"ok":true,"result":true,"description":"Webhook was set"}`
@@ -46,7 +46,7 @@ You should get an instant reply: "🚀 Trigger received! Kicking off Job Scout A
 
 ## 7. Verify Webhook (Optional)
 ```bash
-curl "https://api.telegram.org/bot8838558466:AAEHW82-XA17OpIRsWp_p1_qUQjbwbmOuuE/getWebhookInfo"
+curl "https://api.telegram.org/botYOUR_BOT_TOKEN/getWebhookInfo"
 ```
 
 ---
