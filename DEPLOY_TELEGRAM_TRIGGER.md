@@ -7,8 +7,10 @@
 ## 2. Create Cloudflare Worker
 1. Go to **Cloudflare Dashboard** → **Workers & Pages** → **Create application** → **Create Worker**
 2. Name it: `telegram-job-scout-trigger`
-3. Select **Python** as the language (or "Start from scratch" and paste code)
-4. Delete default code and paste content from `telegram_trigger_worker.py`
+3. Select **JavaScript** as the language (or "Start from scratch" and paste code)
+4. Delete default code and paste content from `telegram_trigger_worker.js`
+   (RECOMMENDED: the .js worker runs on standard Workers; the .py variant needs the
+   python_workers compatibility flag + pywrangler and uses JS fetch interop)
 
 ## 3. Set Environment Variables (Secrets)
 In Worker settings → **Variables and Secrets** → **Add variable** (mark as **Secret** for sensitive ones):
@@ -16,7 +18,8 @@ In Worker settings → **Variables and Secrets** → **Add variable** (mark as *
 | Variable Name | Value | Secret? |
 |--------------|-------|---------|
 | `TELEGRAM_BOT_TOKEN` | `YOUR_BOT_TOKEN` | ✅ Yes |
-| `TELEGRAM_CHAT_ID` | `807588151` | ✅ Yes |
+| `TELEGRAM_CHAT_ID` | `YOUR_CHAT_ID` | ✅ Yes |
+| `TELEGRAM_WEBHOOK_SECRET` | `YOUR_WEBHOOK_SECRET` (openssl rand -hex 32) | ✅ Yes |
 | `GITHUB_PAT` | `github_pat_XXXXXXXXXXXX` (your fine-grained PAT) | ✅ Yes |
 | `GITHUB_REPO` | `shukla009/Hermes_Job_Scout_Agent` | No |
 | `GITHUB_WORKFLOW_FILE` | `job_scout.yml` | No |

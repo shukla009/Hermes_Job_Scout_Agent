@@ -29,6 +29,9 @@ SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 CANDIDATE_NAME = os.getenv("CANDIDATE_NAME", "Shivank Shukla")
 CANDIDATE_PORTFOLIO = os.getenv("CANDIDATE_PORTFOLIO", "https://shivank-shukla-portfolio.vercel.app/")
 CANDIDATE_LINKEDIN = os.getenv("CANDIDATE_LINKEDIN", "https://www.linkedin.com/in/shivank-shukla09")
+CANDIDATE_EMAIL = os.getenv("CANDIDATE_EMAIL", "work.shuklashivank@gmail.com")
+CANDIDATE_PHONE = os.getenv("CANDIDATE_PHONE", "+91 9013584218")
+CANDIDATE_GITHUB = os.getenv("CANDIDATE_GITHUB", "https://github.com/shukla009")
 
 HISTORY_FILE = "applied_history.json"
 RESUME_PATH = "Shivank_Shukla_Data_Analyst.pdf"
@@ -92,20 +95,23 @@ def send_email(to_email, subject, body_text):
     msg.add_header('Disposition-Notification-To', GMAIL_SENDER)
     msg.attach(MIMEText(body_text, "plain"))
 
-    if os.path.exists(RESUME_PATH):
-        try:
-            with open(RESUME_PATH, "rb") as f:
-                part = MIMEBase("application", "octet-stream")
-                part.set_payload(f.read())
-                encoders.encode_base64(part)
-                part.add_header("Content-Disposition",
-                                f'attachment; filename="{RESUME_PATH}"')
-                msg.attach(part)
-                print(f"[Email] Attached {RESUME_PATH}")
-        except Exception as e:
-            print(f"[Email Warning] Could not attach resume: {e}")
-    else:
-        print("[Email Warning] Resume PDF not found.")
+    # Resume is mandatory: the email body claims it is attached, so sending
+    # without it would make the claim false. Hard-fail instead.
+    if not os.path.exists(RESUME_PATH):
+        print(f"[Email Error] Resume not found at {RESUME_PATH} - aborting send (body claims attachment)")
+        return False
+    try:
+        with open(RESUME_PATH, "rb") as f:
+            part = MIMEBase("application", "octet-stream")
+            part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition",
+                            f'attachment; filename="{os.path.basename(RESUME_PATH)}"')
+            msg.attach(part)
+            print(f"[Email] Attached {RESUME_PATH}")
+    except Exception as e:
+        print(f"[Email Error] Could not attach resume: {e} - aborting send")
+        return False
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
@@ -319,7 +325,8 @@ def search_recruiter_posts():
 def analyze_post_verbose(post, max_retries=3):
     """
     Returns (parsed_dict_or_None, verdict_str).
-    verdict is one of: 'ok', 'irrelevant', 'no_email', 'quota_error', 'error'
+    verdict is one of: 'ok', 'irrelevant', 'no_email', 'no_client',
+    'auth_error', 'quota_error', 'json_error: ...', 'llm_error: ...'
     """
     if not client:
         return None, "no_client"
@@ -328,8 +335,6 @@ def analyze_post_verbose(post, max_retries=3):
     # Extract contacts (emails, LinkedIn URLs, phone numbers) from the post content
     contacts = extract_contacts(snippet + " " + title)
     found_emails = contacts.get("emails", [])
-    found_linkedin = contacts.get("linkedin", [])
-    found_phones = contacts.get("phones", [])
 
     prompt = f"""You are an expert job matcher and email writer for candidate {CANDIDATE_NAME}.
 
@@ -338,8 +343,8 @@ def analyze_post_verbose(post, max_retries=3):
     Wants: Data/Research/BI/Business/MIS/Reporting Analyst roles in Delhi/NCR/Noida/Gurgaon/Gurugram/Remote/Hybrid. Day shift, full-time, 6.5-7 LPA.
     Portfolio: {CANDIDATE_PORTFOLIO}
     LinkedIn: {CANDIDATE_LINKEDIN}
-    GitHub: https://github.com/shukla009
-    Email: work.shuklashivank@gmail.com | Phone: +91 9013584218
+    GitHub: {CANDIDATE_GITHUB}
+    Email: {CANDIDATE_EMAIL} | Phone: {CANDIDATE_PHONE}
 
     Post:
     Title: {title}
@@ -361,7 +366,7 @@ def analyze_post_verbose(post, max_retries=3):
 
     Hi [Company Name] Team,
 
-    I came across your [Job Title] opening in [Location], and the role immediately stood out because it mirrors the work I enjoy most: building reliable reporting, turning raw business data into clear insights, and partnering with teams to make better decisions.
+    Your [Job Title] opening in [Location] mirrors the work I enjoy most: building reliable reporting, turning raw business data into clear insights, and partnering with teams to make better decisions.
 
     I currently work as a Research & Strategy Associate at ProSca Business Solutions, where I analyze qualitative and quantitative data across 5+ industry verticals and have contributed to 12+ strategic intelligence reports. I also helped reduce research turnaround time by 20% through standardized analytical frameworks and reporting templates.
 
@@ -411,9 +416,13 @@ def analyze_post_verbose(post, max_retries=3):
                 raise ValueError("Empty response from LLM")
             result = json.loads(content)
 
-            # Prefer regex-extracted email over model guess
-            if found_emails:
-                result["recruiter_email"] = found_emails[0]
+            # Prefer regex-extracted email ONLY as a fallback. Never override when the
+            # regex hit is the candidate's own address (hardcoded in the prompt) — that
+            # made the agent email itself. Model choice wins when regex finds nothing.
+            own = {CANDIDATE_EMAIL.lower()} if CANDIDATE_EMAIL else set()
+            regex_only = [e for e in found_emails if e.lower() not in own]
+            if regex_only and not result.get("recruiter_email"):
+                result["recruiter_email"] = regex_only[0]
 
             if not result.get("is_relevant"):
                 print(f"  -> rejected: {result.get('reason', 'irrelevant')}")
@@ -441,11 +450,12 @@ def analyze_post_verbose(post, max_retries=3):
                 return None, "auth_error"
             # Check for rate limit errors
             elif "429" in err or "rate limit" in err.lower() or "RPM" in err:
+                if attempt == max_retries - 1:
+                    return None, "quota_error"
                 wait = 30 * (2 ** attempt)
                 print(f"  [NVIDIA 429] retry {attempt+1}/{max_retries} in {wait}s")
                 time.sleep(wait)
-                if attempt == max_retries - 1:
-                    return None, "quota_error"
+                continue
             else:
                 print(f"  [NVIDIA Error] {err[:150]}")
                 return None, f"llm_error: {err[:100]}"

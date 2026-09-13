@@ -30,6 +30,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Run Tests (mocked, no network)
+        run: |
+          pip install pytest -q
+          python -m pytest test_scout_agent.py -v
+
       - name: Run Job Scout Agent
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
@@ -41,6 +46,11 @@ jobs:
           CANDIDATE_NAME: "Shivank Shukla"
           CANDIDATE_PORTFOLIO: "https://shivank-shukla-portfolio.vercel.app/"
           CANDIDATE_LINKEDIN: "https://www.linkedin.com/in/shivank-shukla09"
+          CANDIDATE_EMAIL: "work.shuklashivank@gmail.com"
+          CANDIDATE_PHONE: "+91 9013584218"
+          CANDIDATE_GITHUB: "https://github.com/shukla009"
+          NVIDIA_MODEL: ${{ secrets.NVIDIA_MODEL }}
+          MAX_POST_AGE_DAYS: "4"
         run: python scout_agent.py
 
       - name: Commit & Push Updated Applied History

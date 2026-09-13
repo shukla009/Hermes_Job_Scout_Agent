@@ -1,4 +1,9 @@
 .env
 __pycache__/
 *.pyc
-test_*.py
+# stale standalone scripts stay local; the real pytest suite is tracked
+test_banned.py
+test_email_format.py
+test_model.py
+test_new_prompt.py
+.pytest_cache/
