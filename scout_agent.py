@@ -307,13 +307,13 @@ def analyze_post_verbose(post, max_retries=3):
 
     Example of the desired email format (follow this structure and tone, but tailor the content to the specific post):
 
-    Hi ELIVAAS Hiring Team,
+    Hi [Company Name] Team,
 
-    I came across your Data Analyst opening in Gurgaon, and the role immediately stood out because it mirrors the work I enjoy most: building reliable reporting, turning raw business data into clear insights, and partnering with teams to make better decisions.
+    I came across your [Job Title] opening in [Location], and the role immediately stood out because it mirrors the work I enjoy most: building reliable reporting, turning raw business data into clear insights, and partnering with teams to make better decisions.
 
     I currently work as a Research & Strategy Associate at ProSca Business Solutions, where I analyze qualitative and quantitative data across 5+ industry verticals and have contributed to 12+ strategic intelligence reports. I also helped reduce research turnaround time by 20% through standardized analytical frameworks and reporting templates.
 
-    My hands-on toolkit includes SQL, Power BI, Tableau, Excel, Python, ETL, data cleaning, KPI development, and dashboarding. Relevant work includes improving data-collection efficiency by 40% across 1,000+ institutional records, analyzing 10,000+ healthcare records, and building a Power BI/DAX dashboard for Blinkit sales and inventory analysis. ELIVAAS's cross-functional analytics environment across operations, revenue, marketing, and sales is exactly the kind of business-facing role I am looking for.
+    My hands-on toolkit includes SQL, Power BI, Tableau, Excel, Python, ETL, data cleaning, KPI development, and dashboarding. Relevant work includes improving data-collection efficiency by 40% across 1,000+ institutional records, analyzing 10,000+ healthcare records, and building a Power BI/DAX dashboard for [Relevant Project/Company] sales and inventory analysis. [Their Company Name]'s cross-functional analytics environment across operations, revenue, marketing, and sales is exactly the kind of business-facing role I am looking for.
 
     Portfolio: https://shivank-shukla-portfolio.vercel.app/
     LinkedIn: https://www.linkedin.com/in/shivank-shukla09
@@ -520,22 +520,21 @@ def main():
         print(f"\n[{i}/{total}] {url}")
 
         parsed, verdict = analyze_post_verbose(post)
-        if parsed is None:
-            if verdict == "irrelevant":
-                rejected_irrelevant += 1
-            elif verdict == "no_email":
-                rejected_no_email += 1
-            else:
-                if verdict == "auth_error":
-                    # Fatal error: stop the run
-                    errors += 1
-                    error_details.append(verdict[:80])
-                    send_telegram(f"🛑 <b>Job Scout stopped</b>\nNVIDIA API authentication failed. Please check your NVIDIA_API_KEY environment variable.")
-                    break  # break out of the for loop
-                else:
-                    errors += 1
-                    error_details.append(verdict[:80])
-            continue
+                if parsed is None:
+                    if verdict == "irrelevant":
+                        rejected_irrelevant += 1
+                    elif verdict == "no_email":
+                        rejected_no_email += 1
+                    elif verdict == "auth_error":
+                        # Fatal error: stop the run
+                        errors += 1
+                        error_details.append(verdict[:80])
+                        send_telegram(f"🛑 <b>Job Scout stopped</b>\\nNVIDIA API authentication failed. Please check your NVIDIA_API_KEY environment variable.")
+                        break  # break out of the for loop
+                    else:
+                        errors += 1
+                        error_details.append(verdict[:80])
+                    continue
 
         email = parsed["recruiter_email"].lower()
         if email in applied:
