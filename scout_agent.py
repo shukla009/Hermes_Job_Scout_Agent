@@ -282,46 +282,68 @@ def analyze_post_verbose(post, max_retries=3):
 
     prompt = f"""You are an expert job matcher and email writer for candidate {CANDIDATE_NAME}.
 
-Candidate: Data Analyst | SQL, Python, Power BI, Tableau, Excel, research/reporting.
-~1 year early-career experience (Research and Strategy Associate — Founding Team Member, ProSca Business Solutions + IBM/UptoSkills/Vodafone internships).
-Wants: Data/Research/BI/Business/MIS/Reporting Analyst roles in Delhi/NCR/Noida/Gurgaon/Gurugram/Remote/Hybrid. Day shift, full-time, 6.5-7 LPA.
-Portfolio: {CANDIDATE_PORTFOLIO}
-LinkedIn: {CANDIDATE_LINKEDIN}
-GitHub: https://github.com/shukla009
-Email: work.shuklashivank@gmail.com | Phone: +91 9013584218
+    Candidate: Data Analyst | SQL, Python, Power BI, Tableau, Excel, research/reporting, ETL.
+    ~1 year experience as Research & Strategy Associate (Founding Team Member) at ProSca Business Solutions + internships at IBM/UptoSkills/Vodafone.
+    Wants: Data/Research/BI/Business/MIS/Reporting Analyst roles in Delhi/NCR/Noida/Gurgaon/Gurugram/Remote/Hybrid. Day shift, full-time, 6.5-7 LPA.
+    Portfolio: {CANDIDATE_PORTFOLIO}
+    LinkedIn: {CANDIDATE_LINKEDIN}
+    GitHub: https://github.com/shukla009
+    Email: work.shuklashivank@gmail.com | Phone: +91 9013584218
 
-Post:
-Title: {title}
-Snippet: {snippet}
-URL: {url}
-Emails found in text: {found_emails or 'none'}
+    Post:
+    Title: {title}
+    Snippet: {snippet}
+    URL: {url}
+    Emails found in text: {found_emails or 'none'}
 
-Rules (ALL MUST PASS):
-- Accept ONLY if it is a genuine recruiter/hiring post matching the candidate's roles AND locations.
-- Reject job boards, blogs, resume templates, ads, awareness/advice posts (e.g. job scam warnings, "how to get hired", tips), candidate self-promotion.
-- Reject senior/lead/manager roles unless explicitly junior/fresher level.
-- Reject if there is NO real recruiter email visible in the post text (we do NOT send LinkedIn DMs). A "DM me"/"comment" CTA with no email = reject.
-- NEVER invent an email. If none is in the post, set recruiter_email to null.
+    Rules (ALL MUST PASS):
+    - Accept ONLY if it is a genuine recruiter/hiring post matching the candidate's roles AND locations.
+    - Reject job boards, blogs, resume templates, ads, awareness/advice posts (e.g. job scam warnings, "how to get hired", tips), candidate self-promotion.
+    - Reject senior/lead/manager roles unless explicitly junior/fresher level.
+    - Reject if there is NO real recruiter email visible in the post text (we do NOT send LinkedIn DMs). A "DM me"/"comment" CTA with no email = reject.
+    - NEVER invent an email. If none is in the post, set recruiter_email to null.
 
-If accepted, write a personalized cold email (110-150 words):
-1. Opening: start DIRECTLY with role + company/location. Never "I came across your post" or similar.
-2. Connect 2-3 specific requirements from their post to the candidate's experience.
-3. Reference ONE matching achievement (pick most relevant: LSTM stock forecasting 1.9% MAPE, 12+ strategic intelligence reports across 5 verticals, 10,000+ healthcare records analysis, 40% data collection efficiency improvement, 20% research turnaround reduction, Power BI/Tableau dashboards).
-4. Closing: mention Delhi NCR base, immediate joining, day shift, 6.5-7 LPA.
-5. Signature: Name, Phone +91 9013584218, Email work.shuklashivank@gmail.com, portfolio URL on its own line, LinkedIn URL on next line, GitHub URL on next line.
+    If accepted, write a personalized cold email that follows the format and tone of the example below.
 
-BANNED phrases (automatic reject): "I came across your post", "I believe I would be a great fit", "I am writing to express", "seasoned", "extensive experience", "deep expertise", "caught my attention", "I noticed that you are looking", "I am confident that I can", "I can bring value", "resonates with", "I am excited about the opportunity", "2+ years of experience". Do NOT use any of them.
+    Example of the desired email format (follow this structure and tone, but tailor the content to the specific post):
 
-Return ONLY JSON:
-{{
-  "is_relevant": true|false,
-  "recruiter_email": "best_email_or_null",
-  "job_title": "...",
-  "company": "...",
-  "email_subject": "Application for [Job Title] - {CANDIDATE_NAME}",
-  "email_body": "...",
-  "reason": "one line why accepted/rejected"
-}}"""
+    Hi ELIVAAS Hiring Team,
+
+    I came across your Data Analyst opening in Gurgaon, and the role immediately stood out because it mirrors the work I enjoy most: building reliable reporting, turning raw business data into clear insights, and partnering with teams to make better decisions.
+
+    I currently work as a Research & Strategy Associate at ProSca Business Solutions, where I analyze qualitative and quantitative data across 5+ industry verticals and have contributed to 12+ strategic intelligence reports. I also helped reduce research turnaround time by 20% through standardized analytical frameworks and reporting templates.
+
+    My hands-on toolkit includes SQL, Power BI, Tableau, Excel, Python, ETL, data cleaning, KPI development, and dashboarding. Relevant work includes improving data-collection efficiency by 40% across 1,000+ institutional records, analyzing 10,000+ healthcare records, and building a Power BI/DAX dashboard for Blinkit sales and inventory analysis. ELIVAAS's cross-functional analytics environment across operations, revenue, marketing, and sales is exactly the kind of business-facing role I am looking for.
+
+    Portfolio: https://shivank-shukla-portfolio.vercel.app/
+    LinkedIn: https://www.linkedin.com/in/shivank-shukla09
+    Notice period: 1 month
+
+    I have attached my updated resume and would welcome the opportunity to discuss how I could contribute to your analytics team.
+
+    Best regards,
+    Shivank Shukla
+    +91-9013584218
+
+    Rules for the email:
+    - Use PLAIN URLs only (no @url:... or markdown wrappers)
+    - Each paragraph must be separated by exactly ONE blank line
+    - Do NOT add extra spaces or formatting
+    - Use the EXACT structure above - 6 paragraphs total
+    - If company/location specifics aren't clear from post, use generic but professional language
+    - NEVER use banned phrases: "I came across your post", "I believe I would be a great/strong fit", "I am writing to express my interest", "as a Data Analyst with...", "as a seasoned data analyst...", "2+ years of experience", "senior-level", "extensive experience", "deep expertise", "your company's emphasis/values", "resonates with my experience", "caught my attention", "I noticed that you're/are looking", "I am confident that I can/will", "I can bring/add value to", "I am particularly drawn to", "I am excited about the opportunity/to apply", "I believe my background aligns", "my background aligns perfectly", "I have/ve built several", "I have/ve worked on various"
+    - TONE: Professional, confident, concise. Show you READ their post. Be specific about THEIR requirements when possible.
+
+    Return ONLY JSON:
+    {{
+      "is_relevant": true|false,
+      "recruiter_email": "best_email_or_null",
+      "job_title": "...",
+      "company": "...",
+      "email_subject": "Application for [Job Title] - {CANDIDATE_NAME}",
+      "email_body": "...",
+      "reason": "one line why accepted/rejected
+    }}"""
 
     for attempt in range(max_retries):
         try:
@@ -360,7 +382,13 @@ Return ONLY JSON:
             return None, f"json_error: {err[:100]}"
         except Exception as e:
             err = str(e)
-            if "429" in err or "rate limit" in err.lower() or "RPM" in err:
+            # Check for authentication errors
+            if "401" in err or "Unauthorized" in err or "authentication failed" in err.lower():
+                error_msg = f"NVIDIA API authentication failed for model '{NVIDIA_MODEL}'. Please check your NVIDIA_API_KEY environment variable."
+                print(f"  [NVIDIA Auth Error] {error_msg}")
+                return None, "auth_error"
+            # Check for rate limit errors
+            elif "429" in err or "rate limit" in err.lower() or "RPM" in err:
                 wait = 30 * (2 ** attempt)
                 print(f"  [NVIDIA 429] retry {attempt+1}/{max_retries} in {wait}s")
                 time.sleep(wait)
@@ -498,8 +526,15 @@ def main():
             elif verdict == "no_email":
                 rejected_no_email += 1
             else:
-                errors += 1
-                error_details.append(verdict[:80])
+                if verdict == "auth_error":
+                    # Fatal error: stop the run
+                    errors += 1
+                    error_details.append(verdict[:80])
+                    send_telegram(f"🛑 <b>Job Scout stopped</b>\nNVIDIA API authentication failed. Please check your NVIDIA_API_KEY environment variable.")
+                    break  # break out of the for loop
+                else:
+                    errors += 1
+                    error_details.append(verdict[:80])
             continue
 
         email = parsed["recruiter_email"].lower()
