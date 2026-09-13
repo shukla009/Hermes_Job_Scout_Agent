@@ -5,6 +5,7 @@ import time
 import smtplib
 import urllib.request
 import urllib.parse
+import sys  # Added for sys.exit
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -30,7 +31,7 @@ CANDIDATE_LINKEDIN = os.getenv("CANDIDATE_LINKEDIN", "https://www.linkedin.com/i
 
 HISTORY_FILE = "applied_history.json"
 RESUME_PATH = "Shivank_Shukla_Data_Analyst.pdf"
-NVIDIA_MODEL = "nvidia/nemotron-3-super-120b-a12b"  # Fast, accurate model for analysis
+NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")  # tested/working model; override via env
 
 client = None
 if NVIDIA_API_KEY:
@@ -74,28 +75,15 @@ def send_telegram(message):
 
 
 def send_email(to_email, subject, body_text):
-    # Add read‑receipt header so Gmail forwards a Disposition‑Notification‑To event
-    # (Telegram will surface the read receipt as a message). This is free and helps us
-    # track which recruiters actually opened the mail.
-    # NOTE: Gmail only sends the receipt if the recipient’s server respects it.
-    # The header must be added before the message is sent.
-    # It uses the same sender address as the return‑path.
-    # (The rest of the function remains unchanged.)
     if not GMAIL_SENDER or not GMAIL_PASSWORD:
         print("[Email Error] Missing Gmail credentials.")
         return False
 
     msg = MIMEMultipart()
-    # Add read‑receipt header so Gmail forwards a Disposition‑Notification‑To event
-    # (Telegram will surface the read receipt as a message). This is free and helps us
-    # track which recruiters actually opened the mail.
-    # NOTE: Gmail only sends the receipt if the recipient’s server respects it.
-    # The header must be added before the message is sent.
-    # It uses the same sender address as the return‑path.
-    # (The rest of the function remains unchanged.)
     msg["From"] = f"{CANDIDATE_NAME} <{GMAIL_SENDER}>"
     msg["To"] = to_email
-    # Add read‑receipt header so Gmail forwards a Disposition‑Notification‑To event
+    msg["Subject"] = subject
+    # Read-receipt request (best-effort; most servers ignore it)
     msg.add_header('Disposition-Notification-To', GMAIL_SENDER)
     msg.attach(MIMEText(body_text, "plain"))
 
@@ -141,6 +129,29 @@ def extract_contacts(text):
     phone_pat = r"(\+\d{1,3}[\s-]?\d{10})"
     phones = list(dict.fromkeys(re.findall(phone_pat, text)))
     return {"emails": emails, "linkedin": linkedin, "phones": phones}
+
+
+def _valid_recruiter_email(email):
+    """Reject placeholder/invalid emails before sending. Never invent-send."""
+    if not email or "@" not in email:
+        return False
+    parts = email.split("@")
+    if len(parts) != 2 or not parts[0]:
+        return False
+    domain = parts[1].lower()
+    placeholders = [
+        "company.com", "example.com", "email.com", "yourcompany.com",
+        "placeholder.", "sample.", "acme.com",
+        "xyz.com", "abc.com", "mail.com", "none.com",
+    ]
+    if any(p in domain for p in placeholders):
+        print(f"  -> rejected: placeholder email domain ({domain})")
+        return False
+    # Reject bare TLD-less domains (e.g. name@gmail, name@outlook) — must have a dot
+    if "." not in domain:
+        print(f"  -> rejected: malformed email domain ({domain})")
+        return False
+    return True
 
 
 def _is_job_board_url(url):
@@ -204,6 +215,8 @@ def search_recruiter_posts():
     ]
 
     results = []
+    quota_errors = 0
+    total_queries = len(queries)
     for q in queries:
         print(f"[Search] {q[:120]}...")
         try:
@@ -215,7 +228,10 @@ def search_recruiter_posts():
             )
             data = r.json()
             if "error" in data:
-                print(f"[SerpAPI Error] {data['error']}")
+                err_msg = data["error"]
+                print(f"[SerpAPI Error] {err_msg}")
+                if "run out of searches" in err_msg or "quota" in err_msg.lower():
+                    quota_errors += 1
                 continue
             for item in data.get("organic_results", []):
                 url = item.get("link", "")
@@ -229,6 +245,13 @@ def search_recruiter_posts():
         except Exception as e:
             print(f"[Search Error] {e}")
         time.sleep(2)
+
+    # If every query hit quota, abort run
+    if quota_errors == total_queries and total_queries > 0:
+        err_msg = "SerpAPI monthly quota exhausted — no searches possible this month."
+        print(f"[Fatal] {err_msg}")
+        send_telegram(f"🛑 <b>Job Scout stopped</b>\\n{err_msg}")
+        sys.exit(1)
 
     # Deduplicate
     seen = set()
@@ -257,10 +280,15 @@ def analyze_post_verbose(post, max_retries=3):
     found_linkedin = contacts.get("linkedin", [])
     found_phones = contacts.get("phones", [])
 
-    prompt = f"""You are a strict job-filter for candidate {CANDIDATE_NAME}.
+    prompt = f"""You are an expert job matcher and email writer for candidate {CANDIDATE_NAME}.
 
 Candidate: Data Analyst | SQL, Python, Power BI, Tableau, Excel, research/reporting.
-Wants: Data/Research/BI/Business Analyst roles in Delhi/NCR/Noida/Gurgaon/Remote/Hybrid. Day shift, full-time, 6-7 LPA (negotiable for right role).
+~1 year early-career experience (Research and Strategy Associate — Founding Team Member, ProSca Business Solutions + IBM/UptoSkills/Vodafone internships).
+Wants: Data/Research/BI/Business/MIS/Reporting Analyst roles in Delhi/NCR/Noida/Gurgaon/Gurugram/Remote/Hybrid. Day shift, full-time, 6.5-7 LPA.
+Portfolio: {CANDIDATE_PORTFOLIO}
+LinkedIn: {CANDIDATE_LINKEDIN}
+GitHub: https://github.com/shukla009
+Email: work.shuklashivank@gmail.com | Phone: +91 9013584218
 
 Post:
 Title: {title}
@@ -268,12 +296,21 @@ Snippet: {snippet}
 URL: {url}
 Emails found in text: {found_emails or 'none'}
 
-Rules:
-- Relevant ONLY if it is a recruiter/hiring post for the candidate's roles AND location.
-- Reject job boards, blogs, resume templates, ads, generic pages.
-- Reject if no visible recruiter email (we do NOT send LinkedIn DMs).
-- If relevant, write a short personalized cold email (100-130 words) referencing the role, mentioning portfolio {CANDIDATE_PORTFOLIO} and LinkedIn {CANDIDATE_LINKEDIN}.
-- Email format: the portfolio link on its own line, then the LinkedIn link on the next line.
+Rules (ALL MUST PASS):
+- Accept ONLY if it is a genuine recruiter/hiring post matching the candidate's roles AND locations.
+- Reject job boards, blogs, resume templates, ads, awareness/advice posts (e.g. job scam warnings, "how to get hired", tips), candidate self-promotion.
+- Reject senior/lead/manager roles unless explicitly junior/fresher level.
+- Reject if there is NO real recruiter email visible in the post text (we do NOT send LinkedIn DMs). A "DM me"/"comment" CTA with no email = reject.
+- NEVER invent an email. If none is in the post, set recruiter_email to null.
+
+If accepted, write a personalized cold email (110-150 words):
+1. Opening: start DIRECTLY with role + company/location. Never "I came across your post" or similar.
+2. Connect 2-3 specific requirements from their post to the candidate's experience.
+3. Reference ONE matching achievement (pick most relevant: LSTM stock forecasting 1.9% MAPE, 12+ strategic intelligence reports across 5 verticals, 10,000+ healthcare records analysis, 40% data collection efficiency improvement, 20% research turnaround reduction, Power BI/Tableau dashboards).
+4. Closing: mention Delhi NCR base, immediate joining, day shift, 6.5-7 LPA.
+5. Signature: Name, Phone +91 9013584218, Email work.shuklashivank@gmail.com, portfolio URL on its own line, LinkedIn URL on next line, GitHub URL on next line.
+
+BANNED phrases (automatic reject): "I came across your post", "I believe I would be a great fit", "I am writing to express", "seasoned", "extensive experience", "deep expertise", "caught my attention", "I noticed that you are looking", "I am confident that I can", "I can bring value", "resonates with", "I am excited about the opportunity", "2+ years of experience". Do NOT use any of them.
 
 Return ONLY JSON:
 {{
@@ -308,8 +345,7 @@ Return ONLY JSON:
                 print(f"  -> rejected: {result.get('reason', 'irrelevant')}")
                 return None, "irrelevant"
 
-            if not result.get("recruiter_email") or "@" not in result["recruiter_email"]:
-                print("  -> rejected: no recruiter email visible")
+            if not _valid_recruiter_email(result.get("recruiter_email")):
                 return None, "no_email"
 
             return result, "ok"

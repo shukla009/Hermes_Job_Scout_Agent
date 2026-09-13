@@ -7,6 +7,7 @@ Deploy to: Cloudflare Workers (Free tier: 100k requests/day)
 import json
 import os
 from urllib import request, parse
+from js import Response
 
 # ============================================================
 # CONFIGURATION - SET THESE IN CLOUDFLARE WORKER ENV VARS
