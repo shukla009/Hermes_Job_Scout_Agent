@@ -8,7 +8,7 @@
 1. Go to **Cloudflare Dashboard** → **Workers & Pages** → **Create application** → **Create Worker**
 2. Name it: `telegram-job-scout-trigger`
 3. Select **JavaScript** as the language (or "Start from scratch" and paste code)
-4. Delete default code and paste content from `telegram_trigger_worker.js`
+4. Delete default code and paste content from `workers/telegram_trigger_worker.js` (this repo, workers/ folder)
    (RECOMMENDED: the .js worker runs on standard Workers; the .py variant needs the
    python_workers compatibility flag + pywrangler and uses JS fetch interop)
 

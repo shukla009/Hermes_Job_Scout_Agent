@@ -14,7 +14,7 @@ import json
 import pytest
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root (scout_agent.py lives there)
 
 import scout_agent
 from scout_agent import (
@@ -331,16 +331,16 @@ class TestConfig:
 
     def test_no_token_in_tracked_files(self):
         import re
-        base = os.path.dirname(os.path.abspath(__file__))
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
         blob = ""
-        for f in ["DEPLOY_TELEGRAM_TRIGGER.md", "telegram_trigger_worker.py",
-                  "telegram_trigger_worker.js", ".env.example"]:
+        for f in [os.path.join("workers", "DEPLOY_TELEGRAM_TRIGGER.md"), os.path.join("workers", "telegram_trigger_worker.py"),
+                  os.path.join("workers", "telegram_trigger_worker.js"), ".env.example"]:
             p = os.path.join(base, f)
             if os.path.exists(p):
                 blob += open(p, encoding="utf-8").read()
         assert not re.findall(r"\d{8,12}:[A-Za-z0-9_-]{30,}", blob), "token pattern present!"
 
     def test_pinned_requirements(self):
-        base = os.path.dirname(os.path.abspath(__file__))
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
         req = open(os.path.join(base, "requirements.txt"), encoding="utf-8").read()
         assert "openai>=" in req and "<2" in req

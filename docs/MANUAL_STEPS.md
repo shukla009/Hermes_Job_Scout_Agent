@@ -32,7 +32,7 @@ Run these commands one at a time in your terminal:
 
 ```bash
 # 1. Create the replacement rules file (do NOT commit this)
-cd C:/Users/shukl/Downloads/hermes
+cd C:/Users/shukl/Downloads/Job_Scout_Agent
 echo '8838558466:===>8838558466:REDACTED' > ../token_replacements.txt
 # (Replace the middle section with the FULL OLD token characters after the colon
 #  if you still have .env around — open .env, copy the token, paste it as:
@@ -40,10 +40,10 @@ echo '8838558466:===>8838558466:REDACTED' > ../token_replacements.txt
 
 # 2. Make a safety backup of the repo first
 cd C:/Users/shukl/Downloads
-cp -r hermes hermes_backup_before_purge
+cp -r Job_Scout_Agent Job_Scout_Agent_backup_before_purge
 
 # 3. Run the history rewrite (removes the token from ALL commits)
-cd C:/Users/shukl/Downloads/hermes
+cd C:/Users/shukl/Downloads/Job_Scout_Agent
 git filter-repo --replace-text ../token_replacements.txt --force
 
 # 4. Re-add the remote (filter-repo removes it as a safety measure)
@@ -114,7 +114,7 @@ Copy the output — this is your `TELEGRAM_WEBHOOK_SECRET`.
 - Name: `TELEGRAM_WEBHOOK_SECRET` → Value: (paste) → mark **Secret** → Save
 
 3. **Replace the worker code with the fixed version:**
-- Open `C:/Users/shukl/Downloads/hermes/telegram_trigger_worker.js` in a text editor
+- Open `C:/Users/shukl/Downloads/Job_Scout_Agent/telegram_trigger_worker.js` in a text editor
 - Select all → copy
 - Cloudflare → your Worker → **Edit code** → delete everything → paste → **Deploy**
 - (Use the `.js` file — the `.py` variant requires extra Cloudflare flags; the `.js` runs anywhere)
@@ -178,5 +178,5 @@ Once Steps 1-5 are done:
 | BotFather | Telegram → @BotFather → /mybots → @ShivankCareerAgent_bot |
 | SerpAPI dashboard | serpapi.com/dashboard |
 | NVIDIA keys | org.ngc.nvidia.com → Personal Keys |
-| Workflow file | .github/workflows/job_scout.yml (in the repo) |
+| Workflow file | .github/workflows/job_scout.yml (repo root) |
 | New webhook command | Step 5.5 above |

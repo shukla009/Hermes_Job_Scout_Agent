@@ -33,7 +33,7 @@ jobs:
       - name: Run Tests (mocked, no network)
         run: |
           pip install pytest -q
-          python -m pytest test_scout_agent.py -v
+          python -m pytest tests/test_scout_agent.py -v
 
       - name: Run Job Scout Agent
         env:
