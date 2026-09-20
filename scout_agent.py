@@ -35,7 +35,7 @@ CANDIDATE_GITHUB = os.getenv("CANDIDATE_GITHUB", "https://github.com/shukla009")
 
 HISTORY_FILE = "applied_history.json"
 RESUME_PATH = "Shivank_Shukla_Data_Analyst.pdf"
-NVIDIA_MODEL = os.getenv("NVIDIA_MODEL") or "meta/llama-3.1-8b-instruct"  # tested/working model; treat empty env (unset secret) as default
+NVIDIA_MODEL = os.getenv("NVIDIA_MODEL") or "nvidia/nemotron-3-super-120b-a12b"  # verified working model via NVIDIA NIM catalog; treat empty env (unset secret) as default
 MAX_POST_AGE_DAYS = int(os.getenv("MAX_POST_AGE_DAYS", "4"))  # freshness gate: only email leads posted within this window
 
 client = None
