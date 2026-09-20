@@ -44,7 +44,6 @@ jobs:
           CANDIDATE_EMAIL: "work.shuklashivank@gmail.com"
           CANDIDATE_PHONE: "+91 9013584218"
           CANDIDATE_GITHUB: "https://github.com/shukla009"
-          NVIDIA_MODEL: ${{ secrets.NVIDIA_MODEL }}
           MAX_POST_AGE_DAYS: "4"
         run: python scout_agent.py
 
