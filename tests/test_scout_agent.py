@@ -278,11 +278,13 @@ class TestSendEmail:
             def send_message(self, msg): sent["msg"] = msg
         monkeypatch.setattr("smtplib.SMTP_SSL", FakeSMTP)
         ok = scout_agent.send_email("hr@x.com", "Subject  ", "body")
-        assert ok is True
+        assert ok is True, "send_email failed - SMTP mock or credentials missing"
         # Subject sanitized: no trailing spaces / newlines in the header
         assert sent["msg"]["Subject"] == "Subject"
 
     def test_subject_crlf_sanitized(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(scout_agent, "GMAIL_SENDER", "test@example.com")
+        monkeypatch.setattr(scout_agent, "GMAIL_PASSWORD", "test-password")
         monkeypatch.setattr(scout_agent, "RESUME_PATH", str(tmp_path / "r.pdf"))
         (tmp_path / "r.pdf").write_bytes(b"%PDF-1.4 fake")
         sent = {}
@@ -293,7 +295,8 @@ class TestSendEmail:
             def login(self, *a): pass
             def send_message(self, msg): sent["msg"] = msg
         monkeypatch.setattr("smtplib.SMTP_SSL", FakeSMTP)
-        scout_agent.send_email("hr@x.com", "Bad\r\nInjected-Header: x", "body")
+        ok = scout_agent.send_email("hr@x.com", "Bad\r\nInjected-Header: x", "body")
+        assert ok is True, "send_email failed - SMTP mock or credentials missing"
         assert "\r" not in sent["msg"]["Subject"] and "\n" not in sent["msg"]["Subject"]
 
 
