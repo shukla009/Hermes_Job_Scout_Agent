@@ -30,6 +30,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Run Tests
+        run: python -m pytest tests/test_scout_agent.py -q
+
       - name: Run Job Scout Agent
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
@@ -45,14 +48,22 @@ jobs:
           CANDIDATE_PHONE: "+91 9013584218"
           CANDIDATE_GITHUB: "https://github.com/shukla009"
           MAX_POST_AGE_DAYS: "4"
+          MAX_DIRECT_APPLY_AGE_DAYS: "21"
+          MAX_APPLY_ALERTS: "5"
+          HTTP_RETRIES: "2"
+          FOLLOW_UP_OFFSETS_DAYS: "5"
+          SEND_EMAILS: "true"
+          SMTP_PREFLIGHT: "true"
         run: python scout_agent.py
 
-      - name: Commit & Push Updated Applied History
+      - name: Commit & Push Durable Agent State
         if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add applied_history.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "update: applied jobs history [skip ci]" && git push)
+          git add -- applied_history.json follow_up.json
+          git diff --cached --quiet || (git commit -m "update: job scout state [skip ci]" && git push)
+
+
