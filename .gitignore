@@ -7,3 +7,6 @@ test_email_format.py
 test_model.py
 test_new_prompt.py
 .pytest_cache/
+run_report.json
+
+

@@ -1,23 +1,23 @@
-import os
-import re
+import hashlib
 import html
 import json
-import time
+import os
+import re
 import smtplib
-import urllib.request
+import time
 import urllib.parse
-import sys  # Added for sys.exit
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
-from dotenv import load_dotenv
+from html.parser import HTMLParser
+
 import requests
+from dotenv import load_dotenv
 from openai import OpenAI
-from datetime import datetime, timedelta, timezone
 
-
-# ----------------------------- Config -----------------------------------
 load_dotenv()
 
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
@@ -34,624 +34,693 @@ CANDIDATE_PHONE = os.getenv("CANDIDATE_PHONE", "+91 9013584218")
 CANDIDATE_GITHUB = os.getenv("CANDIDATE_GITHUB", "https://github.com/shukla009")
 
 HISTORY_FILE = "applied_history.json"
+FOLLOW_UP_FILE = "follow_up.json"
+RUN_REPORT_FILE = "run_report.json"
 RESUME_PATH = "Shivank_Shukla_Data_Analyst.pdf"
-NVIDIA_MODEL = os.getenv("NVIDIA_MODEL") or "nvidia/nemotron-3-super-120b-a12b"  # verified working model via NVIDIA NIM catalog; treat empty env (unset secret) as default
-MAX_POST_AGE_DAYS = int(os.getenv("MAX_POST_AGE_DAYS", "4"))  # freshness gate: only email leads posted within this window
+NVIDIA_MODEL = os.getenv("NVIDIA_MODEL") or "nvidia/nemotron-3-super-120b-a12b"
+MAX_POST_AGE_DAYS = int(os.getenv("MAX_POST_AGE_DAYS", "4"))
+MAX_DIRECT_APPLY_AGE_DAYS = int(os.getenv("MAX_DIRECT_APPLY_AGE_DAYS", "21"))
+MAX_SOURCE_CHARS = int(os.getenv("MAX_SOURCE_CHARS", "12000"))
+MAX_APPLY_ALERTS = int(os.getenv("MAX_APPLY_ALERTS", "5"))
+HTTP_RETRIES = max(1, int(os.getenv("HTTP_RETRIES", "2")))
+SEND_EMAILS = os.getenv("SEND_EMAILS", "true").strip().lower() in {"1", "true", "yes", "on"}
+SMTP_PREFLIGHT = os.getenv("SMTP_PREFLIGHT", "true").strip().lower() in {"1", "true", "yes", "on"}
 
-client = None
-if NVIDIA_API_KEY:
-    client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_API_KEY)
-# -------------------------------------------------------------------------
+
+def _parse_follow_up_offsets(raw):
+    try:
+        values = sorted({int(value.strip()) for value in raw.split(",") if int(value.strip()) > 0})
+        return values or [5]
+    except (TypeError, ValueError):
+        return [5]
 
 
-# ----------------------------- Helpers ------------------------------------
+FOLLOW_UP_OFFSETS_DAYS = _parse_follow_up_offsets(os.getenv("FOLLOW_UP_OFFSETS_DAYS", "5"))
+client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_API_KEY) if NVIDIA_API_KEY else None
+LAST_SEARCH_STATS = {"queries_attempted": 0, "queries_successful": 0, "query_errors": [], "results_discovered": 0}
+
+
+def _load_json_list(path, label):
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        if not isinstance(data, list):
+            raise ValueError("expected a JSON list")
+        return data
+    except Exception as exc:
+        print(f"[{label} Warning] {path} unreadable ({exc}) - starting with empty state")
+        return []
+
+
+def _save_json(path, data):
+    temporary = f"{path}.tmp"
+    with open(temporary, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=2, ensure_ascii=False)
+    os.replace(temporary, path)
+
+
 def load_history():
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[History Warning] applied_history.json unreadable ({e}) - starting with empty history")
-            return []
-    return []
+    return _load_json_list(HISTORY_FILE, "History")
 
 
 def save_history(history):
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, indent=2)
+    _save_json(HISTORY_FILE, history)
+
+
+def load_follow_up():
+    return _load_json_list(FOLLOW_UP_FILE, "Follow-up")
+
+
+def save_follow_up(data):
+    _save_json(FOLLOW_UP_FILE, data)
 
 
 def send_telegram(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("[Telegram] Missing token or chat ID.")
-        return
+        return False
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = json.dumps({
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True,
-    }).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    payload = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True}).encode("utf-8")
+    request = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
     try:
-        urllib.request.urlopen(req, timeout=15)
+        urllib.request.urlopen(request, timeout=15)
         print("[Telegram] Alert sent successfully.")
-    except Exception as e:
-        print(f"[Telegram Error] {e}")
+        return True
+    except Exception as exc:
+        print(f"[Telegram Error] {exc}")
+        return False
+
+
+def smtp_preflight():
+    """Authenticate with Gmail without sending a message."""
+    if not GMAIL_SENDER or not GMAIL_PASSWORD:
+        print("[SMTP] Missing Gmail credentials.")
+        return False
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
+            server.login(GMAIL_SENDER, GMAIL_PASSWORD.replace(" ", ""))
+        print("[SMTP] Authentication successful.")
+        return True
+    except Exception as exc:
+        print(f"[SMTP Error] Authentication failed: {exc}")
+        return False
 
 
 def send_email(to_email, subject, body_text):
     if not GMAIL_SENDER or not GMAIL_PASSWORD:
         print("[Email Error] Missing Gmail credentials.")
         return False
-
-    # Sanitize LLM-provided subject: collapse whitespace/newlines (CRLF could break the header)
+    if not _valid_recruiter_email(to_email):
+        print(f"[Email Error] Refusing invalid recipient: {to_email}")
+        return False
     subject = " ".join(str(subject).split())
-    msg = MIMEMultipart()
-    msg["From"] = f"{CANDIDATE_NAME} <{GMAIL_SENDER}>"
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    # Read-receipt request (best-effort; most servers ignore it)
-    msg.add_header('Disposition-Notification-To', GMAIL_SENDER)
-    msg.attach(MIMEText(body_text, "plain"))
-
-    # Resume is mandatory: the email body claims it is attached, so sending
-    # without it would make the claim false. Hard-fail instead.
+    message = MIMEMultipart()
+    message["From"] = f"{CANDIDATE_NAME} <{GMAIL_SENDER}>"
+    message["To"] = to_email
+    message["Subject"] = subject
+    message.attach(MIMEText(body_text, "plain", "utf-8"))
     if not os.path.exists(RESUME_PATH):
-        print(f"[Email Error] Resume not found at {RESUME_PATH} - aborting send (body claims attachment)")
+        print(f"[Email Error] Resume not found at {RESUME_PATH} - aborting send")
         return False
     try:
-        with open(RESUME_PATH, "rb") as f:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header("Content-Disposition",
-                            f'attachment; filename="{os.path.basename(RESUME_PATH)}"')
-            msg.attach(part)
-            print(f"[Email] Attached {RESUME_PATH}")
-    except Exception as e:
-        print(f"[Email Error] Could not attach resume: {e} - aborting send")
+        with open(RESUME_PATH, "rb") as file:
+            attachment = MIMEBase("application", "octet-stream")
+            attachment.set_payload(file.read())
+        encoders.encode_base64(attachment)
+        attachment.add_header("Content-Disposition", f'attachment; filename="{os.path.basename(RESUME_PATH)}"')
+        message.attach(attachment)
+    except Exception as exc:
+        print(f"[Email Error] Could not attach resume: {exc}")
         return False
-
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
             server.login(GMAIL_SENDER, GMAIL_PASSWORD.replace(" ", ""))
-            server.send_message(msg)
-        print(f"[Email Success] Sent to {to_email}")
+            server.send_message(message)
+        print(f"[Email Success] SMTP accepted message for {to_email}")
         return True
-    except Exception as e:
-        print(f"[Email Error] Failed to send to {to_email}: {e}")
+    except Exception as exc:
+        print(f"[Email Error] Failed to send to {to_email}: {exc}")
         return False
 
 
+class _VisibleTextParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self._ignored_depth = 0
+        self.parts = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() in {"script", "style", "noscript", "svg"}:
+            self._ignored_depth += 1
+
+    def handle_endtag(self, tag):
+        if tag.lower() in {"script", "style", "noscript", "svg"} and self._ignored_depth:
+            self._ignored_depth -= 1
+
+    def handle_data(self, data):
+        if not self._ignored_depth:
+            value = " ".join(data.split())
+            if value:
+                self.parts.append(value)
+
+    def text(self):
+        return "\n".join(self.parts)
+
+
+def _html_to_text(value):
+    parser = _VisibleTextParser()
+    parser.feed(value or "")
+    return html.unescape(parser.text())
+
+
 def extract_contacts(text):
-    """Extract email, LinkedIn profile URLs, and phone numbers from text.
-    Returns a dict with keys: 'emails' (list), 'linkedin' (list), 'phones' (list).
-    """
     if not text:
         return {"emails": [], "linkedin": [], "phones": []}
-    # Email regex (same as before)
-    email_pat = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-    emails = list(dict.fromkeys(re.findall(email_pat, text)))
-    # LinkedIn profile URLs (simple pattern)
-    linkedin_pat = r"linkedin\.com/in/[\w-]+"
-    linkedin = list(dict.fromkeys(re.findall(linkedin_pat, text)))
-    # Phone numbers (India/international simple pattern)
-    phone_pat = r"(\+\d{1,3}[\s-]?\d{10})"
-    phones = list(dict.fromkeys(re.findall(phone_pat, text)))
+    emails = list(dict.fromkeys(match.lower() for match in re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text)))
+    linkedin = list(dict.fromkeys(re.findall(r"linkedin\.com/in/[\w-]+", text, flags=re.I)))
+    phones = list(dict.fromkeys(re.findall(r"(\+\d{1,3}[\s-]?\d{10})", text)))
     return {"emails": emails, "linkedin": linkedin, "phones": phones}
 
 
 def _valid_recruiter_email(email):
-    """Reject placeholder/invalid emails before sending. Never invent-send."""
-    if not email or "@" not in email:
+    if not isinstance(email, str) or not re.fullmatch(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", email.strip()):
         return False
-    parts = email.split("@")
-    if len(parts) != 2 or not parts[0]:
-        return False
-    domain = parts[1].lower()
-    placeholder_domains = {
-        "company.com", "example.com", "email.com", "yourcompany.com",
-        "placeholder.com", "sample.com", "acme.com",
-        "xyz.com", "abc.com", "mail.com", "none.com",
-    }
-    # Exact-domain match: substring matching wrongly rejected gmail.com,
-    # hotmail.com, googlemail.com, rediffmail.com ('mail.com' is a substring).
-    if domain in placeholder_domains:
-        print(f"  -> rejected: placeholder email domain ({domain})")
-        return False
-    # Reject bare TLD-less domains (e.g. name@gmail, name@outlook) — must have a dot
-    if "." not in domain:
-        print(f"  -> rejected: malformed email domain ({domain})")
-        return False
-    return True
+    local, domain = email.lower().strip().split("@", 1)
+    placeholder_domains = {"company.com", "example.com", "email.com", "yourcompany.com", "placeholder.com", "sample.com", "acme.com", "xyz.com", "abc.com", "mail.com", "none.com"}
+    blocked_locals = {"noreply", "no-reply", "donotreply", "do-not-reply", "privacy", "security", "abuse", "webmaster", "support", "help", "customer.service"}
+    return domain not in placeholder_domains and local not in blocked_locals
+
+
+def _normalize_url(url):
+    if not url:
+        return ""
+    parsed = urllib.parse.urlsplit(url.strip())
+    kept_query = [(key, value) for key, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True) if not key.lower().startswith("utm_") and key.lower() not in {"gclid", "fbclid", "trk", "trackingid"}]
+    return urllib.parse.urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), parsed.path.rstrip("/") or "/", urllib.parse.urlencode(kept_query), ""))
+
+
+def _job_fingerprint(item):
+    canonical_url = _normalize_url(item.get("href") or item.get("url") or "")
+    title = " ".join(str(item.get("job_title") or item.get("title") or "").lower().split())
+    company = " ".join(str(item.get("company") or "").lower().split())
+    return hashlib.sha256("|".join((canonical_url, title, company)).encode("utf-8")).hexdigest()[:24]
 
 
 def _is_job_board_url(url):
-    blocked = [
-        "indeed.", "naukri.", "linkedin.com/jobs", "glassdoor.", "shine.",
-        "monster.", "timesjobs.", "placementindia.", "jobhai.", "freshersworld.",
-        "cutshort.", "instahyre.", "wellfound.", "internshala.", "upwork.",
-        "freelancer.", "remoteok.", "weworkremotely.", "flexjobs.",
-        "remoterocketship.", "jobsearch.", "careerbuilder.", "dice.",
-        "simplyhired.", "ziprecruiter.", "jobvite.", "lever.co", "greenhouse.",
-        "smartrecruiters.", "workday.", "bamboohr.", "icims.", "taleo.",
-        "myamcat.", "michaelpage.", "roberthalf.", "robertwalters.", "hays.",
-        "randstad.", "manpower.", "kellyservices.", "adecco.", "remotive.",
-        "remote.co", "workingnomads.", "jobspresso.", "himalayas.",
-        "remoteleaf.", "jobgether.", "arc.dev", "capitalonecareers.",
-        "careers.", "jobs.", "job-", "recruit", "orange.jobs",
-        "getmereferred.", "interviewchacha.", "ambitionbox.", "fishbowlapp.",
-        "capitalplacement.", "jobnexusindia.", "hicareer.",
-        "traveltechessentialist.", "n-ix.com", "unitedhealthgroup.",
-        "instagram.", "twitter.", "mobile.twitter.", "wikipedia.",
-        "enhancv.", "geeksforgeeks.", "cloud.google.", "study.com",
-        "bloomfire.", "merriam-webster.", "diligent-actor-263.notion.site",
-        "reddit.", "cryptomize.", "friendsjob.", "rojgargroup.",
-        "dataanalyst.com", "uplers.",
-    ]
-    u = url.lower()
-    return any(d in u for d in blocked)
+    """Block low-value aggregators, while allowing official ATS/company pages."""
+    blocked = ["indeed.", "naukri.", "glassdoor.", "shine.", "monster.", "timesjobs.", "placementindia.", "jobhai.", "freshersworld.", "upwork.", "freelancer.", "simplyhired.", "ziprecruiter.", "ambitionbox.", "fishbowlapp.", "wikipedia.", "enhancv.", "geeksforgeeks.", "study.com", "merriam-webster.", "reddit.", "instagram.", "twitter.", "mobile.twitter.", "friendsjob.", "rojgargroup."]
+    return any(domain in (url or "").lower() for domain in blocked)
+
+
+def _is_direct_apply_url(url):
+    markers = ("jobs.lever.co", "boards.greenhouse.io", "job-boards.greenhouse.io", "myworkdayjobs.com", "jobs.smartrecruiters.com", "jobvite.com", "bamboohr.com/careers", "icims.com/jobs", "/careers/", "/jobs/")
+    return any(marker in (url or "").lower() for marker in markers)
 
 
 def _parse_serpapi_date_days(date_str):
-    """Parse SerpAPI relative date strings ('3 days ago', '2 weeks ago', '12 hours ago')
-    into an age in days. Returns None when absent or unparseable."""
     if not date_str:
         return None
-    s = str(date_str).lower().strip()
-    if "yesterday" in s:
+    value = str(date_str).lower().strip()
+    if "yesterday" in value:
         return 1.0
-    if "today" in s or "hour" in s or "minute" in s:
+    if "today" in value or "hour" in value or "minute" in value:
         return 0.0
-    m = re.match(r"(\d+)\s*(day|week|month|year)s?\s+ago", s)
-    if not m:
+    match = re.match(r"(\d+)\s*(day|week|month|year)s?\s+ago", value)
+    if not match:
         return None
-    n = int(m.group(1))
-    unit = m.group(2)
-    return float(n) * {"day": 1, "week": 7, "month": 30, "year": 365}[unit]
+    return float(int(match.group(1))) * {"day": 1, "week": 7, "month": 30, "year": 365}[match.group(2)]
 
 
 def _linkedin_post_age_days(url):
-    """Decode a LinkedIn activity/ugcPost snowflake ID from the URL into the post's
-    age in days (LinkedIn IDs encode epoch-ms in the top 41 bits: id >> 22).
-    Returns None when the URL carries no decodable ID."""
-    if not url:
-        return None
-    m = re.search(r"(?:activity|ugcPost)[-_](\d{15,25})", url)
-    if not m:
+    match = re.search(r"(?:activity|ugcPost)[-_](\d{15,25})", url or "")
+    if not match:
         return None
     try:
-        ms = int(m.group(1)) >> 22
-        post_dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
-        return (datetime.now(timezone.utc) - post_dt).total_seconds() / 86400
-    except Exception:
+        posted = datetime.fromtimestamp((int(match.group(1)) >> 22) / 1000, tz=timezone.utc)
+        return (datetime.now(timezone.utc) - posted).total_seconds() / 86400
+    except (OverflowError, OSError, ValueError):
         return None
+
+
+def _parse_iso_datetime(value):
+    if not value:
+        return None
+    candidate = str(value).strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(candidate)
+        return (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+    except ValueError:
+        try:
+            return datetime.strptime(candidate[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
 
 
 def _is_stale_post(url, date_str):
-    """Freshness gate: True when the post is older than MAX_POST_AGE_DAYS or its age
-    cannot be verified. Only provably fresh posts pass (fresh leads only)."""
     age = _parse_serpapi_date_days(date_str)
     if age is None:
         age = _linkedin_post_age_days(url)
+    return age is None or age > MAX_POST_AGE_DAYS
+
+
+def _find_job_posting(value):
+    if isinstance(value, list):
+        for item in value:
+            found = _find_job_posting(item)
+            if found:
+                return found
+    elif isinstance(value, dict):
+        value_type = value.get("@type")
+        types = value_type if isinstance(value_type, list) else [value_type]
+        if any(str(item).lower() == "jobposting" for item in types):
+            return value
+        for child in value.values():
+            found = _find_job_posting(child)
+            if found:
+                return found
+    return None
+
+
+def _extract_location(job):
+    if job.get("jobLocationType") == "TELECOMMUTE":
+        return "Remote"
+    locations = job.get("jobLocation") or []
+    locations = [locations] if isinstance(locations, dict) else locations
+    parts = []
+    for location in locations:
+        address = location.get("address", {}) if isinstance(location, dict) else {}
+        if isinstance(address, str):
+            parts.append(address)
+        elif isinstance(address, dict):
+            text = ", ".join(str(address.get(key)) for key in ("addressLocality", "addressRegion", "addressCountry") if address.get(key))
+            if text:
+                parts.append(text)
+    return "; ".join(parts)
+
+
+def _extract_job_json_ld(page_html):
+    scripts = re.findall(r"<script[^>]+type=[\"']application/ld\+json[\"'][^>]*>(.*?)</script>", page_html or "", flags=re.I | re.S)
+    for script in scripts:
+        try:
+            job = _find_job_posting(json.loads(html.unescape(script.strip())))
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not job:
+            continue
+        organization = job.get("hiringOrganization") or {}
+        company = organization.get("name", "") if isinstance(organization, dict) else str(organization)
+        return {"job_title": str(job.get("title") or ""), "company": str(company or ""), "location": _extract_location(job), "date_posted": str(job.get("datePosted") or ""), "valid_through": str(job.get("validThrough") or ""), "employment_type": job.get("employmentType") or "", "description": _html_to_text(str(job.get("description") or "")), "application_url": str(job.get("url") or "")}
+    return {}
+
+
+def _request_with_retries(url, *, params=None, timeout=25, max_retries=None):
+    attempts = max_retries or HTTP_RETRIES
+    last_error = None
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; HermesJobScout/2.0)"}
+    for attempt in range(attempts):
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt < attempts - 1:
+                time.sleep(2 ** attempt)
+    raise last_error
+
+
+def enrich_post(post):
+    enriched = dict(post)
+    url = enriched.get("href", "")
+    snippet = " ".join((enriched.get("title", ""), enriched.get("body", ""))).strip()
+    enriched.update({"source_type": "direct_apply" if _is_direct_apply_url(url) else "public_web", "source_text": snippet, "source_emails": extract_contacts(snippet)["emails"], "page_fetched": False, "application_url": url})
+    if "linkedin.com/" in url.lower():
+        enriched["source_type"] = "linkedin_post"
+        return enriched
+    try:
+        response = _request_with_retries(url, timeout=20)
+        content_type = response.headers.get("Content-Type", "").lower()
+        if "html" not in content_type and content_type:
+            return enriched
+        page_html = response.text[:1_000_000]
+        structured = _extract_job_json_ld(page_html)
+        source_text = "\n".join(part for part in (snippet, structured.get("description", ""), _html_to_text(page_html)) if part)
+        enriched.update(structured)
+        enriched["source_text"] = source_text[:MAX_SOURCE_CHARS]
+        enriched["source_emails"] = [email for email in extract_contacts(enriched["source_text"])["emails"] if _valid_recruiter_email(email) and email != (CANDIDATE_EMAIL or "").lower()]
+        enriched["page_fetched"] = True
+        if structured.get("application_url"):
+            enriched["application_url"] = urllib.parse.urljoin(url, structured["application_url"])
+        if structured:
+            enriched["source_type"] = "direct_apply"
+    except Exception as exc:
+        enriched["fetch_error"] = str(exc)[:160]
+        print(f"[Fetch Warning] {url}: {exc}")
+    return enriched
+
+
+def _structured_freshness(post):
+    now = datetime.now(timezone.utc)
+    valid_through = _parse_iso_datetime(post.get("valid_through"))
+    if valid_through and valid_through < now:
+        return False, "application deadline has passed"
+    if valid_through and valid_through >= now:
+        return True, "application deadline is still open"
+    posted = _parse_iso_datetime(post.get("date_posted"))
+    if posted:
+        age = (now - posted).total_seconds() / 86400
+        limit = MAX_DIRECT_APPLY_AGE_DAYS if post.get("source_type") == "direct_apply" else MAX_POST_AGE_DAYS
+        return age <= limit, f"structured posting age is {age:.1f} days"
+    age = _parse_serpapi_date_days(post.get("date", ""))
     if age is None:
-        return True  # unverifiable age -> treat as stale
-    return age > MAX_POST_AGE_DAYS
+        age = _linkedin_post_age_days(post.get("href", ""))
+    if age is not None:
+        return age <= MAX_POST_AGE_DAYS, f"source posting age is {age:.1f} days"
+    if post.get("source_type") == "direct_apply" and post.get("page_fetched"):
+        return True, "live official application page; date unavailable"
+    return False, "publication date could not be verified"
 
 
-# ----------------------------- Search -------------------------------------
+def _deterministic_rejection(post):
+    title = str(post.get("job_title") or post.get("title") or "").lower()
+    source = str(post.get("source_text") or post.get("body") or "").lower()
+    if any(word in title for word in ("senior", "sr.", "lead ", "manager", "principal", "director", "trainer")):
+        return "senior/lead/manager/trainer title"
+    if re.search(r"\b(intern|internship)\b", title):
+        return "internship rather than full-time analyst role"
+    role_terms = ("data analyst", "business analyst", "research analyst", "bi analyst", "bi developer", "power bi", "reporting analyst", "mis analyst", "data operations")
+    if not any(term in f"{title} {source[:1500]}" for term in role_terms):
+        return "no target analyst role found"
+    fresh, reason = _structured_freshness(post)
+    return None if fresh else reason
+
+
+def _serpapi_search(query):
+    params = {"engine": "google", "q": query, "api_key": SERPAPI_KEY, "num": 10, "hl": "en", "gl": "in", "tbs": f"qdr:d{MAX_POST_AGE_DAYS}"}
+    data = _request_with_retries("https://serpapi.com/search", params=params, timeout=30).json()
+    if data.get("error"):
+        raise RuntimeError(str(data["error"]))
+    return data.get("organic_results", [])
+
+
 def search_recruiter_posts():
-    """
-    Strategy: only two highly-targeted Google queries per run.
-    - SerpAPI num=10 keeps each query cheap (still counts as 1 credit each).
-    - We rely on 'site:linkedin.com/posts' plus '@' to surface personal posts,
-      not job boards.
-    """
+    global LAST_SEARCH_STATS
+    LAST_SEARCH_STATS = {"queries_attempted": 0, "queries_successful": 0, "query_errors": [], "results_discovered": 0}
     if not SERPAPI_KEY:
         print("[Search] SERPAPI_KEY not configured.")
         return []
-
-    roles = ('("Data Analyst" OR "Business Analyst" OR "Research Analyst" '
-         'OR "BI Analyst" OR "BI Developer" OR "Power BI Developer" '
-         'OR "Reporting Analyst" OR "Data Operations Analyst" '
-         'OR "Junior Business Analyst" OR "MIS Analyst")')
-    locations = '("Delhi" OR "Delhi NCR" OR "Noida" OR "Gurgaon" OR "Gurugram" OR "Remote" OR "Hybrid")'
-    contact = '("email" OR "@" OR "reach out" OR "dm" OR "resume" OR "cv" OR "referral" OR "hiring" OR "linkedin.com/in" OR "phone")'
-
+    core_roles = '("Data Analyst" OR "Business Analyst" OR "BI Analyst" OR "Research Analyst")'
+    all_roles = '("Data Analyst" OR "Business Analyst" OR "BI Analyst" OR "Research Analyst" OR "Reporting Analyst" OR "MIS Analyst" OR "Power BI Developer" OR "Data Operations Analyst")'
+    locations = '("Delhi" OR "Noida" OR "Gurgaon" OR "Gurugram" OR "India" OR "Remote")'
+    exclusions = '-senior -lead -manager -trainer -course -certification -internship -"open to work"'
     queries = [
-        # 1) LinkedIn posts with roles + location + contact (primary source)
-        f'site:linkedin.com/posts {roles} {locations} {contact}',
-        # 2) AngelList (startup posts; not blocked by the job-board filter)
-        f'site:angel.co {roles} {locations} {contact} -jobs -careers -apply',
-        # 3) Wider Google search (freshness gate filters stale hits)
-        f'{roles} {locations} {contact} -jobs -careers -apply',
+        f'site:linkedin.com/posts {core_roles} {locations} ("hiring" OR "opening") ("email" OR "send resume" OR "share CV" OR "referral") {exclusions}',
+        f'(site:jobs.lever.co OR site:boards.greenhouse.io OR site:job-boards.greenhouse.io OR site:myworkdayjobs.com OR site:jobs.smartrecruiters.com) {all_roles} {locations} {exclusions}',
     ]
-
     results = []
     quota_errors = 0
-    total_queries = len(queries)
-    for q in queries:
-        print(f"[Search] {q[:120]}...")
+    for query in queries:
+        LAST_SEARCH_STATS["queries_attempted"] += 1
+        print(f"[Search] {query[:150]}...")
         try:
-            r = requests.get(
-                "https://serpapi.com/search",
-                params={"engine": "google", "q": q, "api_key": SERPAPI_KEY,
-                        "num": 10, "hl": "en", "gl": "in", "tbs": "qdr:d4"},
-                timeout=30,
-            )
-            data = r.json()
-            if "error" in data:
-                err_msg = data["error"]
-                print(f"[SerpAPI Error] {err_msg}")
-                if "run out of searches" in err_msg or "quota" in err_msg.lower():
-                    quota_errors += 1
-                continue
-            for item in data.get("organic_results", []):
-                url = item.get("link", "")
-                if _is_job_board_url(url):
+            items = _serpapi_search(query)
+            LAST_SEARCH_STATS["queries_successful"] += 1
+            for item in items:
+                url = _normalize_url(item.get("link", ""))
+                if not url or _is_job_board_url(url):
                     continue
-                if _is_stale_post(url, item.get("date", "")):
-                    print(f"  [Freshness] rejected (> {MAX_POST_AGE_DAYS}d or unverifiable age): {url[:80]}")
+                date_value = item.get("date", "")
+                if "linkedin.com/" in url.lower() and _is_stale_post(url, date_value):
                     continue
-                results.append({
-                    "title": item.get("title", ""),
-                    "body": item.get("snippet", ""),
-                    "href": url,
-                })
-        except Exception as e:
-            print(f"[Search Error] {e}")
-        time.sleep(2)
-
-    # If every query hit quota, abort run
-    if quota_errors == total_queries and total_queries > 0:
-        err_msg = "SerpAPI monthly quota exhausted — no searches possible this month."
-        print(f"[Fatal] {err_msg}")
-        send_telegram(f"🛑 <b>Job Scout stopped</b>\n{err_msg}")
-        sys.exit(1)
-
-    # Deduplicate
-    seen = set()
-    unique = []
-    for r in results:
-        u = r["href"]
-        if u and u not in seen:
-            seen.add(u)
-            unique.append(r)
+                explicit_age = _parse_serpapi_date_days(date_value)
+                if explicit_age is not None and explicit_age > MAX_POST_AGE_DAYS:
+                    continue
+                results.append({"title": item.get("title", ""), "body": item.get("snippet", ""), "href": url, "date": date_value})
+        except Exception as exc:
+            message = str(exc)[:180]
+            LAST_SEARCH_STATS["query_errors"].append(message)
+            if "quota" in message.lower() or "run out of searches" in message.lower():
+                quota_errors += 1
+            print(f"[Search Error] {message}")
+    if quota_errors == len(queries):
+        raise RuntimeError("SerpAPI monthly quota exhausted")
+    if LAST_SEARCH_STATS["queries_successful"] == 0:
+        raise RuntimeError("All discovery queries failed")
+    unique, seen = [], set()
+    for result in results:
+        if result["href"] not in seen:
+            seen.add(result["href"])
+            unique.append(result)
+    LAST_SEARCH_STATS["results_discovered"] = len(unique)
     return unique
 
 
-# ----------------------------- NVIDIA NIM Analysis ----------------------------
-def analyze_post_verbose(post, max_retries=3):
-    """
-    Returns (parsed_dict_or_None, verdict_str).
-    verdict is one of: 'ok', 'irrelevant', 'no_email', 'no_client',
-    'auth_error', 'quota_error', 'json_error: ...', 'llm_error: ...'
-    """
+def _call_llm_json(prompt, *, max_tokens=900, max_retries=3):
     if not client:
         return None, "no_client"
-
-    title, snippet, url = post["title"], post["body"], post["href"]
-    # Extract contacts (emails, LinkedIn URLs, phone numbers) from the post content
-    contacts = extract_contacts(snippet + " " + title)
-    found_emails = contacts.get("emails", [])
-
-    prompt = f"""You are an expert job matcher and email writer for candidate {CANDIDATE_NAME}.
-
-    Candidate: Data Analyst | SQL, Python, Power BI, Tableau, Excel, research/reporting, ETL.
-    ~1 year experience as Research & Strategy Associate (Founding Team Member) at ProSca Business Solutions + internships at IBM/UptoSkills/Vodafone.
-    Wants: Data/Research/BI/Business/MIS/Reporting Analyst roles in Delhi/NCR/Noida/Gurgaon/Gurugram/Remote/Hybrid. Day shift, full-time, 6.5-7 LPA.
-    Portfolio: {CANDIDATE_PORTFOLIO}
-    LinkedIn: {CANDIDATE_LINKEDIN}
-    GitHub: {CANDIDATE_GITHUB}
-    Email: {CANDIDATE_EMAIL} | Phone: {CANDIDATE_PHONE}
-
-    Post:
-    Title: {title}
-    Snippet: {snippet}
-    URL: {url}
-    Emails found in text: {found_emails or 'none'}
-
-    Rules (ALL MUST PASS):
-    - Accept ONLY if it is a genuine recruiter/hiring post matching the candidate's roles AND locations.
-    - Reject job boards, blogs, resume templates, ads, awareness/advice posts (e.g. job scam warnings, "how to get hired", tips), candidate self-promotion.
-    - Reject senior/lead/manager roles unless explicitly junior/fresher level.
-    - Reject if the post is clearly old (posted/apply-by dates in the past, "last month", "weeks ago") - we only email active, recent openings.
-    - Reject if there is NO real recruiter email visible in the post text (we do NOT send LinkedIn DMs). A "DM me"/"comment" CTA with no email = reject.
-    - NEVER invent an email. If none is in the post, set recruiter_email to null.
-
-    If accepted, write a personalized cold email that follows the format and tone of the example below.
-
-    Example of the desired email format (follow this structure and tone, but tailor the content to the specific post):
-
-    Hi [Company Name] Team,
-
-    Your [Job Title] opening in [Location] mirrors the work I enjoy most: building reliable reporting, turning raw business data into clear insights, and partnering with teams to make better decisions.
-
-    I currently work as a Research & Strategy Associate at ProSca Business Solutions, where I analyze qualitative and quantitative data across 5+ industry verticals and have contributed to 12+ strategic intelligence reports. I also helped reduce research turnaround time by 20% through standardized analytical frameworks and reporting templates.
-
-    My hands-on toolkit includes SQL, Power BI, Tableau, Excel, Python, ETL, data cleaning, KPI development, and dashboarding. Relevant work includes improving data-collection efficiency by 40% across 1,000+ institutional records, analyzing 10,000+ healthcare records, and building a Power BI/DAX dashboard for [Relevant Project/Company] sales and inventory analysis. [Their Company Name]'s cross-functional analytics environment across operations, revenue, marketing, and sales is exactly the kind of business-facing role I am looking for.
-
-    Portfolio: https://shivank-shukla-portfolio.vercel.app/
-    LinkedIn: https://www.linkedin.com/in/shivank-shukla09
-    Notice period: 1 month
-
-    I have attached my updated resume and would welcome the opportunity to discuss how I could contribute to your analytics team.
-
-    Best regards,
-    Shivank Shukla
-    +91-9013584218
-
-    Rules for the email:
-    - Use PLAIN URLs only (no @url:... or markdown wrappers)
-    - Each paragraph must be separated by exactly ONE blank line
-    - Do NOT add extra spaces or formatting
-    - Use the EXACT structure above - 6 paragraphs total
-    - If company/location specifics aren't clear from post, use generic but professional language
-    - NEVER use banned phrases: "I came across your post", "I believe I would be a great/strong fit", "I am writing to express my interest", "as a Data Analyst with...", "as a seasoned data analyst...", "2+ years of experience", "senior-level", "extensive experience", "deep expertise", "your company's emphasis/values", "resonates with my experience", "caught my attention", "I noticed that you're/are looking", "I am confident that I can/will", "I can bring/add value to", "I am particularly drawn to", "I am excited about the opportunity/to apply", "I believe my background aligns", "my background aligns perfectly", "I have/ve built several", "I have/ve worked on various"
-    - TONE: Professional, confident, concise. Show you READ their post. Be specific about THEIR requirements when possible.
-
-    Return ONLY JSON:
-    {{
-      "is_relevant": true|false,
-      "recruiter_email": "best_email_or_null",
-      "job_title": "...",
-      "company": "...",
-      "email_subject": "Application for [Job Title] - {CANDIDATE_NAME}",
-      "email_body": "...",
-      "reason": "one line why accepted/rejected"
-    }}"""
-
     for attempt in range(max_retries):
         try:
-            resp = client.chat.completions.create(
-                model=NVIDIA_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                max_tokens=2048,
-            )
-            content = resp.choices[0].message.content
+            response = client.chat.completions.create(model=NVIDIA_MODEL, messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"}, temperature=0.1, max_tokens=max_tokens)
+            content = response.choices[0].message.content
             if not content or not content.strip():
-                raise ValueError("Empty response from LLM")
-            result = json.loads(content)
-
-            # Prefer regex-extracted email ONLY as a fallback. Never override when the
-            # regex hit is the candidate's own address (hardcoded in the prompt) — that
-            # made the agent email itself. Model choice wins when regex finds nothing.
-            own = {CANDIDATE_EMAIL.lower()} if CANDIDATE_EMAIL else set()
-            regex_only = [e for e in found_emails if e.lower() not in own]
-            if regex_only and not result.get("recruiter_email"):
-                result["recruiter_email"] = regex_only[0]
-
-            if not result.get("is_relevant"):
-                print(f"  -> rejected: {result.get('reason', 'irrelevant')}")
-                return None, "irrelevant"
-
-            if not _valid_recruiter_email(result.get("recruiter_email")):
-                return None, "no_email"
-
-            return result, "ok"
-
-        except (json.JSONDecodeError, ValueError) as e:
-            err = str(e)
-            if attempt < max_retries - 1:
-                print(f"  [NVIDIA JSON Error] {err} — retry {attempt+2}/{max_retries}")
-                time.sleep(3)
-                continue
-            print(f"  [NVIDIA JSON Error] {err} — giving up")
-            return None, f"json_error: {err[:100]}"
-        except Exception as e:
-            err = str(e)
-            # Check for authentication errors
-            if "401" in err or "Unauthorized" in err or "authentication failed" in err.lower():
-                error_msg = f"NVIDIA API authentication failed for model '{NVIDIA_MODEL}'. Please check your NVIDIA_API_KEY environment variable."
-                print(f"  [NVIDIA Auth Error] {error_msg}")
+                raise ValueError("empty response")
+            parsed = json.loads(content)
+            if not isinstance(parsed, dict):
+                raise ValueError("response was not a JSON object")
+            return parsed, "ok"
+        except (json.JSONDecodeError, ValueError) as exc:
+            if attempt == max_retries - 1:
+                return None, f"json_error: {str(exc)[:100]}"
+            time.sleep(2 ** attempt)
+        except Exception as exc:
+            message, lowered = str(exc), str(exc).lower()
+            if "401" in message or "unauthorized" in lowered or "authentication failed" in lowered:
                 return None, "auth_error"
-            # Check for rate limit errors
-            elif "429" in err or "rate limit" in err.lower() or "RPM" in err:
-                if attempt == max_retries - 1:
-                    return None, "quota_error"
-                wait = 30 * (2 ** attempt)
-                print(f"  [NVIDIA 429] retry {attempt+1}/{max_retries} in {wait}s")
-                time.sleep(wait)
+            retryable = any(token in lowered for token in ("429", "rate limit", "503", "502", "504", "overloaded"))
+            if retryable and attempt < max_retries - 1:
+                time.sleep(3 * (2 ** attempt))
                 continue
-            else:
-                print(f"  [NVIDIA Error] {err[:150]}")
-                return None, f"llm_error: {err[:100]}"
-
-    return None, "error"
+            return None, f"llm_error: {message[:100]}"
+    return None, "llm_error"
 
 
-# ----------------------------- Follow‑up Scheduler ---------------------------
+def analyze_post_verbose(post, max_retries=3):
+    """Classify a job. Verdict is `ok`, `apply`, `irrelevant`, or an error."""
+    deterministic_reason = _deterministic_rejection(post)
+    if deterministic_reason:
+        print(f"  -> rejected before LLM: {deterministic_reason}")
+        return None, "irrelevant"
+    if not client:
+        return None, "no_client"
+    source_emails = [email.lower() for email in post.get("source_emails", []) if _valid_recruiter_email(email) and email.lower() != (CANDIDATE_EMAIL or "").lower()]
+    source = str(post.get("source_text") or post.get("body") or "")[:MAX_SOURCE_CHARS]
+    prompt = f"""You are a strict job eligibility classifier.
+Candidate: around 1 year of experience; SQL, Python, Power BI, Tableau, Excel, ETL and research/reporting.
+Targets: junior/full-time Data, Business, Research, BI, MIS, Reporting or Data Operations Analyst.
+Locations: Delhi NCR, Noida, Gurgaon/Gurugram, India-remote or clearly remote.
+Reject internships and roles requiring more than 2 years unless explicitly junior/fresher friendly.
 
-def load_follow_up():
-    """Load pending follow‑up entries from follow_up.json (or create empty list)."""
-    if os.path.exists('follow_up.json'):
-        try:
-            with open('follow_up.json', 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[Follow‑up] Error loading follow_up.json: {e}")
-            return []
-    return []
+Title: {post.get('job_title') or post.get('title', '')}
+Company: {post.get('company', '')}
+Location: {post.get('location', '')}
+Source URL: {post.get('href', '')}
+Application URL: {post.get('application_url', '')}
+Verified source emails: {source_emails or 'none'}
+Source type: {post.get('source_type', '')}
+Content:
+{source}
 
-def save_follow_up(data):
-    """Write follow‑up list back to follow_up.json."""
-    try:
-        with open('follow_up.json', 'w') as f:
-            json.dump(data, f, indent=2)
-    except Exception as e:
-        print(f"[Follow‑up] Error saving follow_up.json: {e}")
+Decide whether this is a genuine, current, full-time target role. Reject advice, self-promotion,
+training, scams, unrelated roles, senior roles and location mismatches. recruiter_email must be
+null or one exact value from Verified source emails. Never create or infer an email.
 
-def schedule_follow_up(email, subject, body_text):
-    """Create three follow‑up entries (2,5,9 days) for a newly sent email.
-    Each entry stores: email, subject, body_text, step (1‑3), next_send (epoch timestamp).
-    """
-    now = datetime.utcnow()
-    offsets = [2, 5, 9]  # days from now
-    entries = []
-    for i, d in enumerate(offsets, start=1):
-        entry = {
-            "email": email,
-            "subject": subject,
-            "body": body_text,
-            "step": i,
-            "next_send": (now + timedelta(days=d)).timestamp()
-        }
-        entries.append(entry)
-    # Append to file
-    follow_ups = load_follow_up()
-    follow_ups.extend(entries)
-    save_follow_up(follow_ups)
+Return ONLY JSON:
+{{
+  "is_relevant": true,
+  "job_title": "exact role title",
+  "company": "company or empty string",
+  "location": "location or empty string",
+  "recruiter_email": null,
+  "reason": "one concise evidence-based sentence"
+}}"""
+    result, status = _call_llm_json(prompt, max_tokens=700, max_retries=max_retries)
+    if result is None:
+        return None, status
+    if result.get("is_relevant") is not True:
+        print(f"  -> rejected: {result.get('reason', 'irrelevant')}")
+        return None, "irrelevant"
+    selected = result.get("recruiter_email")
+    selected = selected.lower().strip() if isinstance(selected, str) else None
+    result["recruiter_email"] = selected if selected in source_emails else None
+    result["job_id"] = _job_fingerprint({"href": post.get("application_url") or post.get("href"), "job_title": result.get("job_title"), "company": result.get("company")})
+    result["application_url"] = post.get("application_url") or post.get("href")
+    return result, "ok" if result["recruiter_email"] else "apply"
+
+
+def compose_email(post, analysis, max_retries=3):
+    source = str(post.get("source_text") or post.get("body") or "")[:6000]
+    prompt = f"""Write a concise personalized cold application email for {CANDIDATE_NAME}.
+Candidate: Research & Strategy Associate, around 1 year; SQL, Python, Power BI, Tableau, Excel,
+ETL, data cleaning and KPI reporting. Portfolio: {CANDIDATE_PORTFOLIO}. LinkedIn: {CANDIDATE_LINKEDIN}.
+GitHub: {CANDIDATE_GITHUB}. Phone: {CANDIDATE_PHONE}. Notice period: 1 month.
+
+Verified job: {analysis.get('job_title', '')} at {analysis.get('company', '')}, {analysis.get('location', '')}
+Source content:
+{source}
+
+Use plain text, 5-6 short paragraphs, professional and specific. Do not exaggerate or invent facts.
+Mention the attached resume. Avoid "I came across your post" and "I am writing to express my interest".
+Return ONLY JSON:
+{{
+  "email_subject": "Application for [Job Title] - {CANDIDATE_NAME}",
+  "email_body": "complete plain-text email"
+}}"""
+    result, status = _call_llm_json(prompt, max_tokens=1100, max_retries=max_retries)
+    if result is None:
+        return None, status
+    subject = " ".join(str(result.get("email_subject") or "").split())
+    body = str(result.get("email_body") or "").strip()
+    return ({"email_subject": subject, "email_body": body}, "ok") if subject and body else (None, "writer_missing_fields")
+
+
+def schedule_follow_up(email, subject, body_text, job_id=None):
+    """Store one evolving follow-up record, preventing duplicate chains."""
+    created = datetime.now(timezone.utc)
+    record = {"email": email, "subject": subject, "body": body_text, "job_id": job_id or "", "step": 1, "offsets_days": FOLLOW_UP_OFFSETS_DAYS, "created_at": created.timestamp(), "next_send": (created + timedelta(days=FOLLOW_UP_OFFSETS_DAYS[0])).timestamp()}
+    pending = [item for item in load_follow_up() if not (item.get("email", "").lower() == email.lower() and item.get("job_id", "") == record["job_id"])]
+    pending.append(record)
+    save_follow_up(pending)
+
 
 def process_pending_follow_ups():
-    """Send any follow‑up emails whose scheduled time has arrived.
-    After sending step 1 or 2, re‑schedule the next step (if any). Step 3 is final.
-    """
-    follow_ups = load_follow_up()
-    if not follow_ups:
-        return
-    now_ts = datetime.utcnow().timestamp()
-    updated = []
-    for fu in follow_ups:
-        if now_ts >= fu.get('next_send', 0):
-            # Send follow‑up
-            follow_subject = f"Re: {fu['subject']}"
-            follow_body = fu['body'] + "\n\n" + f"(Follow‑up {fu['step']} – just checking in)"
-            ok = send_email(fu['email'], follow_subject, follow_body)
-            if ok:
-                print(f"[Follow‑up] Sent step {fu['step']} to {fu['email']}")
-                # If there is a next step, schedule it
-                if fu['step'] < 3:
-                    # compute next offset based on original schedule (2→5→9 days)
-                    next_offset = [5, 9][fu['step'] - 1] if fu['step'] == 1 else 9
-                    fu['step'] += 1
-                    fu['next_send'] = (datetime.utcnow() + timedelta(days=next_offset)).timestamp()
-                    updated.append(fu)
-                else:
-                    print(f"[Follow‑up] Completed all steps for {fu['email']}")
-            else:
-                print(f"[Follow‑up] Failed to send step {fu['step']} to {fu['email']}")
-                # Keep entry for retry later
-                updated.append(fu)
-        else:
-            updated.append(fu)
+    pending = load_follow_up()
+    if not pending:
+        return {"sent": 0, "failed": 0, "pending": 0}
+    now, updated, sent, failed = datetime.now(timezone.utc).timestamp(), [], 0, 0
+    for record in pending:
+        if now < float(record.get("next_send", 0)):
+            updated.append(record)
+            continue
+        step = int(record.get("step", 1))
+        body = record.get("body", "") + f"\n\nFollow-up {step}: I wanted to check whether my application is under consideration."
+        ok = SEND_EMAILS and send_email(record.get("email", ""), f"Re: {record.get('subject', '')}", body)
+        if not ok:
+            failed += 1
+            updated.append(record)
+            continue
+        sent += 1
+        offsets = record.get("offsets_days") or FOLLOW_UP_OFFSETS_DAYS
+        if step < len(offsets):
+            record["step"] = step + 1
+            record["next_send"] = float(record.get("created_at", now)) + (int(offsets[step]) * 86400)
+            updated.append(record)
     save_follow_up(updated)
+    return {"sent": sent, "failed": failed, "pending": len(updated)}
 
-# ----------------------------- Main ----------------------------------------
+
+def _record_history(history, analysis, post, route, email=""):
+    history.append({"job_id": analysis["job_id"], "route": route, "email": email, "job_title": analysis.get("job_title", ""), "company": analysis.get("company", ""), "url": analysis.get("application_url") or post.get("href", ""), "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")})
+    save_history(history)
+
+
+def _send_apply_alert(analysis):
+    return send_telegram("🎯 <b>Relevant job — apply directly</b>\n" f"💼 {html.escape(str(analysis.get('job_title', 'Analyst role')))}\n" f"🏢 {html.escape(str(analysis.get('company') or 'Company not stated'))}\n" f"📍 {html.escape(str(analysis.get('location') or 'Check listing'))}\n" f"🔗 <a href='{html.escape(str(analysis.get('application_url', '')), quote=True)}'>Open application</a>\n" f"ℹ️ {html.escape(str(analysis.get('reason', 'Relevant match')))}")
+
+
+def _write_run_report(report):
+    _save_json(RUN_REPORT_FILE, report)
+    print("RUN_REPORT=" + json.dumps(report, sort_keys=True))
+
+
 def main():
     print("=== Job Scout Agent Starting ===")
-
-    if not all([NVIDIA_API_KEY, SERPAPI_KEY, GMAIL_SENDER, GMAIL_PASSWORD,
-                TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]):
-        print("[Fatal] One or more required env vars are missing.")
-        send_telegram("❗ Job Scout stopped: missing API keys/secrets.")
-        sys.exit(1)
-
-    # Process any pending follow‑ups first
-    process_pending_follow_ups()
-
-    start_msg = (
-        f"🤖 <b>Job Scout Started</b>\n\n"
-        f"👤 {CANDIDATE_NAME}\n"
-        f"🕐 {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        f"🎯 Roles: Data / Research / BI / Business Analyst\n"
-        f"📍 Delhi-NCR / Remote / Hybrid | ₹6.5-7 LPA\n"
-        f"🧠 Model: {NVIDIA_MODEL}"
-    )
-    send_telegram(start_msg)
-
+    required = [NVIDIA_API_KEY, SERPAPI_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
+    if SEND_EMAILS:
+        required.extend([GMAIL_SENDER, GMAIL_PASSWORD])
+    if not all(required):
+        print("[Fatal] One or more required environment variables are missing.")
+        send_telegram("❗ Job Scout stopped: missing API keys or secrets.")
+        raise SystemExit(1)
+    if SEND_EMAILS and SMTP_PREFLIGHT and not smtp_preflight():
+        send_telegram("🛑 <b>Job Scout stopped</b>\nGmail SMTP authentication failed.")
+        raise SystemExit(1)
+    follow_up_stats = process_pending_follow_ups()
+    send_telegram("🤖 <b>Job Scout Started</b>\n\n" f"👤 {html.escape(CANDIDATE_NAME)}\n" "🎯 Data / Research / BI / Business Analyst\n" "📍 Delhi-NCR / India Remote\n" f"🧠 {html.escape(NVIDIA_MODEL)}")
     history = load_history()
-    applied = {e.get("email", "").lower() for e in history if isinstance(e, dict)}
-
-    posts = search_recruiter_posts()
-    total = len(posts)
-    print(f"[Search] {total} candidate posts after filtering")
-    send_telegram(f"🔍 Search complete: <b>{total}</b> posts to analyse (1-by-1)…")
-
-    sent = 0
-    rejected_irrelevant = 0
-    rejected_no_email = 0
-    rejected_duplicate = 0
-    errors = 0
-    error_details = []
-
-    for i, post in enumerate(posts, 1):
-        url = post["href"]
-        print(f"\n[{i}/{total}] {url}")
-
-        parsed, verdict = analyze_post_verbose(post)
-        if parsed is None:
+    known_job_ids = {item.get("job_id") or _job_fingerprint(item) for item in history if isinstance(item, dict)}
+    report = {"status": "healthy", "queries_attempted": 0, "queries_successful": 0, "query_errors": [], "results_discovered": 0, "pages_fetched": 0, "relevant_email_leads": 0, "relevant_apply_leads": 0, "emails_attempted": 0, "emails_accepted_by_smtp": 0, "duplicates": 0, "irrelevant": 0, "model_errors": 0, "follow_ups": follow_up_stats}
+    try:
+        posts = search_recruiter_posts()
+    except Exception as exc:
+        report["status"] = "failed"
+        report["query_errors"] = [str(exc)[:180]]
+        _write_run_report(report)
+        send_telegram(f"🛑 <b>Job Scout stopped</b>\nDiscovery failed: {html.escape(str(exc)[:300])}")
+        raise SystemExit(1)
+    report.update(LAST_SEARCH_STATS)
+    if report["query_errors"]:
+        report["status"] = "degraded"
+    apply_alerts_sent, fatal_model_error = 0, None
+    for index, raw_post in enumerate(posts, 1):
+        print(f"\n[{index}/{len(posts)}] {raw_post.get('href', '')}")
+        post = enrich_post(raw_post)
+        report["pages_fetched"] += int(bool(post.get("page_fetched")))
+        analysis, verdict = analyze_post_verbose(post)
+        if analysis is None:
             if verdict == "irrelevant":
-                rejected_irrelevant += 1
-            elif verdict == "no_email":
-                rejected_no_email += 1
-            elif verdict == "auth_error":
-                # Fatal error: stop the run
-                errors += 1
-                error_details.append(verdict[:80])
-                send_telegram(f"🛑 <b>Job Scout stopped</b>\nNVIDIA API authentication failed. Please check your NVIDIA_API_KEY environment variable.")
-                break  # break out of the for loop
+                report["irrelevant"] += 1
             else:
-                errors += 1
-                error_details.append(verdict[:80])
+                report["model_errors"] += 1
+                if verdict == "auth_error":
+                    fatal_model_error = verdict
+                    break
             continue
-
-        email = parsed["recruiter_email"].lower()
-        if email in applied:
-            print("  -> already contacted, skipping")
-            rejected_duplicate += 1
+        job_id = analysis["job_id"]
+        if job_id in known_job_ids:
+            report["duplicates"] += 1
             continue
-
-        job_title = parsed.get("job_title", "Data Analyst")
-        subject = parsed.get("email_subject",
-                             f"Application for {job_title} – {CANDIDATE_NAME}")
-        body = parsed.get("email_body", "")
-
-        print(f"  ✅ MATCH: {email} | {job_title}")
-        ok = send_email(email, subject, body)
-        if ok:
-            entry = {"email": email, "job_title": job_title, "url": url,
-                     "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")}
-            history.append(entry)
-            applied.add(email)
-            save_history(history)
-            schedule_follow_up(email, subject, body)
-            sent += 1
-            send_telegram(
-                f"🚀 <b>Email sent</b>\n"
-                f"📧 <code>{email}</code>\n"
-                f"💼 {html.escape(str(job_title))}\n"
-                f"🔗 <a href='{url}'>post</a>"
-            )
-        else:
-            errors += 1
-            error_details.append(f"email send failed → {email}")
-
-        # Stay well under NVIDIA NIM free tier (40 RPM)
-        time.sleep(2)
-
-    err_preview = ""
-    if error_details:
-        shown = "\n".join(f"   • {e}" for e in error_details[:5])
-        more = f"\n   …and {len(error_details) - 5} more" if len(error_details) > 5 else ""
-        err_preview = f"\n⚠️ <b>Error details:</b>\n{shown}{more}\n"
-
-    summary = (
-        f"✅ <b>Run Complete — {time.strftime('%d %b %Y, %H:%M')}</b>\n\n"
-        f"🔍 Posts analysed: <b>{total}</b>\n"
-        f"🚫 Irrelevant/wrong role: {rejected_irrelevant}\n"
-        f"📭 No recruiter email visible: {rejected_no_email}\n"
-        f"🔄 Already contacted: {rejected_duplicate}\n"
-        f"⚠️ Errors: {errors}\n"
-        f"{err_preview}\n"
-        f"📧 <b>Emails sent this run: {sent}</b>\n"
-        f"💡 Total unique recruiters in history: {len(applied)}"
-    )
+        if verdict == "apply":
+            report["relevant_apply_leads"] += 1
+            if apply_alerts_sent < MAX_APPLY_ALERTS:
+                _send_apply_alert(analysis)
+                apply_alerts_sent += 1
+            _record_history(history, analysis, post, "apply")
+            known_job_ids.add(job_id)
+            continue
+        email = analysis["recruiter_email"]
+        report["relevant_email_leads"] += 1
+        written, writer_status = compose_email(post, analysis)
+        if written is None:
+            report["model_errors"] += 1
+            print(f"[Writer Error] {writer_status}")
+            continue
+        report["emails_attempted"] += 1
+        if not SEND_EMAILS:
+            print(f"[Dry Run] Would email verified source address {email}")
+            continue
+        if send_email(email, written["email_subject"], written["email_body"]):
+            report["emails_accepted_by_smtp"] += 1
+            _record_history(history, analysis, post, "email", email)
+            known_job_ids.add(job_id)
+            schedule_follow_up(email, written["email_subject"], written["email_body"], job_id)
+            send_telegram("🚀 <b>Email accepted by SMTP</b>\n" f"📧 <code>{html.escape(email)}</code>\n" f"💼 {html.escape(str(analysis.get('job_title', 'Analyst role')))}\n" f"🔗 <a href='{html.escape(str(analysis.get('application_url', '')), quote=True)}'>job</a>")
+    if fatal_model_error:
+        report["status"] = "failed"
+    elif not posts or report["relevant_apply_leads"] + report["relevant_email_leads"] == 0:
+        report["status"] = "no_matches" if report["status"] == "healthy" else report["status"]
+    _write_run_report(report)
+    summary = (f"✅ <b>Job Scout — {html.escape(report['status'])}</b>\n\n" f"🔎 Discovered: {report['results_discovered']}\n" f"📄 Full pages fetched: {report['pages_fetched']}\n" f"🎯 Direct-apply leads: {report['relevant_apply_leads']}\n" f"📧 Verified email leads: {report['relevant_email_leads']}\n" f"✉️ SMTP accepted: {report['emails_accepted_by_smtp']}\n" f"🔄 Duplicates: {report['duplicates']}\n" f"🚫 Irrelevant: {report['irrelevant']}\n" f"⚠️ Model errors: {report['model_errors']}")
+    if report["query_errors"]:
+        summary += "\n\n<b>Discovery warnings</b>\n" + "\n".join(f" • {html.escape(error)}" for error in report["query_errors"][:3])
     send_telegram(summary)
     print("=== Done ===")
+    if fatal_model_error:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
     main()
+
+
