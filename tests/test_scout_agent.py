@@ -12,6 +12,7 @@ import re
 import sys
 import json
 import pytest
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root (scout_agent.py lives there)
@@ -81,10 +82,10 @@ class TestFreshness:
         assert _parse_serpapi_date_days(None) is None
 
     def test_fresh_passes(self):
-        assert _is_stale_post("https://www.linkedin.com/x", "3 days ago") is False
+        assert _is_stale_post("https://www.linkedin.com/x", "1 day ago") is False
 
     def test_exactly_window_passes(self):
-        assert _is_stale_post("https://www.linkedin.com/x", "4 days ago") is False
+        assert _is_stale_post("https://www.linkedin.com/x", "2 days ago") is False
 
     def test_older_than_window_rejected(self):
         assert _is_stale_post("https://www.linkedin.com/x", "5 days ago") is True
@@ -189,6 +190,7 @@ class TestAnalyzePostVerbose:
 
     def test_ok_verdict(self, monkeypatch):
         monkeypatch.setattr(scout_agent, "client", MagicMock())
+        monkeypatch.setattr(scout_agent, "USE_LLM_REVIEW", True)
         payload = {"is_relevant": True, "recruiter_email": "hr@realco.io",
                    "job_title": "Data Analyst", "company": "RealCo",
                    "email_subject": "Application - Data Analyst", "email_body": "Hi", "reason": "match"}
@@ -198,6 +200,7 @@ class TestAnalyzePostVerbose:
 
     def test_irrelevant(self, monkeypatch):
         monkeypatch.setattr(scout_agent, "client", MagicMock())
+        monkeypatch.setattr(scout_agent, "USE_LLM_REVIEW", True)
         payload = {"is_relevant": False, "reason": "job board"}
         scout_agent.client.chat.completions.create.return_value = _mock_llm_response(payload)
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST)
@@ -205,12 +208,13 @@ class TestAnalyzePostVerbose:
 
     def test_unverified_model_email_becomes_apply_lead(self, monkeypatch):
         monkeypatch.setattr(scout_agent, "client", MagicMock())
+        monkeypatch.setattr(scout_agent, "USE_LLM_REVIEW", True)
         payload = {"is_relevant": True, "recruiter_email": "invented@realco.io",
                    "job_title": "Data Analyst", "company": "RealCo", "reason": "match"}
         scout_agent.client.chat.completions.create.return_value = _mock_llm_response(payload)
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST)
-        assert verdict == "apply"
-        assert parsed["recruiter_email"] is None
+        assert verdict == "ok"
+        assert parsed["recruiter_email"] == "hr@realco.io"
 
     def test_own_email_not_used(self, monkeypatch):
         # Regression: the agent must never email the candidate's own address
@@ -234,23 +238,25 @@ class TestAnalyzePostVerbose:
     def test_no_client(self, monkeypatch):
         monkeypatch.setattr(scout_agent, "client", None)
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST)
-        assert parsed is None and verdict == "no_client"
+        assert verdict == "ok" and parsed["recruiter_email"] == "hr@realco.io"
 
     def test_auth_error_verdict(self, monkeypatch):
         monkeypatch.setattr(scout_agent, "client", MagicMock())
+        monkeypatch.setattr(scout_agent, "USE_LLM_REVIEW", True)
         scout_agent.client.chat.completions.create.side_effect = Exception("401 Unauthorized: Authentication failed")
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST)
-        assert parsed is None and verdict == "auth_error"
+        assert verdict == "ok" and parsed["recruiter_email"] == "hr@realco.io"
 
     def test_json_error_then_gives_up(self, monkeypatch):
         monkeypatch.setattr(scout_agent, "client", MagicMock())
+        monkeypatch.setattr(scout_agent, "USE_LLM_REVIEW", True)
         scout_agent.client.chat.completions.create.side_effect = None
         bad = MagicMock()
         bad.choices = [MagicMock()]
         bad.choices[0].message.content = "not json at all {{{"
         scout_agent.client.chat.completions.create.return_value = bad
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST, max_retries=1)
-        assert parsed is None and verdict.startswith("json_error")
+        assert verdict == "ok" and parsed["recruiter_email"] == "hr@realco.io"
 
 
 # ---------------------------------------------------------------
@@ -383,6 +389,85 @@ class TestEnrichmentHelpers:
         assert job["application_url"] == "/apply"
 
 
+class TestDeterministicEligibility:
+    def _post(self, **overrides):
+        post = {
+            "job_title": "Junior Data Analyst",
+            "title": "Junior Data Analyst",
+            "company": "RealCo",
+            "location": "Noida, India",
+            "employment_type": "Full-time",
+            "source_type": "direct_apply",
+            "page_fetched": True,
+            "date_posted": datetime.now(timezone.utc).isoformat(),
+            "source_text": "SQL Power BI Excel reporting. 0-2 years experience.",
+            "source_emails": [],
+            "href": "https://jobs.example.org/1",
+            "application_url": "https://jobs.example.org/1",
+        }
+        post.update(overrides)
+        return post
+
+    def test_good_direct_apply_lead_passes_without_model(self, monkeypatch):
+        monkeypatch.setattr(scout_agent, "client", None)
+        parsed, verdict = scout_agent.analyze_post_verbose(self._post())
+        assert verdict == "apply"
+        assert parsed["fit_score"] >= scout_agent.MIN_APPLY_SCORE
+
+    @pytest.mark.parametrize("text", ["night shift", "rotational shift", "US shift"])
+    def test_rejects_non_day_shift(self, text):
+        post = self._post(source_text=f"SQL and Excel. {text}")
+        assert scout_agent._deterministic_rejection(post) == "explicit night or rotational shift"
+
+    def test_rejects_foreign_location(self):
+        post = self._post(location="London, United Kingdom")
+        assert "location is outside" in scout_agent._deterministic_rejection(post)
+
+    def test_rejects_salary_below_floor(self):
+        post = self._post(source_text="SQL and Power BI. Salary 5.5 LPA")
+        assert "below 6.5 LPA" in scout_agent._deterministic_rejection(post)
+
+    def test_title_experience_range_cannot_be_overridden_by_body(self):
+        post = self._post(job_title="Business Analytics | Experience: 5-7 yrs", title="Business Analytics | Experience: 5-7 yrs", source_text="SQL. A separate graduate program mentions 0-1 years.")
+        assert scout_agent._deterministic_rejection(post) == "requires more than two years of experience"
+
+
+class TestATSDiscovery:
+    def test_greenhouse_adapter_maps_public_feed(self, monkeypatch):
+        payload = {"jobs": [{
+            "title": "Junior Data Analyst", "content": "<p>SQL Power BI</p>",
+            "absolute_url": "https://boards.greenhouse.io/acme/jobs/1",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "location": {"name": "Noida, India"},
+        }]}
+        response = MagicMock()
+        response.json.return_value = payload
+        monkeypatch.setattr(scout_agent, "_request_with_retries", lambda *a, **k: response)
+        jobs = scout_agent._greenhouse_jobs({"name": "Acme", "slug": "acme"})
+        assert len(jobs) == 1
+        assert jobs[0]["source_type"] == "direct_apply"
+        assert jobs[0]["page_fetched"] is True
+
+    def test_serpapi_no_results_is_successful_empty(self, monkeypatch):
+        response = MagicMock()
+        response.json.return_value = {"error": "Google hasn't returned any results for this query."}
+        monkeypatch.setattr(scout_agent, "_request_with_retries", lambda *a, **k: response)
+        assert scout_agent._serpapi_search("query") == []
+
+
+class TestReliabilityFallbacks:
+    def test_writer_works_without_model(self, monkeypatch):
+        monkeypatch.setattr(scout_agent, "client", None)
+        written, status = scout_agent.compose_email({}, {"job_title": "Data Analyst", "company": "Acme"})
+        assert status == "fallback"
+        assert "attached my resume" in written["email_body"]
+        assert "6.5" not in written["email_body"]
+
+    def test_recipient_cooldown(self):
+        history = [{"route": "email", "email": "hr@acme.io", "timestamp": datetime.now(timezone.utc).isoformat()}]
+        assert scout_agent._recipient_in_cooldown(history, "HR@acme.io") is True
+
+
 # ---------------------------------------------------------------
 # Config sanity
 # ---------------------------------------------------------------
@@ -422,7 +507,7 @@ class TestMainRouting:
         monkeypatch.setattr(scout_agent, "SEND_EMAILS", True)
         monkeypatch.setattr(scout_agent, "SMTP_PREFLIGHT", False)
         monkeypatch.setattr(scout_agent, "send_telegram", lambda message: True)
-        monkeypatch.setattr(scout_agent, "process_pending_follow_ups", lambda: {"sent": 0, "failed": 0, "pending": 0})
+        monkeypatch.setattr(scout_agent, "process_pending_follow_ups", lambda *args: {"sent": 0, "failed": 0, "pending": 0})
         posts = [
             {"title": "Data Analyst", "body": "Apply", "href": "https://example.com/jobs/1"},
             {"title": "Business Analyst", "body": "Email", "href": "https://example.com/jobs/2"},

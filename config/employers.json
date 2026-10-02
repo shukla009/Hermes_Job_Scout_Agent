@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Razorpay",
+    "ats": "greenhouse",
+    "slug": "razorpaysoftwareprivatelimited"
+  },
+  {
+    "name": "Groww",
+    "ats": "greenhouse",
+    "slug": "groww"
+  },
+  {
+    "name": "Meesho",
+    "ats": "lever",
+    "slug": "meesho"
+  },
+  {
+    "name": "Paytm",
+    "ats": "lever",
+    "slug": "paytm"
+  },
+  {
+    "name": "Portcast",
+    "ats": "lever",
+    "slug": "portcast"
+  },
+  {
+    "name": "ProcDNA",
+    "ats": "smartrecruiters",
+    "slug": "ProcDNA"
+  },
+  {
+    "name": "NielsenIQ",
+    "ats": "smartrecruiters",
+    "slug": "NielsenIQ"
+  },
+  {
+    "name": "Bosch",
+    "ats": "smartrecruiters",
+    "slug": "BoschGroup"
+  }
+]

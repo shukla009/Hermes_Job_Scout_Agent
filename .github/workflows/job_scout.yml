@@ -2,7 +2,9 @@ name: Autonomous Job Scout Agent
 
 on:
   schedule:
-    - cron: '0 3 * * *'   # 08:30 AM IST (once per day)
+    - cron: '47 2 * * *'   # 08:17 AM IST
+    - cron: '7 9 * * *'    # 02:37 PM IST
+    - cron: '53 14 * * *'  # 08:23 PM IST
   workflow_dispatch:          # Allows manual trigger anytime from GitHub web/mobile UI
 
 permissions:
@@ -10,18 +12,18 @@ permissions:
 
 concurrency:
   group: job-scout
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   run-scout:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -48,12 +50,22 @@ jobs:
           CANDIDATE_PHONE: "+91 9013584218"
           CANDIDATE_GITHUB: "https://github.com/shukla009"
           MAX_POST_AGE_DAYS: "4"
+          MAX_POST_AGE_HOURS: "48"
           MAX_DIRECT_APPLY_AGE_DAYS: "21"
           MAX_APPLY_ALERTS: "5"
+          MAX_EMAILS_PER_RUN: "3"
+          MAX_EMAILS_PER_DAY: "6"
+          MAX_FOLLOWUPS_PER_RUN: "2"
+          RECIPIENT_COOLDOWN_DAYS: "30"
+          MIN_APPLY_SCORE: "54"
+          MIN_EMAIL_SCORE: "58"
+          MAX_CANDIDATES_PER_RUN: "50"
           HTTP_RETRIES: "2"
-          FOLLOW_UP_OFFSETS_DAYS: "5"
+          FOLLOW_UP_OFFSETS_DAYS: "4,9"
           SEND_EMAILS: "true"
           SMTP_PREFLIGHT: "true"
+          IMAP_CHECK: "true"
+          USE_LLM_REVIEW: "false"
         run: python scout_agent.py
 
       - name: Commit & Push Durable Agent State
@@ -63,7 +75,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add -- applied_history.json follow_up.json
+          git add -- applied_history.json follow_up.json suppressed_emails.json
           git diff --cached --quiet || (git commit -m "update: job scout state [skip ci]" && git push)
 
 
