@@ -73,7 +73,7 @@
   },
   {
     "email": "anand.work2205@gmail.com",
-    "job_title": "Business Analyst \u2013 Cards",
+    "job_title": "Business Analyst – Cards",
     "url": "https://www.linkedin.com/posts/lakshmi-padmanabhan-a22216180_hiring-business-analyst-cards-location-activity-7497895484691292160-Ccob",
     "timestamp": "2026-09-01 23:21:07"
   },
@@ -88,5 +88,25 @@
     "job_title": "Business Analyst (Odoo)",
     "url": "https://www.threads.com/@odooexpert_/post/DcvFmKFEZyQ/looking-for-a-business-analyst-odoo-with-years-of-experience-for-a-remote-role/",
     "timestamp": "2026-09-05 12:21:59"
+  },
+  {
+    "job_id": "0fe188c8850258a2616beea9",
+    "route": "apply",
+    "email": "",
+    "job_title": "Risk Analyst | Exp - 1 to 3 Yrs",
+    "company": "Paytm",
+    "url": "https://jobs.lever.co/paytm/beb24813-6250-46c4-b8af-63aae1f2bbe6",
+    "fit_score": 80,
+    "timestamp": "2026-10-02T15:44:26.056798+00:00"
+  },
+  {
+    "job_id": "8cd071fca6e03837f52b4f96",
+    "route": "apply",
+    "email": "",
+    "job_title": "Business Analyst",
+    "company": "ProcDNA",
+    "url": "https://jobs.smartrecruiters.com/ProcDNA/743999738938617-business-analyst?oga=true",
+    "fit_score": 75,
+    "timestamp": "2026-10-02T15:44:26.917597+00:00"
   }
 ]
