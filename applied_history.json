@@ -168,5 +168,25 @@
     "url": "https://jobs.lever.co/paytm/2294c39e-0394-472b-8ba0-736857fa24a8",
     "fit_score": 70,
     "timestamp": "2026-10-08T16:25:32.732699+00:00"
+  },
+  {
+    "job_id": "6cd375f3ed7539acbd6feca7",
+    "route": "apply",
+    "email": "",
+    "job_title": "Research Analyst",
+    "company": "",
+    "url": "https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRecognisedFpi=yes&intmId=14&regno=INH300005361",
+    "fit_score": 54,
+    "timestamp": "2026-10-08T20:15:50.529579+00:00"
+  },
+  {
+    "job_id": "9a727fc5a417f9d9bbc3398d",
+    "route": "apply",
+    "email": "",
+    "job_title": "Equity Research Analyst / Associate | Apply on Job",
+    "company": "",
+    "url": "https://jobs.micro1.ai/post/0174b525-afc3-42a5-9b5f-a0b9d2791762",
+    "fit_score": 54,
+    "timestamp": "2026-10-08T20:15:54.243189+00:00"
   }
 ]
