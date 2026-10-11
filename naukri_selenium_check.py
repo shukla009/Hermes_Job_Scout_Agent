@@ -18,7 +18,8 @@ LOGIN_URL = "https://www.naukri.com/nlogin/login"
 WAIT_SECONDS = 15
 SAFE_FAILURE_STATUSES = {"access_denied", "challenge", "needs_login", "needs_setup",
                          "invalid_session", "account_unverified", "ui_error", "navigation_failed",
-                         "invalid_credentials", "otp_required"}
+                         "invalid_credentials", "otp_required", "form_input_failed",
+                         "auth_network_denied", "rate_limited"}
 INVALID_CREDENTIALS_PATTERN = r"incorrect\s+(?:password|credentials)|invalid\s+(?:password|login|credentials)|(?:email|password)\s+(?:is\s+)?incorrect|wrong\s+password"
 OTP_PATTERN = r"\benter\s+(?:the\s+)?(?:otp|one[- ]time\s+(?:password|code))\b"
 
@@ -44,6 +45,7 @@ def build_chrome_options():
 
     options = Options()
     options.add_argument("--window-size=1365,900")
+    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
     if os.getenv("NAUKRI_CHROME_BINARY"):
         options.binary_location = os.environ["NAUKRI_CHROME_BINARY"]
     return options
@@ -103,13 +105,61 @@ def _first_visible(driver, selector):
                  if element.is_displayed()), None)
 
 
+def _submit_candidates(driver, password_field=None):
+    from selenium.webdriver.common.by import By
+
+    scope = driver
+    if password_field is not None:
+        forms = password_field.find_elements(By.XPATH, "./ancestor::form[1]")
+        if forms:
+            scope = forms[0]
+    return [element for element in scope.find_elements(By.CSS_SELECTOR, "button[type='submit']")
+            if element.is_displayed() and element.is_enabled()
+            and element.text.strip().casefold() == "login"]
+
+
+def safe_network_statuses(driver):
+    """Discard all raw network metadata; keep bounded Naukri XHR status codes."""
+    statuses = []
+    try:
+        records = driver.get_log("performance")
+    except Exception:
+        return statuses
+    for record in records[-1000:]:
+        try:
+            event = json.loads(record["message"])["message"]
+            if event.get("method") != "Network.responseReceived":
+                continue
+            parameters = event["params"]
+            if parameters.get("type") not in {"XHR", "Fetch"}:
+                continue
+            response = parameters["response"]
+            parsed = urlparse(response["url"])
+            host = (parsed.hostname or "").lower()
+            if parsed.scheme != "https" or not (host == "naukri.com" or host.endswith(".naukri.com")):
+                continue
+            if not re.search(r"(?:^|[/_-])(?:login|auth|authenticate|authentication|signin)(?:[/_.-]|$)", parsed.path, re.I):
+                # Unrelated API errors must not be reported as a login refusal.
+                continue
+            status = response["status"]
+            if isinstance(status, bool) or not isinstance(status, (int, float)) or not 100 <= status <= 599 or int(status) != status:
+                continue
+            if int(status) not in statuses:
+                statuses.append(int(status))
+        except Exception:
+            continue
+    return statuses[:20]
+
+
 def auth_diagnostics(driver):
     """Return fixed booleans and a URL category, never raw page data."""
     from selenium.webdriver.common.by import By
 
     diagnostics = {"invalid_credentials": False, "otp_required": False,
                    "username_field_visible": False, "password_field_visible": False,
-                   "login_button_visible": False, "url_kind": "other"}
+                   "login_button_visible": False, "submit_count": 0, "url_kind": "other",
+                   "username_aria_invalid": False, "password_aria_invalid": False,
+                   "username_html_invalid": False, "password_html_invalid": False}
     try:
         path = urlparse(driver.current_url).path
         if path.startswith("/nlogin"):
@@ -122,9 +172,16 @@ def auth_diagnostics(driver):
         diagnostics["otp_required"] |= _first_visible(driver, "input[autocomplete='one-time-code']") is not None
         diagnostics["username_field_visible"] = _first_visible(driver, "#usernameField") is not None
         diagnostics["password_field_visible"] = _first_visible(driver, "#passwordField") is not None
-        diagnostics["login_button_visible"] = any(
-            element.is_displayed() and element.text.strip().casefold() == "login"
-            for element in driver.find_elements(By.CSS_SELECTOR, "button[type='submit'], button"))
+        secret_field = _first_visible(driver, "#passwordField")
+        candidates = _submit_candidates(driver, secret_field)
+        diagnostics["submit_count"] = len(candidates)
+        diagnostics["login_button_visible"] = bool(candidates)
+        for prefix, selector in (("username", "#usernameField"), ("password", "#passwordField")):
+            field = _first_visible(driver, selector)
+            if field is not None:
+                diagnostics[prefix + "_aria_invalid"] = field.get_attribute("aria-invalid") == "true"
+                validity = field.get_property("validity")
+                diagnostics[prefix + "_html_invalid"] = isinstance(validity, dict) and validity.get("valid") is False
     except Exception:
         pass
     return diagnostics
@@ -192,6 +249,8 @@ def check_session(driver, expected_email, state=None, username=None, password=No
     result = {"status": "ui_error", "read_only": True,
               "auth_method": "password" if username and password else "saved_session",
               "phase": "configuration"}
+    input_matches = {}
+    submitted = False
     try:
         if not expected_email or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", expected_email):
             raise RefreshError("needs_setup")
@@ -211,14 +270,25 @@ def check_session(driver, expected_email, state=None, username=None, password=No
             if secret_field is None:
                 raise RefreshError("needs_login")
             _native_login_page(driver)
+            name_field.clear()
+            secret_field.clear()
             name_field.send_keys(username)
             secret_field.send_keys(password)
-            login = next((element for element in driver.find_elements(By.CSS_SELECTOR, "button[type='submit'], button")
-                          if element.is_displayed() and element.text.strip().casefold() == "login"), None)
-            if login is None:
+            input_matches = {"username_input_match": name_field.get_attribute("value") == username,
+                             "password_input_match": secret_field.get_attribute("value") == password}
+            if not all(input_matches.values()):
+                raise RefreshError("form_input_failed")
+            candidates = _submit_candidates(driver, secret_field)
+            if len(candidates) != 1:
                 raise RefreshError("ui_error")
             _native_login_page(driver)
+            try:
+                driver.get_log("performance")  # Discard navigation logs before submitting.
+            except Exception:
+                pass
+            login = candidates[0]
             login.click()
+            submitted = True
             result["phase"] = "credentials_submitted"
 
             def login_finished(current):
@@ -254,6 +324,15 @@ def check_session(driver, expected_email, state=None, username=None, password=No
         status = str(error) if isinstance(error, RefreshError) else "ui_error"
         result["status"] = status if status in SAFE_FAILURE_STATUSES else "ui_error"
         result["diagnostics"] = auth_diagnostics(driver)
+        result["diagnostics"].update(input_matches)
+        if submitted:
+            statuses = safe_network_statuses(driver)
+            result["diagnostics"]["auth_http_statuses"] = statuses
+            if result["status"] in {"needs_login", "ui_error", "navigation_failed"}:
+                if 429 in statuses:
+                    result["status"] = "rate_limited"
+                elif 403 in statuses:
+                    result["status"] = "auth_network_denied"
     return result
 
 

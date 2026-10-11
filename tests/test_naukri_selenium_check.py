@@ -15,19 +15,33 @@ STATE = {"cookies": [{"name": "session", "value": "private-session-value",
 
 
 class Element:
-    def __init__(self, text="", value=None, click=None, displayed=True):
+    def __init__(self, text="", value=None, click=None, displayed=True, enabled=True):
         self.text = text
         self.value = value
         self.on_click = click
         self.displayed = displayed
+        self.enabled = enabled
         self.keys = []
         self.clicks = 0
+        self.clears = 0
+        self.descendants = {}
 
     def is_displayed(self):
         return self.displayed
 
     def send_keys(self, value):
         self.keys.append(value)
+        self.value = (self.value or "") + value
+
+    def clear(self):
+        self.clears += 1
+        self.value = ""
+
+    def is_enabled(self):
+        return self.enabled
+
+    def find_elements(self, by, selector):
+        return self.descendants.get(selector, [])
 
     def click(self):
         self.clicks += 1
@@ -52,11 +66,13 @@ class Driver:
         self.username = Element()
         self.password = Element()
         self.submit = Element("Login", click=self.finish_login)
+        self.header_login = Element("Login")
         self.summary = Element(value=SUMMARY)
         self.save = Element("Save")
         self.editor_visible = True
         self.edit = Element("Edit profile summary", click=self.open_editor)
         self.quit_called = False
+        self.performance_logs = []
 
     def finish_login(self):
         self.current_url = ns.PROFILE_URL
@@ -81,7 +97,9 @@ class Driver:
         if "one-time-code" in selector:
             return [Element(displayed=True)] if self.otp_visible else []
         if selector == "button[type='submit'], button":
-            return [self.submit, self.save]
+            return [self.header_login, self.submit, self.save]
+        if selector == "button[type='submit']":
+            return [self.submit]
         if selector == "textarea#profileSummaryTxt, textarea[aria-label='Profile summary']":
             return [self.summary] if self.editor_visible else []
         if selector == "button[aria-label='Edit profile summary'], [role='button'][aria-label='Edit profile summary']":
@@ -93,6 +111,10 @@ class Driver:
 
     def execute_script(self, script, *args):
         self.scripts.append((script, args))
+        return False
+
+    def get_log(self, name):
+        return self.performance_logs.pop(0) if self.performance_logs else []
 
     def quit(self):
         self.quit_called = True
@@ -215,7 +237,8 @@ def test_authentication_failure_diagnostics_contain_only_safe_values(text):
     assert report["status"] in {"invalid_credentials", "otp_required"}
     assert all(private not in json.dumps(report) for private in (EMAIL, PASSWORD, SUMMARY, text))
     diagnostics = report["diagnostics"]
-    assert all(isinstance(value, bool) for key, value in diagnostics.items() if key != "url_kind")
+    assert all(isinstance(value, bool) for key, value in diagnostics.items()
+               if key not in {"url_kind", "submit_count", "auth_http_statuses"})
     assert diagnostics["url_kind"] == "login"
 
 
@@ -254,6 +277,111 @@ def test_failed_submission_records_phase_and_never_retries(post_submit_text, exp
     assert len(driver.password.keys) == 1
     assert driver.destinations == [ns.LOGIN_URL]
     assert PASSWORD not in json.dumps(report)
+
+
+def test_header_login_is_ignored_and_form_fields_are_cleared():
+    driver = Driver()
+    driver.username.value = "prefilled@example.com"
+    driver.password.value = "prefilled-private-password"
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] == "session_valid"
+    assert driver.header_login.clicks == 0 and driver.submit.clicks == 1
+    assert driver.username.clears == driver.password.clears == 1
+    assert driver.username.value == EMAIL and driver.password.value == PASSWORD
+
+
+def test_no_submit_button_does_not_click_generic_header_login(monkeypatch):
+    driver = Driver()
+    original = driver.find_elements
+    monkeypatch.setattr(driver, "find_elements", lambda by, selector: [] if selector == "button[type='submit']" else original(by, selector))
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] != "session_valid"
+    assert driver.header_login.clicks == driver.submit.clicks == 0
+
+
+def test_ambiguous_submit_buttons_stop_without_clicking(monkeypatch):
+    driver = Driver()
+    original = driver.find_elements
+    other = Element("Login")
+    monkeypatch.setattr(driver, "find_elements", lambda by, selector: [driver.submit, other] if selector == "button[type='submit']" else original(by, selector))
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] != "session_valid"
+    assert driver.submit.clicks == other.clicks == 0
+
+
+def test_disabled_submit_is_not_clicked():
+    driver = Driver()
+    driver.submit.enabled = False
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] != "session_valid"
+    assert driver.submit.clicks == driver.header_login.clicks == 0
+
+
+def test_submit_is_scoped_to_password_field_form(monkeypatch):
+    driver = Driver()
+    form = Element()
+    form.descendants["button[type='submit']"] = [driver.submit]
+    driver.password.descendants["./ancestor::form[1]"] = [form]
+    other = Element("Login")
+    original = driver.find_elements
+    monkeypatch.setattr(driver, "find_elements", lambda by, selector: [other, driver.submit] if selector == "button[type='submit']" else original(by, selector))
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] == "session_valid"
+    assert driver.submit.clicks == 1 and other.clicks == 0
+
+
+def test_password_readback_mismatch_stops_before_submission(monkeypatch):
+    driver = Driver()
+    monkeypatch.setattr(driver.password, "get_attribute", lambda name: "" if name == "value" else None)
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] == "form_input_failed"
+    assert driver.submit.clicks == 0
+    assert report["diagnostics"]["password_input_match"] is False
+    assert PASSWORD not in json.dumps(report)
+
+
+def network_response(status, url="https://www.naukri.com/private-login?token=secret", resource="XHR"):
+    return {"message": json.dumps({"message": {"method": "Network.responseReceived", "params": {
+        "type": resource, "response": {"status": status, "url": url,
+                                       "headers": {"Authorization": PASSWORD}, "body": SUMMARY}}}})}
+
+
+@pytest.mark.parametrize("status,expected", [(403, "auth_network_denied"), (429, "rate_limited")])
+def test_failed_login_reports_only_sanitized_http_status(status, expected):
+    driver = Driver()
+    def blocked_submit():
+        driver.performance_logs = [[network_response(status)]]
+    driver.submit.on_click = blocked_submit
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] == expected
+    assert report["phase"] == "credentials_submitted"
+    assert report["diagnostics"]["auth_http_statuses"] == [status]
+    assert driver.submit.clicks == 1
+    assert all(private not in json.dumps(report) for private in (PASSWORD, SUMMARY, "private-login", "secret", "Authorization"))
+
+
+def test_http_diagnostics_ignore_foreign_non_xhr_and_malformed_entries():
+    driver = Driver()
+    driver.performance_logs = [[network_response(403, "https://example.com/login"),
+                                network_response(429, resource="Document"),
+                                network_response(200), network_response(200),
+                                {"message": "invalid-json"}]]
+    assert ns.safe_network_statuses(driver) == [200]
+
+
+def test_unrelated_naukri_api_error_is_not_an_authentication_failure():
+    driver = Driver()
+    driver.performance_logs = [[network_response(403, "https://www.naukri.com/recommendations"), network_response(200)]]
+    assert ns.safe_network_statuses(driver) == [200]
+
+
+def test_pre_submit_http_errors_do_not_label_login_as_blocked():
+    driver = Driver()
+    driver.performance_logs = [[network_response(403)], []]
+    driver.submit.on_click = lambda: None
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] == "needs_login"
+    assert report["diagnostics"]["auth_http_statuses"] == []
 
 
 def test_options_use_headed_standard_chrome(monkeypatch):
