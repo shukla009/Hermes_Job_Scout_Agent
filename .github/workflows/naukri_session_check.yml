@@ -25,3 +25,10 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python naukri_refresh.py --check-session
+      - name: Notify Telegram if setup failed before checking login
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python -c "import json,pathlib; from naukri_refresh import _notify; p=pathlib.Path('naukri_refresh_report.json'); r=json.loads(p.read_text()) if p.exists() else {'status':'workflow_failed'}; _notify(r) if not r.get('telegram_notified') else None"

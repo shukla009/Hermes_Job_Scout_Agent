@@ -313,18 +313,39 @@ def refresh_profile(page, journal, expected_email, require_prepared=False):
 def _notify(result):
     token, chat = os.getenv("TELEGRAM_BOT_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
     if not token or not chat:
-        return
-    message = "Naukri refresh: " + result["status"] + "\nOriginal summary restored: " + str(result["original_restored"])
+        return False
+    descriptions = {
+        "completed": "Profile refresh completed; original summary verified.",
+        "recovered": "An interrupted edit was restored successfully.",
+        "session_valid": "GitHub cloud login verified; no profile change made.",
+        "needs_login": "Sign-in needs attention. Complete any Google login, OTP or CAPTCHA manually and renew the Naukri session.",
+        "account_unverified": "Could not verify the expected account. The session may have expired or a login challenge may be present; renew it manually.",
+        "needs_setup": "Private session or recovery-key setup is missing. Complete session setup before enabling refresh.",
+        "invalid_session": "The saved session is invalid. Repeat the private Naukri session setup.",
+        "restoration_pending": "Original summary could not be verified. Check your Naukri summary manually before another edit.",
+        "concurrent_edit": "The summary changed unexpectedly. Check the profile and pending recovery record before retrying.",
+        "recovery_unreadable": "Recovery data could not be decrypted. Keep the existing recovery key and check your summary manually.",
+        "unsafe_summary": "No safe sentence-ending full stop was found; refresh was skipped.",
+        "ui_error": "Naukri could not be accessed or its editor did not respond. Check login and the profile; scouting continues independently.",
+        "backup_failed": "The encrypted recovery backup could not be verified. The new refresh was not started.",
+        "workflow_failed": "The refresh workflow encountered a setup or infrastructure problem. Check the GitHub Actions run and your profile if needed.",
+    }
+    status = result.get("status", "workflow_failed")
+    if status not in descriptions:
+        status = "workflow_failed"
+    message = "Naukri Action : " + status + "\n" + descriptions[status]
+    if status != "session_valid":
+        message += "\nOriginal summary verified: " + ("Yes" if result.get("original_restored") else "Not confirmed")
     if result.get("after_timestamp"):
         message += "\nProfile updated: " + result["after_timestamp"]
     try:
         request = Request("https://api.telegram.org/bot" + token + "/sendMessage",
                           data=json.dumps({"chat_id": chat, "text": message}).encode(),
                           headers={"Content-Type": "application/json"})
-        with urlopen(request, timeout=15):
-            pass
+        with urlopen(request, timeout=15) as response:
+            return json.load(response).get("ok") is True
     except Exception:
-        pass
+        return False
 
 
 def main():
@@ -368,7 +389,7 @@ def main():
         except Exception as error:
             result["status"] = str(error) if isinstance(error, RefreshError) else "ui_error"
         if not args.prepare or result["status"] != "prepared":
-            _notify(result)
+            result["telegram_notified"] = bool(_notify(result))
     report = Path(os.getenv("NAUKRI_REPORT_PATH", "naukri_refresh_report.json"))
     report.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result))

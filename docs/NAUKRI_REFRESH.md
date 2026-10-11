@@ -16,6 +16,7 @@
 - In the tested profile, this means the period after `environments`, immediately before the `Portfolio:` line.
 - It saves, reloads, and verifies the change; restores the exact original text; saves, reloads, and verifies again.
 - It reports the observed timestamp and whether restoration was verified.
+- Telegram messages start with `Naukri Action :` and explain when login, OTP, CAPTCHA, recovery, or workflow setup needs attention.
 - A failed Naukri job does not block the scouting job.
 
 ## Private setup on your computer
