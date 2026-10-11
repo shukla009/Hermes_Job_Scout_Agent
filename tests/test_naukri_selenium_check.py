@@ -476,6 +476,19 @@ def test_options_use_headed_standard_chrome(monkeypatch):
     assert not any("headless" in arg or "AutomationControlled" in arg or "disable-web-security" in arg for arg in arguments)
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_http2_transport_option_preserves_browser_security(monkeypatch, enabled):
+    monkeypatch.delenv("NAUKRI_CHROME_BINARY", raising=False)
+    monkeypatch.setenv("NAUKRI_DISABLE_HTTP2", "true" if enabled else "false")
+    options = ns.build_chrome_options()
+    expected = ["--window-size=1365,900"] + (["--disable-http2"] if enabled else [])
+    assert options.arguments == expected
+    capabilities = options.to_capabilities()
+    assert capabilities["goog:loggingPrefs"] == {"performance": "ALL"}
+    assert capabilities.get("acceptInsecureCerts", False) is False
+    assert capabilities["goog:chromeOptions"].get("excludeSwitches", []) == []
+
+
 def test_main_cleans_up_and_reports_challenge_without_leaking_secrets(tmp_path, monkeypatch, capsys):
     from selenium import webdriver
     driver = Driver(login_text="CAPTCHA")

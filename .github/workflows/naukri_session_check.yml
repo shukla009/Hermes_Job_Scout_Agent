@@ -53,6 +53,7 @@ jobs:
         if: inputs.browser_environment == 'ubuntu-selenium'
         env:
           NAUKRI_REPORT_PATH: "naukri_refresh_report.json"
+          NAUKRI_DISABLE_HTTP2: "true"
           NAUKRI_USERNAME: "work.shuklashivank@gmail.com"
           NAUKRI_PASSWORD: ${{ secrets.NAUKRI_PASSWORD }}
           NAUKRI_STORAGE_STATE: ${{ secrets.NAUKRI_STORAGE_STATE }}

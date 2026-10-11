@@ -65,6 +65,7 @@ The existing Google login in your personal Chrome profile is not copied automati
 
 - The session-check workflow also offers `ubuntu-selenium`.
 - It uses standard Chrome with Selenium and an Xvfb virtual display on GitHub's Ubuntu runner. Your computer is not used for execution.
+- The diagnostic disables HTTP/2 after a cloud login request failed with `ERR_HTTP2_PROTOCOL_ERROR`. This tests transport compatibility without changing browser identity or bypassing authentication.
 - If `NAUKRI_PASSWORD` is configured as a GitHub Secret, it tests Naukri's native email/password login from a fresh browser.
 - The username remains `work.shuklashivank@gmail.com`; this must be a Naukri password, not your Gmail password.
 - Without that secret, it checks the previously saved Naukri session instead and reports `auth_method: saved_session`.

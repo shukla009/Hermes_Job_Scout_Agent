@@ -46,6 +46,9 @@ def build_chrome_options():
     options = Options()
     options.add_argument("--window-size=1365,900")
     options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+    if os.getenv("NAUKRI_DISABLE_HTTP2", "false").lower() == "true":
+        # Transport compatibility only; browser identity and HTTPS are unchanged.
+        options.add_argument("--disable-http2")
     if os.getenv("NAUKRI_CHROME_BINARY"):
         options.binary_location = os.environ["NAUKRI_CHROME_BINARY"]
     return options
