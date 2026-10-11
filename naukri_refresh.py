@@ -340,7 +340,9 @@ def _notify(result):
     if status not in descriptions:
         status = "workflow_failed"
     message = "Naukri Action : " + status + "\n" + descriptions[status]
-    if status != "session_valid":
+    if result.get("read_only"):
+        message += "\nProfile changes: None (read-only check)"
+    elif status != "session_valid":
         message += "\nOriginal summary verified: " + ("Yes" if result.get("original_restored") else "Not confirmed")
     if result.get("after_timestamp"):
         message += "\nProfile updated: " + result["after_timestamp"]
@@ -397,6 +399,7 @@ def main():
                 browser.close()
         except Exception as error:
             result["status"] = str(error) if isinstance(error, RefreshError) else "ui_error"
+        result["read_only"] = args.check_session
         if not args.prepare or result["status"] != "prepared":
             result["telegram_notified"] = bool(_notify(result))
     if diagnostics:
