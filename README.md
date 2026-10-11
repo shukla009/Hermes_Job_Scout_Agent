@@ -15,6 +15,17 @@ Hermes is an automated job-search assistant that runs on GitHub Actions, even wh
 - Attaches the existing `Shivank_Shukla_Data_Analyst.pdf` résumé to every application email.
 - Remembers previously handled jobs so they are not sent repeatedly.
 
+## Optional Naukri profile refresh
+
+- A separate, optional job can refresh your Naukri profile whenever this workflow runs, including Telegram `/run`.
+- It removes and restores the final sentence's full stop with two saves, leaving your summary and portfolio URL exactly as before.
+- The local test changed the profile update date to Today; improved recruiter visibility still needs to be measured.
+- The job uses a private Naukri session and verifies the correct account before editing.
+- Encrypted recovery protects interrupted edits, and unexpected text changes stop the refresh.
+- Your computer can be off after cloud login has been configured and validated.
+- The feature starts disabled and does not affect existing scouting or email delivery.
+- Follow [the private setup and activation guide](docs/NAUKRI_REFRESH.md) to configure secrets, check cloud login, and enable it.
+
 ## Daily schedule
 
 The GitHub Actions workflow runs at approximately:
