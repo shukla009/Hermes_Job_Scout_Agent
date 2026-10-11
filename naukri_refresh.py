@@ -24,6 +24,9 @@ def browser_launch_options():
     options = {"headless": headless == "true"}
     if channel == "chrome":
         options["channel"] = "chrome"
+    if os.getenv("NAUKRI_DISABLE_HTTP2", "false").lower() == "true":
+        # Transport compatibility only: HTTPS and all browser security remain on.
+        options["args"] = ["--disable-http2"]
     return options
 
 
@@ -422,7 +425,7 @@ def main():
             if args.check_session:
                 diagnostics["phase"] = phase
                 diagnostics["error_class"] = type(error).__name__
-                network_error = re.search(r"net::(ERR_[A-Z_]+)", str(error))
+                network_error = re.search(r"net::(ERR_[A-Z0-9_]+)", str(error))
                 if network_error:
                     diagnostics["network_error"] = network_error.group(1)
         result["read_only"] = args.check_session

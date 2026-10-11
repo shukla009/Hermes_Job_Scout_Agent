@@ -33,6 +33,7 @@ jobs:
           NAUKRI_EXPECTED_EMAIL: "work.shuklashivank@gmail.com"
           NAUKRI_BROWSER_CHANNEL: ${{ inputs.browser_environment == 'windows-chrome' && 'chrome' || 'chromium' }}
           NAUKRI_HEADLESS: ${{ inputs.browser_environment == 'windows-chrome' && 'false' || 'true' }}
+          NAUKRI_DISABLE_HTTP2: ${{ inputs.browser_environment == 'windows-chrome' && 'true' || 'false' }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python naukri_refresh.py --check-session
