@@ -77,6 +77,14 @@ The existing Google login in your personal Chrome profile is not copied automati
 - It uses no stealth flags, proxy service, or paid infrastructure; GitHub free allocations still apply.
 - The earlier Linux/Windows checks did not validate cloud access. Production refresh stays disabled until an alternative passes validation and a verified update.
 
+### Cloud validation result (11 Oct 2026)
+
+- The headed Selenium test submitted the correct native form once, but account access was not verified. Network diagnostics recorded `ERR_HTTP2_PROTOCOL_ERROR`.
+- A further test with HTTP/2 disabled still returned to login when opening the profile. It reported `needs_login` and an aborted request, without a visible invalid-password or OTP message.
+- Neither result proves that the password is wrong, nor that every GitHub runner will be blocked. They do mean this implementation has not established a working unattended cloud login.
+- The refresh remains disabled. More automatic password retries are not scheduled; first verify that native email/password login works manually on Naukri. Do not share the password in chat.
+- [Latest read-only cloud test](https://github.com/shukla009/Hermes_Job_Scout_Agent/actions/runs/38151061305) and [regression tests: 173 passed](https://github.com/shukla009/Hermes_Job_Scout_Agent/actions/runs/38151059110).
+
 ## Recovery and privacy
 
 - Before the first save, an encrypted recovery record contains the original and intermediate summaries.
