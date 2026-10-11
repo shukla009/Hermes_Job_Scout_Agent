@@ -13,6 +13,20 @@ from urllib.request import Request, urlopen
 PROFILE_URL = "https://www.naukri.com/mnjuser/profile"
 
 
+def browser_launch_options():
+    """Use a normal supported browser, without stealth flags or identity spoofing."""
+    channel = os.getenv("NAUKRI_BROWSER_CHANNEL", "chromium")
+    if channel not in {"chromium", "chrome"}:
+        raise RefreshError("needs_setup")
+    headless = os.getenv("NAUKRI_HEADLESS", "true").lower()
+    if headless not in {"true", "false"}:
+        raise RefreshError("needs_setup")
+    options = {"headless": headless == "true"}
+    if channel == "chrome":
+        options["channel"] = "chrome"
+    return options
+
+
 class RefreshError(Exception):
     """An intentionally redacted, machine-readable failure."""
 
@@ -379,7 +393,7 @@ def main():
                 journal.load()
             from playwright.sync_api import sync_playwright
             with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(headless=True)
+                browser = playwright.chromium.launch(**browser_launch_options())
                 context = browser.new_context(storage_state=state)
                 page = context.new_page()
                 page.set_default_timeout(15000)

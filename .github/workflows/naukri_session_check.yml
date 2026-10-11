@@ -2,13 +2,21 @@ name: Check Naukri Session (read only)
 
 on:
   workflow_dispatch:
+    inputs:
+      browser_environment:
+        description: Standard browser environment to validate
+        type: choice
+        options:
+          - windows-chrome
+          - ubuntu-chromium
+        default: windows-chrome
 
 permissions:
   contents: read
 
 jobs:
   check-session:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.browser_environment == 'windows-chrome' && 'windows-latest' || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
@@ -16,12 +24,15 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install -r requirements-naukri.txt
-      - run: python -m playwright install --with-deps chromium
+      - if: inputs.browser_environment != 'windows-chrome'
+        run: python -m playwright install --with-deps chromium
       - name: Verify cloud login without changing profile
         env:
           NAUKRI_REFRESH_ENABLED: "true"
           NAUKRI_STORAGE_STATE: ${{ secrets.NAUKRI_STORAGE_STATE }}
           NAUKRI_EXPECTED_EMAIL: "work.shuklashivank@gmail.com"
+          NAUKRI_BROWSER_CHANNEL: ${{ inputs.browser_environment == 'windows-chrome' && 'chrome' || 'chromium' }}
+          NAUKRI_HEADLESS: ${{ inputs.browser_environment == 'windows-chrome' && 'false' || 'true' }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python naukri_refresh.py --check-session
