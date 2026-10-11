@@ -264,6 +264,16 @@ def test_real_account_checker_rejects_login_and_challenge(body):
         REAL_ACCOUNT_VERIFIED(Page(), EMAIL)
 
 
+@pytest.mark.parametrize("body,status", [("Access Denied", "access_denied"), ("Please sign in", "needs_login"), ("Loading", "account_unverified")])
+def test_cloud_login_errors_are_classified_without_exposing_content(body, status):
+    from unittest.mock import MagicMock
+    page = MagicMock(url=nr.PROFILE_URL)
+    page.get_by_text.return_value.first.wait_for.side_effect = TimeoutError()
+    page.locator.return_value.inner_text.return_value = body
+    with pytest.raises(nr.RefreshError, match="^" + status + "$"):
+        REAL_ACCOUNT_VERIFIED(page, EMAIL)
+
+
 def test_crash_journal_uses_last_verified_original_when_recovering(journal):
     intermediate = nr.remove_prose_full_stop(SUMMARY)
     journal.write({"original": SUMMARY, "intermediate": intermediate, "email": EMAIL})

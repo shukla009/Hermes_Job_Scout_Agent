@@ -132,6 +132,11 @@ def _account_verified(page, email):
     try:
         page.get_by_text(email, exact=True).first.wait_for(state="visible", timeout=15000)
     except Exception:
+        text = page.locator("body").inner_text(timeout=15000)
+        if re.search(r"access denied|request blocked|not authorized to access|don't have permission|do not have permission", text, re.I):
+            raise RefreshError("access_denied") from None
+        if re.search(r"captcha|verify you are human|security challenge|login|log in|sign in", text, re.I):
+            raise RefreshError("needs_login") from None
         raise RefreshError("account_unverified") from None
     text = page.locator("body").inner_text(timeout=15000)
     if re.search(r"captcha|verify you are human|security challenge", text, re.I):
@@ -320,6 +325,7 @@ def _notify(result):
         "session_valid": "GitHub cloud login verified; no profile change made.",
         "needs_login": "Sign-in needs attention. Complete any Google login, OTP or CAPTCHA manually and renew the Naukri session.",
         "account_unverified": "Could not verify the expected account. The session may have expired or a login challenge may be present; renew it manually.",
+        "access_denied": "Naukri blocked access from the cloud browser. Refresh remains disabled; job scouting continues independently.",
         "needs_setup": "Private session or recovery-key setup is missing. Complete session setup before enabling refresh.",
         "invalid_session": "The saved session is invalid. Repeat the private Naukri session setup.",
         "restoration_pending": "Original summary could not be verified. Check your Naukri summary manually before another edit.",
@@ -357,6 +363,7 @@ def main():
     args = parser.parse_args()
     result = {"status": "disabled", "before_timestamp": None, "after_timestamp": None,
               "original_restored": False, "recovered": False}
+    diagnostics = {}
     if os.getenv("NAUKRI_REFRESH_ENABLED", "false").lower() == "true":
         try:
             secret = os.getenv("NAUKRI_STORAGE_STATE", "")
@@ -374,7 +381,9 @@ def main():
                 context = browser.new_context(storage_state=state)
                 page = context.new_page()
                 page.set_default_timeout(15000)
-                page.goto(PROFILE_URL, wait_until="domcontentloaded", timeout=45000)
+                navigation = page.goto(PROFILE_URL, wait_until="domcontentloaded", timeout=45000)
+                if args.check_session:
+                    diagnostics["http_status"] = navigation.status if navigation else None
                 email = os.getenv("NAUKRI_EXPECTED_EMAIL", "work.shuklashivank@gmail.com")
                 if args.check_session:
                     _account_verified(page, email)
@@ -390,6 +399,8 @@ def main():
             result["status"] = str(error) if isinstance(error, RefreshError) else "ui_error"
         if not args.prepare or result["status"] != "prepared":
             result["telegram_notified"] = bool(_notify(result))
+    if diagnostics:
+        result["diagnostics"] = diagnostics
     report = Path(os.getenv("NAUKRI_REPORT_PATH", "naukri_refresh_report.json"))
     report.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result))

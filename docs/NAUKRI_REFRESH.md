@@ -81,6 +81,7 @@ The existing Google login in your personal Chrome profile is not copied automati
 - In the scheduled two-phase workflow, recovery can happen during preparation; a subsequent successful refresh reports `completed` with recovery performed during preparation.
 - `disabled`: the feature is off.
 - `needs_login` / `account_unverified`: session, account, or login challenge needs attention.
+- `access_denied`: Naukri blocked the cloud browser; this requires a supported access route, not repeated login attempts.
 - `invalid_session` / `needs_setup`: private configuration is missing or malformed.
 - `unsafe_summary`: no safe sentence-ending full stop was found.
 - `concurrent_edit`: the text changed unexpectedly; it was not overwritten.
