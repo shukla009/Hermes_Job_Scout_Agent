@@ -380,6 +380,7 @@ def main():
     result = {"status": "disabled", "before_timestamp": None, "after_timestamp": None,
               "original_restored": False, "recovered": False}
     diagnostics = {}
+    phase = "configuration"
     if os.getenv("NAUKRI_REFRESH_ENABLED", "false").lower() == "true":
         try:
             secret = os.getenv("NAUKRI_STORAGE_STATE", "")
@@ -393,16 +394,21 @@ def main():
                 journal.load()
             from playwright.sync_api import sync_playwright
             with sync_playwright() as playwright:
+                phase = "browser_launch"
                 browser = playwright.chromium.launch(**browser_launch_options())
+                phase = "session_import"
                 context = browser.new_context(storage_state=state)
                 page = context.new_page()
                 page.set_default_timeout(15000)
+                phase = "profile_navigation"
                 navigation = page.goto(PROFILE_URL, wait_until="domcontentloaded", timeout=45000)
                 if args.check_session:
                     diagnostics["http_status"] = navigation.status if navigation else None
                 email = os.getenv("NAUKRI_EXPECTED_EMAIL", "work.shuklashivank@gmail.com")
                 if args.check_session:
+                    phase = "account_verification"
                     _account_verified(page, email)
+                    phase = "summary_read"
                     _read(page)
                     result.update(status="session_valid", before_timestamp=_timestamp(page))
                 elif args.prepare:
@@ -413,6 +419,12 @@ def main():
                 browser.close()
         except Exception as error:
             result["status"] = str(error) if isinstance(error, RefreshError) else "ui_error"
+            if args.check_session:
+                diagnostics["phase"] = phase
+                diagnostics["error_class"] = type(error).__name__
+                network_error = re.search(r"net::(ERR_[A-Z_]+)", str(error))
+                if network_error:
+                    diagnostics["network_error"] = network_error.group(1)
         result["read_only"] = args.check_session
         if not args.prepare or result["status"] != "prepared":
             result["telegram_notified"] = bool(_notify(result))
