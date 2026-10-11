@@ -1,4 +1,0 @@
-# Isolated from the job scout's dependencies.
-playwright>=1.55,<2
-cryptography>=45,<47
-pytest>=8,<9

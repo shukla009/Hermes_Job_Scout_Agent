@@ -1,2 +1,0 @@
-# Optional read-only standard Chrome experiment; isolated from production scouting.
-selenium>=4.30,<5

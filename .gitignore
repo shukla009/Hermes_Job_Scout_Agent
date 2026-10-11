@@ -8,10 +8,7 @@ test_model.py
 test_new_prompt.py
 .pytest_cache/
 run_report.json
-.naukri-private/
 .venv/
-naukri_refresh_report.json
-naukri_selenium_check_report.json
 playwright-report/
 test-results/
 

@@ -122,6 +122,18 @@ class TestJobBoardFilter:
         assert _is_job_board_url("https://www.indeed.co.in/viewjob?x=1") is True
         assert _is_job_board_url("https://www.naukri.com/job-listing-x") is True
 
+    def test_excluded_board_never_enters_the_processing_pipeline(self, monkeypatch):
+        monkeypatch.setattr(scout_agent, "SERPAPI_KEY", "test-key")
+        monkeypatch.setattr(scout_agent, "discover_ats_jobs", lambda: ([], {}))
+        monkeypatch.setattr(scout_agent, "_serpapi_search", lambda query: [{
+            "link": "https://www.naukri.com/job-listing-x", "date": "today",
+            "title": "Data Analyst", "snippet": "Hiring in Noida",
+        }])
+        network = MagicMock(side_effect=AssertionError("Excluded board must not be fetched"))
+        monkeypatch.setattr(scout_agent.requests, "get", network)
+        assert scout_agent.search_recruiter_posts() == []
+        network.assert_not_called()
+
     def test_allows_linkedin_posts(self):
         assert _is_job_board_url("https://www.linkedin.com/posts/someone-activity-123") is False
 
