@@ -32,6 +32,21 @@ def filtered_session(state):
     return validate_storage_state(filtered)
 
 
+def verify_profile(context, expected_email):
+    candidates = [page for page in context.pages
+                  if not page.is_closed() and naukri_host(urlparse(page.url).hostname or "")]
+    if not candidates:
+        raise RefreshError("Keep a Naukri tab open in the setup window.")
+    # A completed login may land on the homepage or open another Naukri tab.
+    page = candidates[-1]
+    page.goto(PROFILE_URL, wait_until="domcontentloaded", timeout=45000)
+    parsed = urlparse(page.url)
+    if not naukri_host(parsed.hostname or "") or parsed.path.rstrip("/") != "/mnjuser/profile":
+        raise RefreshError("Finish signing in to Naukri in this setup window.")
+    page.get_by_text(expected_email, exact=True).first.wait_for(state="visible", timeout=15000)
+    return page
+
+
 def github(args, payload=None):
     try:
         result = subprocess.run(["gh", *args], input=payload, text=True,
@@ -59,13 +74,15 @@ def main():
             context = playwright.chromium.launch_persistent_context(profile_dir, channel="chrome", headless=False)
             page = context.new_page()
             page.goto(PROFILE_URL, wait_until="domcontentloaded", timeout=45000)
-            print("Sign in yourself in the new Chrome window, using Continue with Google.")
-            print("Open your Naukri profile after login. Do not paste passwords or codes into this terminal.")
-            input("When your Naukri profile is visible, press Enter here: ")
-            parsed = urlparse(page.url)
-            if not naukri_host(parsed.hostname or "") or parsed.path.rstrip("/") != "/mnjuser/profile":
-                raise RefreshError("The selected tab is not the Naukri profile. Complete login and try again.")
-            page.get_by_text(args.expected_email, exact=True).first.wait_for(state="visible", timeout=15000)
+            print("Sign in yourself in the new Chrome window using an available Naukri login option.")
+            print("Do not paste passwords or codes into this terminal. The profile will be opened automatically.")
+            while True:
+                input("After login completes in this setup window, press Enter here: ")
+                try:
+                    page = verify_profile(context, args.expected_email)
+                    break
+                except Exception:
+                    print("The expected profile is not verified yet. The window will stay open; finish login and retry.")
             # Capture only this explicitly created browser session, then remove
             # every non-Naukri cookie/origin before persistence or transmission.
             state = filtered_session(context.storage_state())

@@ -38,7 +38,7 @@ The existing Google login in your personal Chrome profile is not copied automati
    python scripts/naukri_session_setup.py --publish
    ```
 
-6. Sign in with Google yourself in the new Chrome window, open the Naukri profile, and press Enter in the terminal.
+6. Sign in yourself in the new Chrome window using a supported Naukri login option, then press Enter in the terminal. The helper opens the profile automatically, including when login lands on the homepage or another Naukri tab. If verification fails, the window stays open for another attempt.
 
 - The helper verifies the account and exports only Naukri-domain session data.
 - Google cookies are excluded from the exported session.
