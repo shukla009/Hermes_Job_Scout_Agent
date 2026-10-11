@@ -53,8 +53,9 @@ The existing Google login in your personal Chrome profile is not copied automati
 
 - Open GitHub Actions and run **Check Naukri Session (read only)**.
 - This workflow checks whether GitHub-hosted Chromium can access the correct account and summary. It does not change the profile.
-- A successful check returns `session_valid`.
-- Then go to repository Settings → Secrets and variables → Actions → Variables.
+- A successful check returns `session_valid`, but only validates the browser tested. A Selenium or Windows Chrome success does not validate the production headless Chromium job.
+- Keep the feature disabled until the production browser's login and complete two-save restoration have been verified. Selenium currently has no production editing backend.
+- After that verification, go to repository Settings → Secrets and variables → Actions → Variables.
 - Set repository variable `NAUKRI_REFRESH_ENABLED` to `true`.
 - Future scheduled runs and Telegram `/run` requests will include the refresh.
 - Set the variable to `false` to disable it immediately for future runs.
@@ -68,6 +69,8 @@ The existing Google login in your personal Chrome profile is not copied automati
 - The username remains `work.shuklashivank@gmail.com`; this must be a Naukri password, not your Gmail password.
 - Without that secret, it checks the previously saved Naukri session instead and reports `auth_method: saved_session`.
 - This is a diagnostic experiment, not an automatic production replacement. It never saves profile changes or uploads a resume.
+- It submits the native form once using the keyboard. If the login redirect stalls without an explicit error, it opens the profile once to check whether authentication actually succeeded. It does not retry the password.
+- Diagnostics contain only fixed validation flags, bounded request counts, HTTP status numbers, and network-error codes; no URLs, passwords, response bodies, or session tokens.
 - A successful result requires both the expected account email and a readable summary. A green unit-test run alone is not proof of cloud access.
 - Access denial, OTP, and CAPTCHA stop the experiment and produce a `Naukri Action :` notice.
 - It uses no stealth flags, proxy service, or paid infrastructure; GitHub free allocations still apply.

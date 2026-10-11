@@ -119,36 +119,76 @@ def _submit_candidates(driver, password_field=None):
 
 
 def safe_network_statuses(driver):
-    """Discard all raw network metadata; keep bounded Naukri XHR status codes."""
-    statuses = []
+    return safe_network_diagnostics(driver)["auth_http_statuses"]
+
+
+def safe_network_diagnostics(driver):
+    """Keep counts, integer status codes and fixed errors; discard network data."""
+    types = {"Document", "Stylesheet", "Image", "Media", "Font", "Script", "TextTrack",
+             "XHR", "Fetch", "Prefetch", "EventSource", "WebSocket", "Manifest", "Other"}
+    result = {"log_capture_available": False, "resource_request_counts": {},
+              "auth_request_count": 0, "naukri_http_statuses": [],
+              "auth_http_statuses": [], "network_errors": []}
     try:
         records = driver.get_log("performance")
     except Exception:
-        return statuses
-    for record in records[-1000:]:
+        return result
+    result["log_capture_available"] = True
+    naukri_ids = set()
+    failures = []
+
+    def classify_url(url):
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        is_naukri = parsed.scheme == "https" and (host == "naukri.com" or host.endswith(".naukri.com"))
+        is_auth = is_naukri and bool(re.search(r"(?:^|[/_-])(?:login|auth|authenticate|authentication|signin)(?:[/_.-]|$)", parsed.path, re.I))
+        return is_naukri, is_auth
+
+    for record in records[-2000:]:
         try:
             event = json.loads(record["message"])["message"]
-            if event.get("method") != "Network.responseReceived":
-                continue
             parameters = event["params"]
+            method = event.get("method")
+            if method == "Network.requestWillBeSent":
+                is_naukri, is_auth = classify_url(parameters["request"]["url"])
+                if is_naukri:
+                    naukri_ids.add(parameters["requestId"])
+                    kind = parameters.get("type", "Other")
+                    kind = kind if kind in types else "Other"
+                    result["resource_request_counts"][kind] = min(2000, result["resource_request_counts"].get(kind, 0) + 1)
+                    result["auth_request_count"] += int(is_auth and kind in {"XHR", "Fetch"})
+                continue
+            if method == "Network.loadingFailed":
+                failures.append((parameters.get("requestId"), parameters.get("errorText", "")))
+                continue
+            if method != "Network.responseReceived":
+                continue
             if parameters.get("type") not in {"XHR", "Fetch"}:
                 continue
             response = parameters["response"]
-            parsed = urlparse(response["url"])
-            host = (parsed.hostname or "").lower()
-            if parsed.scheme != "https" or not (host == "naukri.com" or host.endswith(".naukri.com")):
-                continue
-            if not re.search(r"(?:^|[/_-])(?:login|auth|authenticate|authentication|signin)(?:[/_.-]|$)", parsed.path, re.I):
-                # Unrelated API errors must not be reported as a login refusal.
+            is_naukri, is_auth = classify_url(response["url"])
+            if not is_naukri:
                 continue
             status = response["status"]
             if isinstance(status, bool) or not isinstance(status, (int, float)) or not 100 <= status <= 599 or int(status) != status:
                 continue
-            if int(status) not in statuses:
-                statuses.append(int(status))
+            for key in (["naukri_http_statuses", "auth_http_statuses"] if is_auth else ["naukri_http_statuses"]):
+                if int(status) not in result[key] and len(result[key]) < 20:
+                    result[key].append(int(status))
         except Exception:
             continue
-    return statuses[:20]
+    known_errors = {"ERR_FAILED", "ERR_ABORTED", "ERR_TIMED_OUT", "ERR_CONNECTION_TIMED_OUT",
+                    "ERR_CONNECTION_RESET", "ERR_CONNECTION_REFUSED", "ERR_CONNECTION_CLOSED",
+                    "ERR_NAME_NOT_RESOLVED", "ERR_INTERNET_DISCONNECTED", "ERR_NETWORK_CHANGED",
+                    "ERR_HTTP2_PROTOCOL_ERROR", "ERR_QUIC_PROTOCOL_ERROR", "ERR_SSL_PROTOCOL_ERROR",
+                    "ERR_CERT_AUTHORITY_INVALID", "ERR_BLOCKED_BY_CLIENT", "ERR_BLOCKED_BY_RESPONSE"}
+    for request_id, text in failures:
+        if request_id not in naukri_ids:
+            continue
+        match = re.search(r"\b(ERR_[A-Z0-9_]+)\b", text)
+        if match and match.group(1) in known_errors and match.group(1) not in result["network_errors"]:
+            result["network_errors"].append(match.group(1))
+    return result
 
 
 def auth_diagnostics(driver):
@@ -245,12 +285,14 @@ def check_session(driver, expected_email, state=None, username=None, password=No
     """Run a strictly read-only check. All returned fields are safe to log."""
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.common.keys import Keys
 
     result = {"status": "ui_error", "read_only": True,
               "auth_method": "password" if username and password else "saved_session",
               "phase": "configuration"}
     input_matches = {}
     submitted = False
+    network_diagnostics = None
     try:
         if not expected_email or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", expected_email):
             raise RefreshError("needs_setup")
@@ -287,7 +329,7 @@ def check_session(driver, expected_email, state=None, username=None, password=No
             except Exception:
                 pass
             login = candidates[0]
-            login.click()
+            login.send_keys(Keys.ENTER)
             submitted = True
             result["phase"] = "credentials_submitted"
 
@@ -300,8 +342,14 @@ def check_session(driver, expected_email, state=None, username=None, password=No
             except RefreshError:
                 raise
             except Exception:
-                _guard(driver)
-                raise RefreshError("needs_login") from None
+                # A SPA can establish a session without leaving its login URL.
+                # Check the profile once, but never repeat the login submission.
+                _guard(driver, allow_login=True)
+            network_diagnostics = safe_network_diagnostics(driver)
+            if 429 in network_diagnostics["auth_http_statuses"]:
+                raise RefreshError("rate_limited")
+            if 403 in network_diagnostics["auth_http_statuses"]:
+                raise RefreshError("auth_network_denied")
         else:
             result["phase"] = "session_import"
             _import_session(driver, state)
@@ -320,14 +368,17 @@ def check_session(driver, expected_email, state=None, username=None, password=No
         if not _visible_account(driver, expected_email):
             raise RefreshError("account_unverified")
         result["status"] = "session_valid"
+        if network_diagnostics is not None:
+            result["diagnostics"] = network_diagnostics
     except Exception as error:
         status = str(error) if isinstance(error, RefreshError) else "ui_error"
         result["status"] = status if status in SAFE_FAILURE_STATUSES else "ui_error"
         result["diagnostics"] = auth_diagnostics(driver)
         result["diagnostics"].update(input_matches)
         if submitted:
-            statuses = safe_network_statuses(driver)
-            result["diagnostics"]["auth_http_statuses"] = statuses
+            network_diagnostics = network_diagnostics if network_diagnostics is not None else safe_network_diagnostics(driver)
+            result["diagnostics"].update(network_diagnostics)
+            statuses = network_diagnostics["auth_http_statuses"]
             if result["status"] in {"needs_login", "ui_error", "navigation_failed"}:
                 if 429 in statuses:
                     result["status"] = "rate_limited"

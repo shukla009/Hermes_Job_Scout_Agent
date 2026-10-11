@@ -25,12 +25,19 @@ class Element:
         self.clicks = 0
         self.clears = 0
         self.descendants = {}
+        self.on_enter = None
 
     def is_displayed(self):
         return self.displayed
 
     def send_keys(self, value):
         self.keys.append(value)
+        if value == "\ue007":
+            if self.on_enter:
+                self.on_enter()
+            elif self.on_click:
+                self.on_click()
+            return
         self.value = (self.value or "") + value
 
     def clear(self):
@@ -66,6 +73,7 @@ class Driver:
         self.username = Element()
         self.password = Element()
         self.submit = Element("Login", click=self.finish_login)
+        self.password.on_enter = lambda: self.submit.on_click() if self.submit.on_click else None
         self.header_login = Element("Login")
         self.summary = Element(value=SUMMARY)
         self.save = Element("Save")
@@ -73,6 +81,7 @@ class Driver:
         self.edit = Element("Edit profile summary", click=self.open_editor)
         self.quit_called = False
         self.performance_logs = []
+        self.profile_redirect_login = False
 
     def finish_login(self):
         self.current_url = ns.PROFILE_URL
@@ -86,6 +95,8 @@ class Driver:
     def get(self, url):
         self.destinations.append(url)
         self.current_url = self.login_redirect if url == ns.LOGIN_URL and self.login_redirect else url
+        if url == ns.PROFILE_URL and self.profile_redirect_login:
+            self.current_url = ns.LOGIN_URL
 
     def find_elements(self, by, selector):
         if selector == "body":
@@ -177,7 +188,8 @@ def test_native_login_verifies_summary_without_saving_or_reporting_private_data(
     assert report["read_only"] is True
     assert report["auth_method"] == "password"
     assert driver.username.keys == [EMAIL] and driver.password.keys == [PASSWORD]
-    assert driver.submit.clicks == 1 and driver.edit.clicks == 1
+    assert driver.submit.keys == ["\ue007"]
+    assert driver.submit.clicks == 0 and driver.edit.clicks == 1
     assert driver.save.clicks == 0 and driver.summary.keys == []
     assert all(private not in json.dumps(report) for private in (EMAIL, PASSWORD, SUMMARY))
 
@@ -237,8 +249,8 @@ def test_authentication_failure_diagnostics_contain_only_safe_values(text):
     assert report["status"] in {"invalid_credentials", "otp_required"}
     assert all(private not in json.dumps(report) for private in (EMAIL, PASSWORD, SUMMARY, text))
     diagnostics = report["diagnostics"]
-    assert all(isinstance(value, bool) for key, value in diagnostics.items()
-               if key not in {"url_kind", "submit_count", "auth_http_statuses"})
+    assert all(isinstance(diagnostics[key], bool) for key in (
+        "invalid_credentials", "otp_required", "username_field_visible", "password_field_visible"))
     assert diagnostics["url_kind"] == "login"
 
 
@@ -248,7 +260,8 @@ def test_optional_login_using_otp_does_not_mark_otp_as_required():
     assert diagnostics["otp_required"] is False
     report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
     assert report["status"] == "session_valid"
-    assert driver.submit.clicks == 1
+    assert driver.submit.clicks == 0
+    assert driver.password.keys == [PASSWORD] and driver.submit.keys == ["\ue007"]
 
 
 def test_visible_otp_entry_requires_human_login_before_password_submission():
@@ -267,15 +280,16 @@ def test_visible_otp_entry_requires_human_login_before_password_submission():
 ])
 def test_failed_submission_records_phase_and_never_retries(post_submit_text, expected):
     driver = Driver()
+    driver.profile_redirect_login = True
     def remain_on_login():
         driver.login_text = post_submit_text
     driver.submit.on_click = remain_on_login
     report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
     assert report["status"] == expected
-    assert report["phase"] == "credentials_submitted"
-    assert driver.submit.clicks == 1
-    assert len(driver.password.keys) == 1
-    assert driver.destinations == [ns.LOGIN_URL]
+    assert report["phase"] == ("profile_navigation" if expected == "needs_login" else "credentials_submitted")
+    assert driver.submit.clicks == 0
+    assert driver.password.keys == [PASSWORD] and driver.submit.keys == ["\ue007"]
+    assert driver.destinations == ([ns.LOGIN_URL, ns.PROFILE_URL] if expected == "needs_login" else [ns.LOGIN_URL])
     assert PASSWORD not in json.dumps(report)
 
 
@@ -285,7 +299,8 @@ def test_header_login_is_ignored_and_form_fields_are_cleared():
     driver.password.value = "prefilled-private-password"
     report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
     assert report["status"] == "session_valid"
-    assert driver.header_login.clicks == 0 and driver.submit.clicks == 1
+    assert driver.header_login.clicks == 0 and driver.submit.clicks == 0
+    assert driver.password.keys == [PASSWORD] and driver.submit.keys == ["\ue007"]
     assert driver.username.clears == driver.password.clears == 1
     assert driver.username.value == EMAIL and driver.password.value == PASSWORD
 
@@ -327,7 +342,8 @@ def test_submit_is_scoped_to_password_field_form(monkeypatch):
     monkeypatch.setattr(driver, "find_elements", lambda by, selector: [other, driver.submit] if selector == "button[type='submit']" else original(by, selector))
     report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
     assert report["status"] == "session_valid"
-    assert driver.submit.clicks == 1 and other.clicks == 0
+    assert driver.submit.clicks == 0 and other.clicks == 0
+    assert driver.password.keys == [PASSWORD] and driver.submit.keys == ["\ue007"]
 
 
 def test_password_readback_mismatch_stops_before_submission(monkeypatch):
@@ -349,14 +365,14 @@ def network_response(status, url="https://www.naukri.com/private-login?token=sec
 @pytest.mark.parametrize("status,expected", [(403, "auth_network_denied"), (429, "rate_limited")])
 def test_failed_login_reports_only_sanitized_http_status(status, expected):
     driver = Driver()
+    driver.profile_redirect_login = True
     def blocked_submit():
         driver.performance_logs = [[network_response(status)]]
     driver.submit.on_click = blocked_submit
     report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
     assert report["status"] == expected
-    assert report["phase"] == "credentials_submitted"
     assert report["diagnostics"]["auth_http_statuses"] == [status]
-    assert driver.submit.clicks == 1
+    assert driver.submit.clicks == 0 and driver.password.keys == [PASSWORD] and driver.submit.keys == ["\ue007"]
     assert all(private not in json.dumps(report) for private in (PASSWORD, SUMMARY, "private-login", "secret", "Authorization"))
 
 
@@ -377,11 +393,81 @@ def test_unrelated_naukri_api_error_is_not_an_authentication_failure():
 
 def test_pre_submit_http_errors_do_not_label_login_as_blocked():
     driver = Driver()
+    driver.profile_redirect_login = True
     driver.performance_logs = [[network_response(403)], []]
     driver.submit.on_click = lambda: None
     report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
     assert report["status"] == "needs_login"
     assert report["diagnostics"]["auth_http_statuses"] == []
+
+
+def test_login_url_stuck_but_verified_profile_can_still_pass():
+    driver = Driver()
+    driver.submit.on_click = lambda: None
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] == "session_valid"
+    assert driver.destinations == [ns.LOGIN_URL, ns.PROFILE_URL]
+    assert driver.submit.keys == ["\ue007"] and driver.submit.clicks == 0
+    assert driver.summary.keys == [] and driver.save.clicks == 0
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Incorrect password", "invalid_credentials"),
+    ("Enter the OTP", "otp_required"),
+    ("CAPTCHA", "challenge"),
+])
+def test_explicit_post_submit_errors_prevent_optimistic_profile_visit(text, expected):
+    driver = Driver()
+    driver.submit.on_click = lambda: setattr(driver, "login_text", text)
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] == expected
+    assert driver.destinations == [ns.LOGIN_URL]
+    assert driver.submit.keys == ["\ue007"]
+
+
+def test_unrelated_naukri_403_never_becomes_authentication_denial():
+    driver = Driver()
+    driver.profile_redirect_login = True
+    driver.submit.on_click = lambda: setattr(driver, "performance_logs", [[
+        network_response(403, "https://www.naukri.com/analytics/profile-view?private=secret")]])
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] == "needs_login"
+    assert report["diagnostics"]["auth_http_statuses"] == []
+    assert report["diagnostics"]["naukri_http_statuses"] == [403]
+    assert "analytics" not in json.dumps(report) and "secret" not in json.dumps(report)
+
+
+def test_network_capture_counts_and_allowlisted_errors_without_raw_data():
+    def event(method, parameters):
+        return {"message": json.dumps({"message": {"method": method, "params": parameters}})}
+    driver = Driver()
+    driver.performance_logs = [[
+        event("Network.requestWillBeSent", {"requestId": "private-id", "type": "Fetch",
+              "request": {"url": "https://www.naukri.com/auth/login?token=secret",
+                          "headers": {"Authorization": PASSWORD}, "postData": SUMMARY}}),
+        event("Network.loadingFailed", {"requestId": "private-id",
+              "errorText": "net::ERR_CONNECTION_RESET private details " + PASSWORD}),
+        event("Network.loadingFailed", {"requestId": "private-id", "errorText": "ERR_SECRET_VALUE"}),
+        event("Network.loadingFailed", {"requestId": "foreign-id", "errorText": "ERR_FAILED"}),
+    ]]
+    diagnostics = ns.safe_network_diagnostics(driver)
+    assert diagnostics["log_capture_available"] is True
+    assert diagnostics["resource_request_counts"] == {"Fetch": 1}
+    assert diagnostics["auth_request_count"] == 1
+    assert diagnostics["network_errors"] == ["ERR_CONNECTION_RESET"]
+    assert all(private not in json.dumps(diagnostics) for private in (
+        "private-id", "token", "secret", PASSWORD, SUMMARY, "Authorization", "ERR_SECRET_VALUE"))
+
+
+def test_unavailable_performance_log_has_safe_empty_diagnostics(monkeypatch):
+    driver = Driver()
+    def unavailable(name):
+        raise RuntimeError(PASSWORD)
+    monkeypatch.setattr(driver, "get_log", unavailable)
+    diagnostics = ns.safe_network_diagnostics(driver)
+    assert diagnostics["log_capture_available"] is False
+    assert diagnostics["auth_http_statuses"] == []
+    assert PASSWORD not in json.dumps(diagnostics)
 
 
 def test_options_use_headed_standard_chrome(monkeypatch):
