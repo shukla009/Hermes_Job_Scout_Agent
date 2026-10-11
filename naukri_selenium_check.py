@@ -16,6 +16,11 @@ from naukri_refresh import PROFILE_URL, RefreshError, _notify, validate_storage_
 
 LOGIN_URL = "https://www.naukri.com/nlogin/login"
 WAIT_SECONDS = 15
+SAFE_FAILURE_STATUSES = {"access_denied", "challenge", "needs_login", "needs_setup",
+                         "invalid_session", "account_unverified", "ui_error", "navigation_failed",
+                         "invalid_credentials", "otp_required"}
+INVALID_CREDENTIALS_PATTERN = r"incorrect\s+(?:password|credentials)|invalid\s+(?:password|login|credentials)|(?:email|password)\s+(?:is\s+)?incorrect|wrong\s+password"
+OTP_PATTERN = r"\benter\s+(?:the\s+)?(?:otp|one[- ]time\s+(?:password|code))\b"
 
 
 def detect_page_status(text, url):
@@ -24,6 +29,10 @@ def detect_page_status(text, url):
         return "access_denied"
     if re.search(r"captcha|verify you are human|security challenge|unusual traffic", text, re.I):
         return "challenge"
+    if re.search(INVALID_CREDENTIALS_PATTERN, text, re.I):
+        return "invalid_credentials"
+    if re.search(OTP_PATTERN, text, re.I):
+        return "otp_required"
     parsed = urlparse(url)
     if parsed.path.startswith("/nlogin") or re.search(r"session (?:has )?expired|please (?:log|sign) in", text, re.I):
         return "needs_login"
@@ -54,6 +63,8 @@ def _guard(driver, allow_login=False):
     status = detect_page_status(_body(driver), driver.current_url)
     if status and not (allow_login and status == "needs_login"):
         raise RefreshError(status)
+    if _first_visible(driver, "input[autocomplete='one-time-code']") is not None:
+        raise RefreshError("otp_required")
 
 
 def _native_login_page(driver):
@@ -90,6 +101,33 @@ def _first_visible(driver, selector):
 
     return next((element for element in driver.find_elements(By.CSS_SELECTOR, selector)
                  if element.is_displayed()), None)
+
+
+def auth_diagnostics(driver):
+    """Return fixed booleans and a URL category, never raw page data."""
+    from selenium.webdriver.common.by import By
+
+    diagnostics = {"invalid_credentials": False, "otp_required": False,
+                   "username_field_visible": False, "password_field_visible": False,
+                   "login_button_visible": False, "url_kind": "other"}
+    try:
+        path = urlparse(driver.current_url).path
+        if path.startswith("/nlogin"):
+            diagnostics["url_kind"] = "login"
+        elif path.startswith("/mnjuser/profile"):
+            diagnostics["url_kind"] = "profile"
+        text = _body(driver)
+        diagnostics["invalid_credentials"] = bool(re.search(INVALID_CREDENTIALS_PATTERN, text, re.I))
+        diagnostics["otp_required"] = bool(re.search(OTP_PATTERN, text, re.I))
+        diagnostics["otp_required"] |= _first_visible(driver, "input[autocomplete='one-time-code']") is not None
+        diagnostics["username_field_visible"] = _first_visible(driver, "#usernameField") is not None
+        diagnostics["password_field_visible"] = _first_visible(driver, "#passwordField") is not None
+        diagnostics["login_button_visible"] = any(
+            element.is_displayed() and element.text.strip().casefold() == "login"
+            for element in driver.find_elements(By.CSS_SELECTOR, "button[type='submit'], button"))
+    except Exception:
+        pass
+    return diagnostics
 
 
 def _read_summary(driver):
@@ -181,6 +219,7 @@ def check_session(driver, expected_email, state=None, username=None, password=No
                 raise RefreshError("ui_error")
             _native_login_page(driver)
             login.click()
+            result["phase"] = "credentials_submitted"
 
             def login_finished(current):
                 _guard(current, allow_login=True)
@@ -212,7 +251,9 @@ def check_session(driver, expected_email, state=None, username=None, password=No
             raise RefreshError("account_unverified")
         result["status"] = "session_valid"
     except Exception as error:
-        result["status"] = str(error) if isinstance(error, RefreshError) else "ui_error"
+        status = str(error) if isinstance(error, RefreshError) else "ui_error"
+        result["status"] = status if status in SAFE_FAILURE_STATUSES else "ui_error"
+        result["diagnostics"] = auth_diagnostics(driver)
     return result
 
 

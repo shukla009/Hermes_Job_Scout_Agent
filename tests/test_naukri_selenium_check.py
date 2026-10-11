@@ -40,11 +40,12 @@ class Element:
 
 class Driver:
     """Emulate the native login and editor; record every mutation attempt."""
-    def __init__(self, login_text="Login", account=EMAIL, login_redirect=None):
+    def __init__(self, login_text="Login", account=EMAIL, login_redirect=None, otp_visible=False):
         self.current_url = ns.LOGIN_URL
         self.login_text = login_text
         self.account = account
         self.login_redirect = login_redirect
+        self.otp_visible = otp_visible
         self.destinations = []
         self.cookies = []
         self.scripts = []
@@ -77,6 +78,8 @@ class Driver:
             return [self.username]
         if selector == "#passwordField":
             return [self.password]
+        if "one-time-code" in selector:
+            return [Element(displayed=True)] if self.otp_visible else []
         if selector == "button[type='submit'], button":
             return [self.submit, self.save]
         if selector == "textarea#profileSummaryTxt, textarea[aria-label='Profile summary']":
@@ -191,6 +194,66 @@ def test_unexpected_browser_exception_is_redacted(monkeypatch):
     report = ns.check_session(driver, EMAIL, state=STATE)
     assert report["status"] == "ui_error"
     assert PASSWORD not in json.dumps(report) and SUMMARY not in json.dumps(report)
+
+
+def test_arbitrary_refresh_error_is_not_exposed(monkeypatch):
+    driver = Driver()
+    def private_failure(current):
+        raise ns.RefreshError(PASSWORD + SUMMARY)
+    monkeypatch.setattr(ns, "_read_summary", private_failure)
+    report = ns.check_session(driver, EMAIL, state=STATE)
+    assert report["status"] == "ui_error"
+    assert PASSWORD not in json.dumps(report) and SUMMARY not in json.dumps(report)
+
+
+@pytest.mark.parametrize("text", [
+    "Invalid credentials", "Incorrect password", "Enter the OTP", "Enter one-time password",
+])
+def test_authentication_failure_diagnostics_contain_only_safe_values(text):
+    driver = Driver(login_text=text)
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] in {"invalid_credentials", "otp_required"}
+    assert all(private not in json.dumps(report) for private in (EMAIL, PASSWORD, SUMMARY, text))
+    diagnostics = report["diagnostics"]
+    assert all(isinstance(value, bool) for key, value in diagnostics.items() if key != "url_kind")
+    assert diagnostics["url_kind"] == "login"
+
+
+def test_optional_login_using_otp_does_not_mark_otp_as_required():
+    driver = Driver(login_text="Login\nLogin using OTP")
+    diagnostics = ns.auth_diagnostics(driver)
+    assert diagnostics["otp_required"] is False
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] == "session_valid"
+    assert driver.submit.clicks == 1
+
+
+def test_visible_otp_entry_requires_human_login_before_password_submission():
+    driver = Driver(login_text="Login using OTP", otp_visible=True)
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] == "otp_required"
+    assert report["diagnostics"]["otp_required"] is True
+    assert not driver.username.keys and not driver.password.keys
+    assert driver.submit.clicks == 0
+
+
+@pytest.mark.parametrize("post_submit_text,expected", [
+    ("Invalid credentials", "invalid_credentials"),
+    ("Enter the OTP", "otp_required"),
+    ("Login\nLogin using OTP", "needs_login"),
+])
+def test_failed_submission_records_phase_and_never_retries(post_submit_text, expected):
+    driver = Driver()
+    def remain_on_login():
+        driver.login_text = post_submit_text
+    driver.submit.on_click = remain_on_login
+    report = ns.check_session(driver, EMAIL, username=EMAIL, password=PASSWORD)
+    assert report["status"] == expected
+    assert report["phase"] == "credentials_submitted"
+    assert driver.submit.clicks == 1
+    assert len(driver.password.keys) == 1
+    assert driver.destinations == [ns.LOGIN_URL]
+    assert PASSWORD not in json.dumps(report)
 
 
 def test_options_use_headed_standard_chrome(monkeypatch):

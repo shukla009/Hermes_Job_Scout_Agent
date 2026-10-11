@@ -341,6 +341,8 @@ def _notify(result):
         "recovered": "An interrupted edit was restored successfully.",
         "session_valid": "GitHub cloud login verified; no profile change made.",
         "needs_login": "Sign-in needs attention. Complete any Google login, OTP or CAPTCHA manually and renew the Naukri session.",
+        "invalid_credentials": "Naukri rejected the native login. Check the NAUKRI_PASSWORD secret; it must be your Naukri password, not your Gmail password.",
+        "otp_required": "Naukri requires a one-time verification code. Cloud login cannot complete unattended until that requirement is resolved.",
         "account_unverified": "Could not verify the expected account. The session may have expired or a login challenge may be present; renew it manually.",
         "access_denied": "Naukri blocked access from the cloud browser. Refresh remains disabled; job scouting continues independently.",
         "needs_setup": "Private session or recovery-key setup is missing. Complete session setup before enabling refresh.",
