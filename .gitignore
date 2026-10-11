@@ -11,6 +11,7 @@ run_report.json
 .naukri-private/
 .venv/
 naukri_refresh_report.json
+naukri_selenium_check_report.json
 playwright-report/
 test-results/
 

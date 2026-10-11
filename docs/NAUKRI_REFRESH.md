@@ -60,6 +60,19 @@ The existing Google login in your personal Chrome profile is not copied automati
 - Set the variable to `false` to disable it immediately for future runs.
 - Session expiry or a login challenge requires another manual session setup and read-only check.
 
+## Additional read-only Selenium experiment
+
+- The session-check workflow also offers `ubuntu-selenium`.
+- It uses standard Chrome with Selenium and an Xvfb virtual display on GitHub's Ubuntu runner. Your computer is not used for execution.
+- If `NAUKRI_PASSWORD` is configured as a GitHub Secret, it tests Naukri's native email/password login from a fresh browser.
+- The username remains `work.shuklashivank@gmail.com`; this must be a Naukri password, not your Gmail password.
+- Without that secret, it checks the previously saved Naukri session instead and reports `auth_method: saved_session`.
+- This is a diagnostic experiment, not an automatic production replacement. It never saves profile changes or uploads a resume.
+- A successful result requires both the expected account email and a readable summary. A green unit-test run alone is not proof of cloud access.
+- Access denial, OTP, and CAPTCHA stop the experiment and produce a `Naukri Action :` notice.
+- It uses no stealth flags, proxy service, or paid infrastructure; GitHub free allocations still apply.
+- The earlier Linux/Windows checks did not validate cloud access. Production refresh stays disabled until an alternative passes validation and a verified update.
+
 ## Recovery and privacy
 
 - Before the first save, an encrypted recovery record contains the original and intermediate summaries.

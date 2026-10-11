@@ -9,6 +9,7 @@ on:
         options:
           - windows-chrome
           - ubuntu-chromium
+          - ubuntu-selenium
         default: windows-chrome
 
 permissions:
@@ -24,9 +25,20 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install -r requirements-naukri.txt
-      - if: inputs.browser_environment != 'windows-chrome'
+      - if: inputs.browser_environment == 'ubuntu-chromium'
         run: python -m playwright install --with-deps chromium
+      - name: Install Selenium and virtual display
+        if: inputs.browser_environment == 'ubuntu-selenium'
+        run: |
+          python -m pip install -r requirements-naukri-selenium.txt
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y xvfb
+          google-chrome --version
+      - name: Run Selenium safety tests
+        if: inputs.browser_environment == 'ubuntu-selenium'
+        run: python -m pytest tests/test_naukri_selenium_check.py -q
       - name: Verify cloud login without changing profile
+        if: inputs.browser_environment != 'ubuntu-selenium'
         env:
           NAUKRI_REFRESH_ENABLED: "true"
           NAUKRI_STORAGE_STATE: ${{ secrets.NAUKRI_STORAGE_STATE }}
@@ -37,6 +49,17 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python naukri_refresh.py --check-session
+      - name: Verify Selenium login and summary without changing profile
+        if: inputs.browser_environment == 'ubuntu-selenium'
+        env:
+          NAUKRI_REPORT_PATH: "naukri_refresh_report.json"
+          NAUKRI_USERNAME: "work.shuklashivank@gmail.com"
+          NAUKRI_PASSWORD: ${{ secrets.NAUKRI_PASSWORD }}
+          NAUKRI_STORAGE_STATE: ${{ secrets.NAUKRI_STORAGE_STATE }}
+          NAUKRI_EXPECTED_EMAIL: "work.shuklashivank@gmail.com"
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: xvfb-run -a python naukri_selenium_check.py
       - name: Notify Telegram if setup failed before checking login
         if: failure()
         env:
