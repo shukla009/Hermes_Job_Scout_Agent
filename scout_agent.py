@@ -809,11 +809,14 @@ def process_pending_follow_ups(max_sends=None):
         if not due or checked >= max_sends or not SEND_EMAILS or not ACTIVE_STORE:
             updated.append(record)
             continue
-        checked += 1
         original = record.get("original_message_id") or record.get("message_id")
         if not original or not re.fullmatch(r"<[^<>\s]+>", original):
             updated.append(record)
             continue
+        job = ACTIVE_STORE.data.get("jobs", {}).get(record.get("job_id", ""), {}) if hasattr(ACTIVE_STORE, "data") else {}
+        if job.get("outcome") in {"notfit", "rejected", "reply", "interview"} or job.get("submitted"):
+            continue
+        checked += 1
         mailbox_status = _mailbox_status(record)
         if mailbox_status == "reply":
             print(f"[Follow-up] Stopped after reply from {record.get('email', '')}")

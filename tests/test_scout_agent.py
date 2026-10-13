@@ -361,6 +361,7 @@ class TestFollowUps:
         monkeypatch.setattr(scout_agent, "save_follow_up", lambda value: None)
         monkeypatch.setattr(scout_agent, "SEND_EMAILS", True)
         store = MagicMock()
+        store.data = {"jobs": {}}
         monkeypatch.setattr(scout_agent, "ACTIVE_STORE", store)
         check = MagicMock(return_value="unavailable")
         send = MagicMock()
@@ -380,6 +381,7 @@ class TestFollowUps:
         monkeypatch.setattr(scout_agent, "_mailbox_status", lambda record: "none")
         monkeypatch.setattr(scout_agent, "_is_suppressed", lambda email: False)
         store = MagicMock()
+        store.data = {"jobs": {}}
         store.reserve_send.return_value = {"id":"intent","message_id":"<follow@scout>"}
         store.finish_send.return_value = True
         monkeypatch.setattr(scout_agent, "ACTIVE_STORE", store)
