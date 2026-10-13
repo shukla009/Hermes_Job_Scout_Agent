@@ -211,7 +211,7 @@ def send_email(to_email, subject, body_text, *, attach_resume=True):
     try:
         if attach_resume:
             with open(RESUME_PATH, "rb") as file:
-                attachment = MIMEBase("application", "octet-stream")
+                attachment = MIMEBase("application", "pdf")
                 attachment.set_payload(file.read())
             encoders.encode_base64(attachment)
             attachment.add_header("Content-Disposition", f'attachment; filename="{os.path.basename(RESUME_PATH)}"')
@@ -749,25 +749,36 @@ def analyze_post_verbose(post, max_retries=3):
         "tier": checked["tier"], "warnings": checked["warnings"],
         "evidence": checked["evidence"], "email_safe": checked["email_safe"],
         "source_id": post.get("source_id", ""),
+        "matched_skills": checked["matched_skills"],
     }
     result["job_id"] = _job_fingerprint({"href": result["application_url"], "job_title": result["job_title"], "company": result["company"]})
     return result, "ok" if result["recruiter_email"] else "apply"
 
 
 def _fallback_email(analysis):
-    from scout_matching import proof_points
+    from scout_matching import proof_points, load_profile
     title = analysis.get("job_title") or "Analyst"
     company = analysis.get("company") or "your team"
     points = analysis.get("evidence") or proof_points(analysis.get("family", "data"))
+    profile = load_profile()
+    current = next((row for row in profile.get("experience", []) if row.get("kind") == "full_time" and not row.get("end")), None)
+    current_background = (f"I currently work as {current['title']} at {current['employer']} (full-time since August 2026). "
+                          if current else "My background combines research and analytical reporting. ")
+    listed_only = {skill.lower() for skill in profile.get("listed_only_skills", [])}
+    supported_skills = [skill for skill in analysis.get("matched_skills", []) if skill.lower() not in listed_only][:3]
+    skill_line = ("Relevant skills for this opening: " + ", ".join(supported_skills) + ".\n\n") if supported_skills else ""
+    vacancy_line = ("Vacancy reference: " + str(analysis["application_url"]) + "\n\n") if analysis.get("application_url") else ""
     body = (
         f"Hello,\n\nI would like to apply for the {title} role at {company}. "
-        "My background combines research, analytical reporting and internship-based data analytics.\n\n"
+        + current_background + "I have completed both my BSc Data Analytics and BCA degrees.\n\n"
+        + skill_line
         + "\n".join("- " + str(point) for point in points[:2])
         + f"\n\nRelevant work: {CANDIDATE_PORTFOLIO}\n\n"
+        + vacancy_line
         + "I have attached my resume for review. I would welcome an opportunity to discuss the role.\n\n"
         + f"Regards,\n{CANDIDATE_NAME}\n{CANDIDATE_PHONE}\n{CANDIDATE_LINKEDIN}"
     )
-    return {"email_subject": f"Application for {title} - {CANDIDATE_NAME}", "email_body": body}
+    return {"email_subject": f"Application for {title} at {company} - {CANDIDATE_NAME}", "email_body": body}
 
 
 def compose_email(post, analysis, max_retries=3):

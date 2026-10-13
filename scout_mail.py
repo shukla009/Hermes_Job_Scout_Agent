@@ -33,7 +33,15 @@ def recruitment_contacts(post, candidate_email=""):
         start = max(text.rfind("\n\n", 0, match.start()), text.rfind("\n", 0, match.start())) + 1
         end = text.find("\n", match.end())
         paragraph = text[start:end if end >= 0 else len(text)]
-        nearby = paragraph[max(0, match.start()-start-250):match.end()-start+250]
+        # Recruiters commonly put the application CTA immediately above the
+        # address. Read adjacent lines only, never borrow a distant headline.
+        previous_end = max(0, start - 1)
+        previous_start = text.rfind("\n", 0, previous_end) + 1
+        previous = text[previous_start:previous_end][-250:]
+        if previous.strip() and not re.search(r"privacy|cookie|accommodation|accessibility|vendor|campus|support|copyright|legal|footer", previous, re.I):
+            paragraph = previous + " " + paragraph
+            start = previous_start
+        nearby = paragraph[:750]
         if re.search(r"privacy|cookie|accommodation|accessibility|vendor|campus|support|copyright|legal|footer", nearby, re.I):
             continue
         if not re.search(r"(?:send|share|email|submit|forward).{0,65}(?:resume|résumé|cv|application)|(?:resume|résumé|cv|application).{0,65}(?:send|share|email|submit|forward)|apply.{0,30}(?:email|at)|recruit(?:er|ment).{0,30}(?:contact|email)", nearby, re.I):

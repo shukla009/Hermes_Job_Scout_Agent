@@ -73,6 +73,13 @@ Scheduled discovery and outgoing Telegram alerts do not depend on that Worker to
 
 ## Email safeguards
 
+- The current email introduces Shivank's full-time ProSca role and completed degrees,
+  uses role-specific evidence and supported matching skills, and links the exact vacancy.
+- The updated résumé is attached as a PDF. Older already-sent emails are not rewritten
+  or resent simply because the résumé/template changed.
+- The last 30 outreach run summaries record SMTP authentication and the reason for
+  no sending, separately from job discovery and SMTP acceptance.
+
 - Recruitment intent and a vacancy-linked address are required; a footer email is insufficient.
 - Candidate, placeholder, no-reply, suppressed and recently contacted addresses are rejected.
 - A durable pending-send record is saved before SMTP. Uncertain sends are not blindly resent.

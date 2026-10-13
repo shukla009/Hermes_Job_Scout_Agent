@@ -87,6 +87,7 @@ def run(agent, *, dry_run=False, notify=True):
               "safety_skips": 0, "query_errors": [], "queries_attempted": 0,
               "queries_successful": 0, "source_stats": {}, "rejection_reasons": {},
               "dry_run": dry_run, "follow_ups": {"sent": 0, "failed": 0, "pending": 0}}
+    report["outreach"] = {"smtp": "not_checked", "status": "discovery_pending"}
     writer = GitHubWriter(token=token, repo=os.getenv("GITHUB_REPOSITORY", "")) if cloud and not dry_run else None
     budget = RuntimeBudget(max_requests=120, deadline_seconds=420)
     agent.ACTIVE_BUDGET = budget
@@ -136,9 +137,12 @@ def run(agent, *, dry_run=False, notify=True):
     if outbound and not reconcile_pending(agent, store):
         outbound = False
         report["status"] = "state_safety_stop"
-    if outbound and agent.SMTP_PREFLIGHT and not agent.smtp_preflight():
-        outbound = False
-        report["status"] = "partial"
+    if outbound and agent.SMTP_PREFLIGHT:
+        smtp_ok = agent.smtp_preflight()
+        report["outreach"]["smtp"] = "passed" if smtp_ok else "failed"
+        if not smtp_ok:
+            outbound = False
+            report["status"] = "partial"
     agent.OUTBOUND_READY = outbound
     if outbound:
         capacity = max(0, agent.MAX_EMAILS_PER_DAY - _daily_sends(store, agent, history))
@@ -268,6 +272,15 @@ def run(agent, *, dry_run=False, notify=True):
     if shadow and store and safe_state and verified_sources and report["status"] not in {"state_safety_stop", "budget_limited"}:
         store.data["shadow_runs_completed"] = store.data.get("shadow_runs_completed", 0) + 1
     report["alerts_sent"] = alerts
+    report["outreach"]["status"] = (
+        "emails_accepted" if report["emails_accepted_by_smtp"] else
+        "validation_mode" if shadow else
+        "smtp_failed" if report["outreach"]["smtp"] == "failed" else
+        "state_safety_stop" if not safe_state else
+        "sending_disabled" if not agent.SEND_EMAILS or dry_run else
+        "no_eligible_vacancies" if not candidates else
+        "no_eligible_email_leads" if not report["relevant_email_leads"] else
+        "safety_or_daily_limit")
     report["http_requests"] = getattr(budget, "attempts", 0)
     report["shadow_run"] = shadow
     report["runtime_seconds"] = round(time.monotonic() - started, 2)
@@ -279,6 +292,13 @@ def run(agent, *, dry_run=False, notify=True):
     if store:
         store.data["last_run"] = {k: report[k] for k in ("status", "results_discovered", "relevant_apply_leads", "alerts_sent", "emails_accepted_by_smtp", "shadow_run")}
         store.data["last_run"]["at"] = datetime.now(timezone.utc).isoformat()
+        store.data["last_run"]["outreach"] = report["outreach"]
+        outreach_log = store.data.setdefault("outreach_runs", [])
+        outreach_log.append({"at": store.data["last_run"]["at"], **report["outreach"],
+                             "eligible_email_leads": report["relevant_email_leads"],
+                             "attempted": report["emails_attempted"],
+                             "smtp_accepted": report["emails_accepted_by_smtp"]})
+        store.data["outreach_runs"] = outreach_log[-30:]
         if not store.save():
             report["status"] = "state_safety_stop"
     agent._write_run_report(report)
@@ -289,6 +309,7 @@ def run(agent, *, dry_run=False, notify=True):
             agent.send_telegram("📋 <b>Job Scout — " + html.escape(report["status"]) + "</b>\n" +
                 f"New actionable jobs: {len(candidates)}; alerts: {alerts}\n" +
                 f"Application emails accepted: {report['emails_accepted_by_smtp']}\n" +
+                "Email status: " + html.escape(report["outreach"]["status"].replace("_", " ")) + "\n" +
                 ("Outreach is in validation mode; no emails sent.\n" if shadow else "") +
                 "Top exclusions: " + html.escape("; ".join(f"{k}: {v}" for k, v in reasons.most_common(3)) or "none"))
         if store:
