@@ -56,10 +56,13 @@ source does not make all other sources fail.
 - Opening an application link does not mean you applied. Press **Applied** only after submission.
 - Outcomes are acknowledged only after being saved privately in GitHub, then reconciled on the next run.
 - Old direct-apply alerts migrate to “submission unconfirmed”; historical recruiter emails remain separate.
-- The new Worker must be deployed and its webhook must accept `callback_query` updates before new commands/buttons work. A GitHub push alone does not deploy Cloudflare.
+- The Worker is deployed and the secured webhook accepts `message` and `callback_query` updates. Private-state commands require the existing repository-scoped token to have Contents read/write as well as Actions write.
 
-See `workers/DEPLOY_TELEGRAM_TRIGGER.md` for deployment. Existing `/run` deployment
-continues until the Worker is explicitly updated.
+See `workers/DEPLOY_TELEGRAM_TRIGGER.md` for deployment and permissions. On 13 October
+2026, GitHub Actions validation passed three shadow runs and a post-validation run;
+three qualified vacancies were found. Telegram command activation is awaiting the
+approved token-permission update behind GitHub's account confirmation screen.
+Scheduled discovery and outgoing Telegram alerts do not depend on that Worker token.
 
 ## Email safeguards
 
