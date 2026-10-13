@@ -1,0 +1,50 @@
+name: Own-account outreach self-test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: vars.ZERO_COST_VERIFIED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - name: Send clearly labelled preview only to the owner
+        env:
+          GMAIL_SENDER_EMAIL: ${{ secrets.GMAIL_SENDER_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          IMAP_CHECK: 'true'
+          NVIDIA_API_KEY: ''
+          SERPAPI_KEY: ''
+        run: |
+          python - <<'PY'
+          import os, hashlib
+          import scout_agent as agent
+          from scout_mail import sent_status
+          owner = 'work.shuklashivank@gmail.com'
+          assert agent.GMAIL_SENDER.lower() == owner, 'Self-test is restricted to the configured owner account'
+          assert agent.smtp_preflight(), 'SMTP authentication failed'
+          expected = 'f8ebf54b5311f3065a725420ea809000da3c0a08ba5815a2d66938624061203a'
+          with open(agent.RESUME_PATH, 'rb') as resume:
+              assert hashlib.sha256(resume.read()).hexdigest() == expected, 'Updated resume hash mismatch'
+          preview, _ = agent.compose_email({}, {'job_title':'Research Analyst',
+              'company':'Example employer (preview only)', 'family':'research',
+              'matched_skills':['Excel','research'],
+              'application_url':'https://example.invalid/jobs/preview'})
+          agent.ACTIVE_MESSAGE_ID = '<hermes-self-test-' + os.environ['GITHUB_RUN_ID'] + '@job-scout.local>'
+          body = 'SELF-TEST: sent only to your own account. This is not a real job application.\n\nTemplate preview:\n\n' + preview['email_body']
+          assert agent.send_email(owner, 'Job Scout SELF-TEST - updated template and resume', body), 'SMTP did not accept self-test'
+          confirmed = sent_status(agent, agent.ACTIVE_MESSAGE_ID)
+          print('Updated PDF hash verified; SMTP accepted own-account self-test.')
+          print('Sent-folder confirmation:', 'confirmed' if confirmed is True else 'not yet confirmed')
+          print('No application history, follow-up chain or recruiter outreach was created.')
+          PY
