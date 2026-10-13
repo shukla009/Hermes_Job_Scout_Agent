@@ -72,6 +72,7 @@ def _weekly(agent, store, notify):
 def run(agent, *, dry_run=False, notify=True):
     from scout_persistence import RuntimeBudget, GitHubWriter, BudgetExhausted
     started = time.monotonic()
+    notify = notify and not dry_run
     cloud = os.getenv("GITHUB_ACTIONS", "").lower() == "true"
     token = os.getenv("GITHUB_TOKEN", "")
     verified = os.getenv("ZERO_COST_VERIFIED", "false").lower() == "true"
@@ -110,10 +111,13 @@ def run(agent, *, dry_run=False, notify=True):
         identity = os.getenv("GITHUB_RUN_ID", "") + ":" + os.getenv("GITHUB_RUN_ATTEMPT", "1")
         if cloud and identity not in account_budget["runs"]:
             if account_budget["used_minutes_estimate"] + 10 > 1200:
+                first_pause = not account_budget.get("paused")
                 account_budget["paused"] = True
                 store.save()
                 report["status"] = "free_quota_pause"
                 agent._write_run_report(report)
+                if notify and first_pause:
+                    agent.send_telegram("⏸️ Job Scout paused at its free-usage ceiling. No application emails sent; no paid fallback enabled.")
                 return report
             account_budget["runs"].append(identity)
             account_budget["used_minutes_estimate"] += 10

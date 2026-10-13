@@ -44,7 +44,8 @@ jobs:
           request = urllib.request.Request(url, data=json.dumps({
               'update_id':int(time.time()), 'message':{'chat':{'id':chat},
               'from':{'id':chat}, 'text':'/status'}}).encode(), headers={
-              'Content-Type':'application/json', 'X-Telegram-Bot-Api-Secret-Token':secret})
+              'Content-Type':'application/json', 'User-Agent':'Hermes-Job-Scout-Webhook-Verification/1.0',
+              'X-Telegram-Bot-Api-Secret-Token':secret})
           try:
               with urllib.request.urlopen(request, timeout=30) as response:
                   assert response.status == 200, 'Worker status check failed'
