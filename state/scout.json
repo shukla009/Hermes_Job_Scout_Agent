@@ -492,13 +492,15 @@
       "source_id": "df935f72-9721-414e-9a3b-e20a679fef07",
       "url": "https://jobs.lever.co/paytm/df935f72-9721-414e-9a3b-e20a679fef07",
       "apply_url": "https://jobs.lever.co/paytm/df935f72-9721-414e-9a3b-e20a679fef07",
-      "last_seen": "2026-10-13T16:34:31.703860+00:00"
+      "last_seen": "2026-10-13T16:34:31.703860+00:00",
+      "alerted": true,
+      "alerted_at": "2026-10-13T16:34:38.758632+00:00"
     }
   },
   "sends": {},
   "alerts": {
     "2026-10-13": {
-      "count": 2,
+      "count": 3,
       "stretch": 1
     }
   },
