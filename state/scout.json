@@ -409,7 +409,7 @@
     "5c788dcf1fde794980ab577e": {
       "id": "5c788dcf1fde794980ab577e",
       "first_seen": "2026-10-13T16:28:11.699925+00:00",
-      "submitted": false,
+      "submitted": true,
       "emailed": false,
       "job_title": "Data Analyst",
       "company": "Portcast",
@@ -435,7 +435,10 @@
       "apply_url": "https://jobs.lever.co/portcast/e66df487-0622-480f-8506-532b3db5db28",
       "last_seen": "2026-10-13T16:55:13.967867+00:00",
       "alerted": true,
-      "alerted_at": "2026-10-13T16:28:17.774452+00:00"
+      "alerted_at": "2026-10-13T16:28:17.774452+00:00",
+      "submission_unconfirmed": false,
+      "applied_at": "2026-10-13T17:32:44.349Z",
+      "feedback_update_id": 421690159
     },
     "19c14d9150f7938c47f6499d": {
       "id": "19c14d9150f7938c47f6499d",
@@ -469,7 +472,7 @@
     "77dbc29155cb04ec4200f25e": {
       "id": "77dbc29155cb04ec4200f25e",
       "first_seen": "2026-10-13T16:34:31.703860+00:00",
-      "submitted": false,
+      "submitted": true,
       "emailed": false,
       "job_title": "Associate - User Growth (Market intelligence)",
       "company": "Paytm",
@@ -494,7 +497,10 @@
       "apply_url": "https://jobs.lever.co/paytm/df935f72-9721-414e-9a3b-e20a679fef07",
       "last_seen": "2026-10-13T16:55:14.264450+00:00",
       "alerted": true,
-      "alerted_at": "2026-10-13T16:34:38.758632+00:00"
+      "alerted_at": "2026-10-13T16:34:38.758632+00:00",
+      "submission_unconfirmed": false,
+      "applied_at": "2026-10-13T17:27:26.123Z",
+      "feedback_update_id": 421690158
     }
   },
   "sends": {},
@@ -504,7 +510,10 @@
       "stretch": 1
     }
   },
-  "processed_feedback": [],
+  "processed_feedback": [
+    "421690158",
+    "421690159"
+  ],
   "budget": {
     "month": "2026-10",
     "used_minutes_estimate": 50,
