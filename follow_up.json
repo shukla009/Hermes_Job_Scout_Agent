@@ -1,3 +1,15 @@
-[]
-
-
+[
+  {
+    "email": "complaints@internshala.com",
+    "subject": "Application for Market/Business Research Analyst - Shivank Shukla",
+    "body": "Dear Hiring Team at Honhr,\n\nI am a Research & Strategy Associate with one year of experience in market and business research, skilled in SQL, Python, Power BI, Tableau, Excel, ETL processes, data cleaning, and KPI reporting.\n\nIn my current role I have delivered actionable insights through dashboards and reports, supporting stakeholders in data‑driven decision making.\n\nMy portfolio showcasing relevant projects is available at https://shivank-shukla-portfolio.vercel.app/, and my code repositories are at https://github.com/shukla009.\n\nI am available to join after a one‑month notice period and have attached my resume for your review.\n\nThank you for considering my application. I look forward to the opportunity to discuss how I can contribute to Honhr’s research initiatives.\n\nBest regards,\nShivank Shukla\n+91 9013584218\nshivank.shukla09@example.com",
+    "job_id": "0553694817b490dc0b1037b0",
+    "step": 1,
+    "offsets_days": [
+      4,
+      9
+    ],
+    "created_at": 1791843412.069061,
+    "next_send": 1792189012.069061
+  }
+]
