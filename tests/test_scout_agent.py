@@ -191,12 +191,14 @@ def _mock_llm_response(payload):
 class TestAnalyzePostVerbose:
     POST = {
         "title": "Hiring Data Analyst in Noida",
-        "body": "email hr@realco.io",
+        "body": "Full-time entry-level data analysis, data validation and dashboards. Send resume to hr@realco.io",
         "href": "https://www.linkedin.com/posts/x",
         "application_url": "https://www.linkedin.com/posts/x",
         "date": "1 day ago",
         "source_type": "linkedin_post",
-        "source_text": "Hiring Data Analyst in Noida. Email hr@realco.io",
+        "source_text": "Hiring Data Analyst in Noida. Full-time entry-level data analysis, data validation and dashboards. Send resume to hr@realco.io",
+        "location": "Noida",
+        "page_fetched": True,
         "source_emails": ["hr@realco.io"],
     }
 
@@ -209,14 +211,16 @@ class TestAnalyzePostVerbose:
         scout_agent.client.chat.completions.create.return_value = _mock_llm_response(payload)
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST)
         assert verdict == "ok" and parsed["recruiter_email"] == "hr@realco.io"
+        scout_agent.client.chat.completions.create.assert_not_called()
 
     def test_irrelevant(self, monkeypatch):
         monkeypatch.setattr(scout_agent, "client", MagicMock())
         monkeypatch.setattr(scout_agent, "USE_LLM_REVIEW", True)
         payload = {"is_relevant": False, "reason": "job board"}
         scout_agent.client.chat.completions.create.return_value = _mock_llm_response(payload)
-        parsed, verdict = scout_agent.analyze_post_verbose(self.POST)
+        parsed, verdict = scout_agent.analyze_post_verbose(dict(self.POST, title="Senior Data Analyst"))
         assert parsed is None and verdict == "irrelevant"
+        scout_agent.client.chat.completions.create.assert_not_called()
 
     def test_unverified_model_email_becomes_apply_lead(self, monkeypatch):
         monkeypatch.setattr(scout_agent, "client", MagicMock())
@@ -227,6 +231,7 @@ class TestAnalyzePostVerbose:
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST)
         assert verdict == "ok"
         assert parsed["recruiter_email"] == "hr@realco.io"
+        scout_agent.client.chat.completions.create.assert_not_called()
 
     def test_own_email_not_used(self, monkeypatch):
         # Regression: the agent must never email the candidate's own address
@@ -235,12 +240,14 @@ class TestAnalyzePostVerbose:
         scout_agent.client.chat.completions.create.return_value = _mock_llm_response(payload)
         post = {
             "title": "Hiring Data Analyst",
-            "body": f"contact {scout_agent.CANDIDATE_EMAIL}",
+            "body": f"Full-time entry-level data analysis and dashboards. Send resume to {scout_agent.CANDIDATE_EMAIL}",
             "href": "https://linkedin.com/x",
             "application_url": "https://linkedin.com/x",
             "date": "today",
             "source_type": "linkedin_post",
-            "source_text": f"Hiring Data Analyst contact {scout_agent.CANDIDATE_EMAIL}",
+            "source_text": f"Full-time entry-level data analysis and dashboards. Send resume to {scout_agent.CANDIDATE_EMAIL}",
+            "location": "Noida",
+            "page_fetched": True,
             "source_emails": [scout_agent.CANDIDATE_EMAIL],
         }
         parsed, verdict = scout_agent.analyze_post_verbose(post)
@@ -275,30 +282,23 @@ class TestAnalyzePostVerbose:
 # Prompt integrity
 # ---------------------------------------------------------------
 class TestPrompt:
-    def test_json_template_is_wellformed(self):
-        # Regression: the template had an unclosed quote and a trailing comma
-        import re as re_mod
-        src = open(scout_agent.__file__, encoding="utf-8").read()
-        m = re.search(r'Return ONLY JSON:\s*\{\{(.+?)\}\}"""', src, re.S)
-        assert m, "Return ONLY JSON block not found"
-        rendered = ("{" + m.group(1) + "}").replace("{CANDIDATE_NAME}", "X")
-        sample = rendered
-        for k, v in [('true|false', 'true'), ('"best_email_or_null"', '"a@b.com"'),
-                     ('"one line why accepted/rejected"', '"r"')]:
-            sample = sample.replace(k, v)
-        sample = re.sub(r'"\.\.\."', '"X"', sample)
-        json.loads(sample)  # must not raise
+    def test_writer_never_invokes_paid_model(self, monkeypatch):
+        client = MagicMock()
+        monkeypatch.setattr(scout_agent, "client", client)
+        monkeypatch.setattr(scout_agent, "USE_LLM_WRITER", True, raising=False)
+        written, status = scout_agent.compose_email({}, {"job_title":"Research Analyst", "company":"Acme", "family":"research"})
+        assert written["email_subject"] and written["email_body"]
+        client.chat.completions.create.assert_not_called()
 
     def test_example_email_not_banned_opening(self):
         src = open(scout_agent.__file__, encoding="utf-8").read()
         assert "I came across your [Job Title]" not in src
 
-    def test_no_hardcoded_personal_email_in_prompt(self):
-        src = open(scout_agent.__file__, encoding="utf-8").read()
-        prompt = re.search(r'prompt = f"""(.+?)"""', src, re.S).group(1)
-        assert "work.shuklashivank@gmail.com" not in prompt
-        assert "Verified source emails" in prompt
-        assert "Never create or infer an email" in prompt
+    def test_writer_no_invented_salary_or_notice_period(self):
+        written, _ = scout_agent.compose_email({}, {"job_title":"Research Analyst", "company":"Acme", "family":"research"})
+        body = written["email_body"].lower()
+        assert "lpa" not in body and "immediate joining" not in body and "notice period" not in body
+        assert "12+" in body and "98.1%" not in body
 
     def test_freshness_rule_present(self):
         src = open(scout_agent.__file__, encoding="utf-8").read()
@@ -355,6 +355,60 @@ class TestSendEmail:
 # Follow-up scheduling (dead-code regression: must be wired)
 # ---------------------------------------------------------------
 class TestFollowUps:
+    def test_due_first_unavailable_defers(self, monkeypatch):
+        records = [{"next_send":4102444800,"message_id":"<future@scout>"}, {"next_send":0,"message_id":"<due@scout>","email":"hr@example.com","job_id":"job"}]
+        monkeypatch.setattr(scout_agent, "load_follow_up", lambda: records)
+        monkeypatch.setattr(scout_agent, "save_follow_up", lambda value: None)
+        monkeypatch.setattr(scout_agent, "SEND_EMAILS", True)
+        store = MagicMock()
+        monkeypatch.setattr(scout_agent, "ACTIVE_STORE", store)
+        check = MagicMock(return_value="unavailable")
+        send = MagicMock()
+        monkeypatch.setattr(scout_agent, "_mailbox_status", check)
+        monkeypatch.setattr(scout_agent, "send_email", send)
+        result = scout_agent.process_pending_follow_ups()
+        assert check.call_count == 1 and result["pending"] == 2
+        send.assert_not_called()
+        store.reserve_send.assert_not_called()
+
+    def test_durable_threaded_followups_are_bounded(self, monkeypatch):
+        records = [{"next_send":0,"created_at":0,"message_id":"<original@scout>","email":"hr@example.com","job_id":str(i),"subject":"Application","step":1} for i in range(4)]
+        monkeypatch.setattr(scout_agent, "load_follow_up", lambda: records)
+        monkeypatch.setattr(scout_agent, "save_follow_up", lambda value: None)
+        monkeypatch.setattr(scout_agent, "SEND_EMAILS", True)
+        monkeypatch.setattr(scout_agent, "MAX_FOLLOWUPS_PER_RUN", 5)
+        monkeypatch.setattr(scout_agent, "_mailbox_status", lambda record: "none")
+        monkeypatch.setattr(scout_agent, "_is_suppressed", lambda email: False)
+        store = MagicMock()
+        store.reserve_send.return_value = {"id":"intent","message_id":"<follow@scout>"}
+        store.finish_send.return_value = True
+        monkeypatch.setattr(scout_agent, "ACTIVE_STORE", store)
+        def send(email, subject, body, *, attach_resume):
+            assert store.reserve_send.called
+            assert scout_agent.ACTIVE_REFERENCES == "<original@scout>"
+            assert scout_agent.ACTIVE_MESSAGE_ID == "<follow@scout>"
+            assert not attach_resume and "attached" not in body and subject == "Re: Application"
+            return True
+        mocked = MagicMock(side_effect=send)
+        monkeypatch.setattr(scout_agent, "send_email", mocked)
+        assert scout_agent.process_pending_follow_ups(5)["sent"] == 2
+        assert mocked.call_count == 2
+
+    def test_reservation_failure_prevents_followup(self, monkeypatch):
+        record = {"next_send":0,"message_id":"<original@scout>","email":"hr@example.com","job_id":"job"}
+        monkeypatch.setattr(scout_agent, "load_follow_up", lambda: [record])
+        monkeypatch.setattr(scout_agent, "save_follow_up", lambda value: None)
+        monkeypatch.setattr(scout_agent, "SEND_EMAILS", True)
+        monkeypatch.setattr(scout_agent, "_mailbox_status", lambda record: "none")
+        monkeypatch.setattr(scout_agent, "_is_suppressed", lambda email: False)
+        store = MagicMock()
+        store.reserve_send.return_value = None
+        monkeypatch.setattr(scout_agent, "ACTIVE_STORE", store)
+        send = MagicMock()
+        monkeypatch.setattr(scout_agent, "send_email", send)
+        assert scout_agent.process_pending_follow_ups()["sent"] == 0
+        send.assert_not_called()
+
     def test_schedule_creates_one_evolving_record(self, tmp_path, monkeypatch):
         path = tmp_path / "follow_up.json"
         monkeypatch.setattr(scout_agent, "FOLLOW_UP_FILE", str(path))
@@ -368,11 +422,12 @@ class TestFollowUps:
         scout_agent.schedule_follow_up("a@b.com", "Subj", "Body", "job-1")
         assert len(json.load(open(path, encoding="utf-8"))) == 1
 
-    def test_schedule_is_called_by_main_flow(self):
-        # Regression guard: the call must exist in main's send-success block
-        import inspect
-        src = inspect.getsource(scout_agent.main)
-        assert "schedule_follow_up(email, written[\"email_subject\"], written[\"email_body\"], job_id)" in src
+    def test_schedule_preserves_thread_identity(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(scout_agent, "FOLLOW_UP_FILE", str(tmp_path / "follow.json"))
+        monkeypatch.setattr(scout_agent, "ACTIVE_MESSAGE_ID", "<application@scout>")
+        scout_agent.schedule_follow_up("hr@example.com", "Application", "Hello", "job-id")
+        record = scout_agent.load_follow_up()[0]
+        assert record["job_id"] == "job-id" and record["message_id"] == "<application@scout>"
 
 
 class TestEnrichmentHelpers:
@@ -538,7 +593,7 @@ class TestMainRouting:
         email_result = {
             "job_id": "job-2", "job_title": "Business Analyst", "company": "B",
             "location": "Remote", "recruiter_email": "hr@realco.io",
-            "application_url": "https://example.com/jobs/2", "reason": "match",
+            "application_url": "https://example.com/jobs/2", "reason": "match", "email_safe": True,
         }
         outcomes = iter([(apply_result, "apply"), (email_result, "ok")])
         monkeypatch.setattr(scout_agent, "analyze_post_verbose", lambda post: next(outcomes))
@@ -553,10 +608,11 @@ class TestMainRouting:
 
         report = json.load(open(tmp_path / "report.json", encoding="utf-8"))
         history = json.load(open(tmp_path / "history.json", encoding="utf-8"))
-        assert report["relevant_apply_leads"] == 1
+        assert report["relevant_apply_leads"] == 2
         assert report["relevant_email_leads"] == 1
         assert report["emails_accepted_by_smtp"] == 1
-        assert {entry["route"] for entry in history} == {"apply", "email"}
-        assert len(scheduled) == 1 and scheduled[0][-1] == "job-2"
+        assert {entry["route"] for entry in history} == {"alert", "email"}
+        emailed = next(entry for entry in history if entry["route"] == "email")
+        assert len(scheduled) == 1 and scheduled[0][-1] == emailed["job_id"]
 
 

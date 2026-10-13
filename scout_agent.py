@@ -1,3 +1,4 @@
+import argparse
 import hashlib
 import html
 import imaplib
@@ -72,6 +73,11 @@ def _parse_follow_up_offsets(raw):
 
 FOLLOW_UP_OFFSETS_DAYS = _parse_follow_up_offsets(os.getenv("FOLLOW_UP_OFFSETS_DAYS", "4,9"))
 client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_API_KEY) if NVIDIA_API_KEY else None
+ACTIVE_BUDGET = None
+ACTIVE_STORE = None
+ACTIVE_MESSAGE_ID = None
+ACTIVE_REFERENCES = None
+OUTBOUND_READY = False
 LAST_SEARCH_STATS = {"queries_attempted": 0, "queries_successful": 0, "query_errors": [], "results_discovered": 0, "source_stats": {}}
 
 ROLE_TERMS = (
@@ -106,6 +112,7 @@ def _load_json_list(path, label):
 
 
 def _save_json(path, data):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     temporary = f"{path}.tmp"
     with open(temporary, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=2, ensure_ascii=False)
@@ -146,12 +153,15 @@ def _is_suppressed(email):
     return any(item.get("email", "").lower() == value for item in load_suppressions())
 
 
-def send_telegram(message):
+def send_telegram(message, reply_markup=None):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("[Telegram] Missing token or chat ID.")
         return False
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True}).encode("utf-8")
+    data = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True}
+    if reply_markup:
+        data["reply_markup"] = reply_markup
+    payload = json.dumps(data).encode("utf-8")
     request = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
     try:
         urllib.request.urlopen(request, timeout=15)
@@ -177,7 +187,7 @@ def smtp_preflight():
         return False
 
 
-def send_email(to_email, subject, body_text):
+def send_email(to_email, subject, body_text, *, attach_resume=True):
     if not GMAIL_SENDER or not GMAIL_PASSWORD:
         print("[Email Error] Missing Gmail credentials.")
         return False
@@ -189,17 +199,23 @@ def send_email(to_email, subject, body_text):
     message["From"] = f"{CANDIDATE_NAME} <{GMAIL_SENDER}>"
     message["To"] = to_email
     message["Subject"] = subject
+    if ACTIVE_MESSAGE_ID:
+        message["Message-ID"] = ACTIVE_MESSAGE_ID
+    if ACTIVE_REFERENCES:
+        message["In-Reply-To"] = ACTIVE_REFERENCES
+        message["References"] = ACTIVE_REFERENCES
     message.attach(MIMEText(body_text, "plain", "utf-8"))
-    if not os.path.exists(RESUME_PATH):
+    if attach_resume and not os.path.exists(RESUME_PATH):
         print(f"[Email Error] Resume not found at {RESUME_PATH} - aborting send")
         return False
     try:
-        with open(RESUME_PATH, "rb") as file:
-            attachment = MIMEBase("application", "octet-stream")
-            attachment.set_payload(file.read())
-        encoders.encode_base64(attachment)
-        attachment.add_header("Content-Disposition", f'attachment; filename="{os.path.basename(RESUME_PATH)}"')
-        message.attach(attachment)
+        if attach_resume:
+            with open(RESUME_PATH, "rb") as file:
+                attachment = MIMEBase("application", "octet-stream")
+                attachment.set_payload(file.read())
+            encoders.encode_base64(attachment)
+            attachment.add_header("Content-Disposition", f'attachment; filename="{os.path.basename(RESUME_PATH)}"')
+            message.attach(attachment)
     except Exception as exc:
         print(f"[Email Error] Could not attach resume: {exc}")
         return False
@@ -385,6 +401,8 @@ def _extract_job_json_ld(page_html):
 
 
 def _request_with_retries(url, *, params=None, timeout=25, max_retries=None):
+    if ACTIVE_BUDGET is not None:
+        return ACTIVE_BUDGET.request(url, params=params, timeout=timeout, max_retries=max_retries)
     attempts = max_retries or HTTP_RETRIES
     last_error = None
     headers = {"User-Agent": "Mozilla/5.0 (compatible; HermesJobScout/2.0)"}
@@ -402,7 +420,7 @@ def _request_with_retries(url, *, params=None, timeout=25, max_retries=None):
 
 def enrich_post(post):
     enriched = dict(post)
-    if enriched.get("source_type") == "direct_apply" and enriched.get("page_fetched"):
+    if enriched.get("source_type") == "direct_apply" and enriched.get("page_fetched") and not enriched.get("needs_reverification"):
         return enriched
     url = enriched.get("href", "")
     snippet = " ".join((enriched.get("title", ""), enriched.get("body", ""))).strip()
@@ -422,11 +440,18 @@ def enrich_post(post):
         enriched["source_text"] = source_text[:MAX_SOURCE_CHARS]
         enriched["source_emails"] = [email for email in extract_contacts(enriched["source_text"])["emails"] if _valid_recruiter_email(email) and email != (CANDIDATE_EMAIL or "").lower()]
         enriched["page_fetched"] = True
+        if enriched.get("needs_reverification"):
+            # Only structured vacancy evidence can refresh a cached listing.
+            enriched["active_listing"] = bool(structured)
+            enriched["reverification_failed"] = not bool(structured)
+            enriched.pop("needs_reverification", None)
         if structured.get("application_url"):
             enriched["application_url"] = urllib.parse.urljoin(url, structured["application_url"])
         if structured:
             enriched["source_type"] = "direct_apply"
     except Exception as exc:
+        enriched["active_listing"] = False
+        enriched["reverification_failed"] = True
         enriched["fetch_error"] = str(exc)[:160]
         print(f"[Fetch Warning] {url}: {exc}")
     return enriched
@@ -600,26 +625,11 @@ def _smartrecruiters_jobs(employer):
 
 
 def discover_ats_jobs():
-    jobs, stats = [], {}
-    adapters = {"greenhouse": _greenhouse_jobs, "lever": _lever_jobs, "smartrecruiters": _smartrecruiters_jobs}
-    employers = _load_employer_registry()
-
-    def fetch(employer):
-        source = f"{employer.get('ats')}:{employer.get('name')}"
-        try:
-            found = adapters[employer["ats"]](employer)
-            return source, found, {"status": "ok", "leads": len(found)}
-        except Exception as exc:
-            print(f"[ATS Warning] {source}: {exc}")
-            return source, [], {"status": "error", "leads": 0, "error": str(exc)[:140]}
-
-    with ThreadPoolExecutor(max_workers=min(6, max(1, len(employers)))) as pool:
-        futures = [pool.submit(fetch, employer) for employer in employers]
-        for future in as_completed(futures):
-            source, found, source_status = future.result()
-            jobs.extend(found)
-            stats[source] = source_status
-    jobs.sort(key=lambda item: _fit_score(item) if not _deterministic_rejection(item) else -1, reverse=True)
+    from scout_sources import discover_sources
+    from scout_runtime import read_state
+    previous = read_state("state/sources.json", dict, {})
+    jobs, stats, updated = discover_sources(_load_employer_registry(), _request_with_retries, previous)
+    _save_json("state/sources.json", updated)
     return jobs, stats
 
 
@@ -639,7 +649,22 @@ def search_recruiter_posts():
     LAST_SEARCH_STATS = {"queries_attempted": 0, "queries_successful": 0, "query_errors": [], "results_discovered": 0, "source_stats": {}}
     results, source_stats = discover_ats_jobs()
     LAST_SEARCH_STATS["source_stats"].update(source_stats)
-    if SERPAPI_KEY:
+    if os.getenv("ENABLE_JOB_ALERT_EMAILS", "false").lower() == "true":
+        from scout_mail import ingest_alert_emails
+        hints = ingest_alert_emails(__import__(__name__), max_messages=10)
+        accepted_hints = 0
+        for hint in hints:
+            url = hint.get("url", "")
+            if not _is_direct_apply_url(url) or _is_job_board_url(url):
+                continue
+            results.append(dict(hint, href=url, body=hint.get("source_text", ""),
+                                application_url=url))
+            accepted_hints += 1
+            if accepted_hints >= 10:
+                break
+        LAST_SEARCH_STATS["source_stats"]["gmail_alert_label"] = {
+            "status": "optional_unverified_hints", "leads": accepted_hints}
+    if SERPAPI_KEY and os.getenv("ENABLE_PAID_SEARCH", "false").lower() == "true":
         query = _rotating_linkedin_query()
         LAST_SEARCH_STATS["queries_attempted"] += 1
         print(f"[Search] {query[:150]}...")
@@ -704,169 +729,91 @@ def _call_llm_json(prompt, *, max_tokens=900, max_retries=3):
 
 
 def analyze_post_verbose(post, max_retries=3):
-    """Apply hard gates and an explainable score; the free model is optional."""
-    deterministic_reason = _deterministic_rejection(post)
-    if deterministic_reason:
-        print(f"  -> rejected before LLM: {deterministic_reason}")
+    from scout_matching import evaluate_job
+    from scout_mail import recruitment_contacts
+    checked = evaluate_job(post)
+    fresh, freshness_reason = _structured_freshness(post)
+    if not checked["eligible"] or not fresh:
+        post["rejection_reason"] = checked["reason"] if not checked["eligible"] else freshness_reason
         return None, "irrelevant"
-    source_emails = [email.lower() for email in post.get("source_emails", []) if _valid_recruiter_email(email) and email.lower() != (CANDIDATE_EMAIL or "").lower()]
-    score = _fit_score(post)
-    threshold = MIN_EMAIL_SCORE if source_emails else MIN_APPLY_SCORE
-    if score < threshold:
-        print(f"  -> rejected by fit score: {score}/{threshold}")
-        return None, "irrelevant"
+    contacts = recruitment_contacts(post, CANDIDATE_EMAIL) if checked["email_safe"] else []
+    source_emails = [x for x in contacts if _valid_recruiter_email(x)]
     result = {
-        "is_relevant": True,
-        "job_title": post.get("job_title") or post.get("title") or "Analyst",
-        "company": post.get("company") or "",
-        "location": post.get("location") or "",
+        "is_relevant": True, "job_title": post.get("job_title") or post.get("title", ""),
+        "company": post.get("company", ""), "location": post.get("location", ""),
+        "application_url": post.get("application_url") or post.get("href", ""),
         "recruiter_email": source_emails[0] if source_emails else None,
-        "reason": f"Passed deterministic eligibility gates with fit score {score}/100.",
-        "fit_score": score,
+        "reason": checked["reason"] + "; " + freshness_reason,
+        "fit_score": checked["score"], "family": checked["family"],
+        "tier": checked["tier"], "warnings": checked["warnings"],
+        "evidence": checked["evidence"], "email_safe": checked["email_safe"],
+        "source_id": post.get("source_id", ""),
     }
-    if not (USE_LLM_REVIEW and client):
-        result["job_id"] = _job_fingerprint({"href": post.get("application_url") or post.get("href"), "job_title": result["job_title"], "company": result["company"]})
-        result["application_url"] = post.get("application_url") or post.get("href")
-        return result, "ok" if result["recruiter_email"] else "apply"
-    source = str(post.get("source_text") or post.get("body") or "")[:MAX_SOURCE_CHARS]
-    prompt = f"""You are a strict job eligibility classifier.
-Candidate: around 1 year of experience; SQL, Python, Power BI, Tableau, Excel, ETL and research/reporting.
-Targets: junior/full-time Data, Business, Research, BI, MIS, Reporting or Data Operations Analyst.
-Locations: Delhi NCR, Noida, Gurgaon/Gurugram, India-remote or clearly remote.
-Reject internships and roles requiring more than 2 years unless explicitly junior/fresher friendly.
-
-Title: {post.get('job_title') or post.get('title', '')}
-Company: {post.get('company', '')}
-Location: {post.get('location', '')}
-Source URL: {post.get('href', '')}
-Application URL: {post.get('application_url', '')}
-Verified source emails: {source_emails or 'none'}
-Source type: {post.get('source_type', '')}
-Content:
-{source}
-
-Decide whether this is a genuine, current, full-time target role. Reject advice, self-promotion,
-training, scams, unrelated roles, senior roles and location mismatches. recruiter_email must be
-null or one exact value from Verified source emails. Never create or infer an email.
-
-Return ONLY JSON:
-{{
-  "is_relevant": true,
-  "job_title": "exact role title",
-  "company": "company or empty string",
-  "location": "location or empty string",
-  "recruiter_email": null,
-  "reason": "one concise evidence-based sentence"
-}}"""
-    reviewed, status = _call_llm_json(prompt, max_tokens=700, max_retries=max_retries)
-    if reviewed is None:
-        print(f"  -> optional model review unavailable ({status}); using deterministic decision")
-    elif reviewed.get("is_relevant") is not True:
-        print(f"  -> rejected by optional review: {reviewed.get('reason', 'irrelevant')}")
-        return None, "irrelevant"
-    else:
-        for field in ("job_title", "company", "location", "reason"):
-            if reviewed.get(field):
-                result[field] = reviewed[field]
-        selected = reviewed.get("recruiter_email")
-        selected = selected.lower().strip() if isinstance(selected, str) else None
-        result["recruiter_email"] = selected if selected in source_emails else (source_emails[0] if source_emails else None)
-    result["job_id"] = _job_fingerprint({"href": post.get("application_url") or post.get("href"), "job_title": result.get("job_title"), "company": result.get("company")})
-    result["application_url"] = post.get("application_url") or post.get("href")
+    result["job_id"] = _job_fingerprint({"href": result["application_url"], "job_title": result["job_title"], "company": result["company"]})
     return result, "ok" if result["recruiter_email"] else "apply"
 
 
 def _fallback_email(analysis):
+    from scout_matching import proof_points
     title = analysis.get("job_title") or "Analyst"
-    company = analysis.get("company") or "your organization"
-    subject = f"Application for {title} - {CANDIDATE_NAME}"
+    company = analysis.get("company") or "your team"
+    points = analysis.get("evidence") or proof_points(analysis.get("family", "data"))
     body = (
         f"Hello,\n\nI would like to apply for the {title} role at {company}. "
-        "My experience includes SQL, Python, Power BI, Tableau, Excel, data cleaning, ETL, and KPI reporting.\n\n"
-        "I have worked on research and reporting assignments where accurate analysis and clear business communication were central to delivery. "
-        f"Relevant work is available in my portfolio: {CANDIDATE_PORTFOLIO}\n\n"
-        "I have attached my resume for review. I would welcome the opportunity to discuss how my experience can support the team.\n\n"
-        f"Regards,\n{CANDIDATE_NAME}\n{CANDIDATE_PHONE}\n{CANDIDATE_LINKEDIN}"
+        "My background combines research, analytical reporting and internship-based data analytics.\n\n"
+        + "\n".join("- " + str(point) for point in points[:2])
+        + f"\n\nRelevant work: {CANDIDATE_PORTFOLIO}\n\n"
+        + "I have attached my resume for review. I would welcome an opportunity to discuss the role.\n\n"
+        + f"Regards,\n{CANDIDATE_NAME}\n{CANDIDATE_PHONE}\n{CANDIDATE_LINKEDIN}"
     )
-    return {"email_subject": subject, "email_body": body}
+    return {"email_subject": f"Application for {title} - {CANDIDATE_NAME}", "email_body": body}
 
 
 def compose_email(post, analysis, max_retries=3):
-    if not client:
-        return _fallback_email(analysis), "fallback"
-    source = str(post.get("source_text") or post.get("body") or "")[:6000]
-    prompt = f"""Write a concise personalized cold application email for {CANDIDATE_NAME}.
-Candidate: Research & Strategy Associate, around 1 year; SQL, Python, Power BI, Tableau, Excel,
-ETL, data cleaning and KPI reporting. Portfolio: {CANDIDATE_PORTFOLIO}. LinkedIn: {CANDIDATE_LINKEDIN}.
-GitHub: {CANDIDATE_GITHUB}. Phone: {CANDIDATE_PHONE}. Notice period: 1 month.
-
-Verified job: {analysis.get('job_title', '')} at {analysis.get('company', '')}, {analysis.get('location', '')}
-Source content:
-{source}
-
-Use plain text, 5-6 short paragraphs, professional and specific. Do not exaggerate or invent facts.
-Mention the attached resume. Avoid "I came across your post" and "I am writing to express my interest".
-Return ONLY JSON:
-{{
-  "email_subject": "Application for [Job Title] - {CANDIDATE_NAME}",
-  "email_body": "complete plain-text email"
-}}"""
-    result, status = _call_llm_json(prompt, max_tokens=1100, max_retries=max_retries)
-    if result is None:
-        print(f"[Writer] Optional model unavailable ({status}); using deterministic template")
-        return _fallback_email(analysis), "fallback"
-    subject = " ".join(str(result.get("email_subject") or "").split())
-    body = str(result.get("email_body") or "").strip()
-    return ({"email_subject": subject, "email_body": body}, "ok") if subject and body else (None, "writer_missing_fields")
+    # The zero-cost production path never invokes a metered inference service.
+    return _fallback_email(analysis), "fallback"
 
 
 def schedule_follow_up(email, subject, body_text, job_id=None):
     """Store one evolving follow-up record, preventing duplicate chains."""
     created = datetime.now(timezone.utc)
     record = {"email": email, "subject": subject, "body": body_text, "job_id": job_id or "", "step": 1, "offsets_days": FOLLOW_UP_OFFSETS_DAYS, "created_at": created.timestamp(), "next_send": (created + timedelta(days=FOLLOW_UP_OFFSETS_DAYS[0])).timestamp()}
+    record["message_id"] = ACTIVE_MESSAGE_ID or ""
+    record["original_message_id"] = ACTIVE_MESSAGE_ID or ""
     pending = [item for item in load_follow_up() if not (item.get("email", "").lower() == email.lower() and item.get("job_id", "") == record["job_id"])]
     pending.append(record)
     save_follow_up(pending)
 
 
 def _mailbox_status(record):
-    """Return reply, bounce, none, or unavailable for an outreach thread."""
-    if not IMAP_CHECK or not GMAIL_SENDER or not GMAIL_PASSWORD:
-        return "none"
-    try:
-        since = datetime.fromtimestamp(float(record.get("created_at", 0)), tz=timezone.utc).strftime("%d-%b-%Y")
-        with imaplib.IMAP4_SSL("imap.gmail.com", 993) as mailbox:
-            mailbox.login(GMAIL_SENDER, GMAIL_PASSWORD.replace(" ", ""))
-            mailbox.select("INBOX", readonly=True)
-            status, data = mailbox.search(None, "SINCE", since)
-            if status != "OK":
-                return "unavailable"
-            for message_id in data[0].split()[-100:]:
-                fetch_status, payload = mailbox.fetch(message_id, "(RFC822)")
-                if fetch_status != "OK" or not payload or not isinstance(payload[0], tuple):
-                    continue
-                message = message_from_bytes(payload[0][1])
-                sender = str(message.get("From", "")).lower()
-                if record.get("email", "").lower() in sender:
-                    return "reply"
-                if "mailer-daemon" in sender or "postmaster" in sender:
-                    raw = payload[0][1].decode("utf-8", errors="ignore").lower()
-                    if record.get("email", "").lower() in raw:
-                        return "bounce"
-        return "none"
-    except Exception as exc:
-        print(f"[IMAP Warning] Could not check replies/bounces: {exc}")
-        return "unavailable"
+    from scout_mail import mailbox_status
+    import sys
+    return mailbox_status(sys.modules[__name__], record)
 
 
 def process_pending_follow_ups(max_sends=None):
+    global ACTIVE_MESSAGE_ID, ACTIVE_REFERENCES
     pending = load_follow_up()
     if not pending:
         return {"sent": 0, "failed": 0, "pending": 0, "sent_records": []}
-    if max_sends is None:
-        max_sends = MAX_FOLLOWUPS_PER_RUN
+    max_sends = max(0, min(2, MAX_FOLLOWUPS_PER_RUN, MAX_FOLLOWUPS_PER_RUN if max_sends is None else int(max_sends)))
     now, updated, sent, failed, sent_records = datetime.now(timezone.utc).timestamp(), [], 0, 0, []
-    for record in pending:
+    checked = 0
+    for record_index, record in enumerate(pending):
+        try:
+            due = now >= float(record.get("next_send", now + 86400))
+            step = int(record.get("step", 1))
+        except (TypeError, ValueError):
+            updated.append(record)
+            continue
+        if not due or checked >= max_sends or not SEND_EMAILS or not ACTIVE_STORE:
+            updated.append(record)
+            continue
+        checked += 1
+        original = record.get("original_message_id") or record.get("message_id")
+        if not original or not re.fullmatch(r"<[^<>\s]+>", original):
+            updated.append(record)
+            continue
         mailbox_status = _mailbox_status(record)
         if mailbox_status == "reply":
             print(f"[Follow-up] Stopped after reply from {record.get('email', '')}")
@@ -875,26 +822,45 @@ def process_pending_follow_ups(max_sends=None):
             print(f"[Follow-up] Stopped after bounce for {record.get('email', '')}")
             _suppress_email(record.get("email", ""), "bounce")
             continue
-        if now < float(record.get("next_send", 0)):
+        if mailbox_status != "none" or _is_suppressed(record.get("email", "")):
             updated.append(record)
             continue
-        if sent >= max_sends:
+        intent = ACTIVE_STORE.reserve_send(record.get("job_id", ""), record.get("email", ""), step=f"followup-{step}")
+        if not intent:
             updated.append(record)
             continue
-        step = int(record.get("step", 1))
-        body = record.get("body", "") + f"\n\nFollow-up {step}: I wanted to check whether my application is under consideration."
-        ok = SEND_EMAILS and send_email(record.get("email", ""), f"Re: {record.get('subject', '')}", body)
+        ACTIVE_MESSAGE_ID = intent["message_id"]
+        ACTIVE_REFERENCES = original
+        body = f"Hello,\n\nI wanted to follow up on my application below. I remain interested and would welcome an opportunity to discuss the role.\n\nRegards,\n{CANDIDATE_NAME}"
+        subject = record.get("subject", "")
+        if not subject.lower().startswith("re:"):
+            subject = "Re: " + subject
+        try:
+            ok = send_email(record.get("email", ""), subject, body, attach_resume=False)
+        except Exception:
+            ok = False
+        persisted = ACTIVE_STORE.finish_send(intent["id"], "accepted" if ok else "uncertain")
+        ACTIVE_MESSAGE_ID = ACTIVE_REFERENCES = None
         if not ok:
             failed += 1
             updated.append(record)
+            if not persisted:
+                updated.extend(pending[record_index+1:])
+                break
             continue
         sent += 1
-        sent_records.append({"email": record.get("email", ""), "job_id": record.get("job_id", ""), "step": step})
+        sent_records.append({"email": record.get("email", ""), "job_id": record.get("job_id", ""), "step": step, "message_id": intent["message_id"]})
+        record["last_message_id"] = intent["message_id"]
         offsets = record.get("offsets_days") or FOLLOW_UP_OFFSETS_DAYS
         if step < len(offsets):
             record["step"] = step + 1
             record["next_send"] = float(record.get("created_at", now)) + (int(offsets[step]) * 86400)
             updated.append(record)
+        if not persisted:
+            # Accepted-but-unpersisted is quarantined in the send ledger; stop
+            # processing other threads rather than risk an additional send.
+            updated.extend(pending[record_index+1:])
+            break
     save_follow_up(updated)
     return {"sent": sent, "failed": failed, "pending": len(updated), "sent_records": sent_records}
 
@@ -931,7 +897,24 @@ def _record_history(history, analysis, post, route, email=""):
 
 
 def _send_apply_alert(analysis):
-    return send_telegram("🎯 <b>Relevant job — apply directly</b>\n" f"💼 {html.escape(str(analysis.get('job_title', 'Analyst role')))}\n" f"🏢 {html.escape(str(analysis.get('company') or 'Company not stated'))}\n" f"📍 {html.escape(str(analysis.get('location') or 'Check listing'))}\n" f"🔗 <a href='{html.escape(str(analysis.get('application_url', '')), quote=True)}'>Open application</a>\n" f"ℹ️ {html.escape(str(analysis.get('reason', 'Relevant match')))}")
+    from scout_state import callback_data
+    warnings = "; ".join(analysis.get("warnings", [])[:3])
+    evidence = "\n".join("• " + html.escape(str(x)) for x in analysis.get("evidence", [])[:2])
+    message = (
+        "🎯 <b>" + ("Stretch opportunity" if analysis.get("tier") == "stretch" else "Relevant job") + "</b>\n"
+        + html.escape(str(analysis.get("job_title", "Analyst"))) + "\n"
+        + html.escape(str(analysis.get("company", ""))) + " — " + html.escape(str(analysis.get("location", ""))) + "\n"
+        + f"Fit: {analysis.get('fit_score', 0)}/100\n" + evidence + "\n"
+        + ("⚠️ " + html.escape(warnings) + "\n" if warnings else "")
+        + "<a href='" + html.escape(str(analysis.get("application_url", "")), quote=True) + "'>Apply on official site</a>"
+    )
+    if os.getenv("TELEGRAM_TRACKING_READY", "false").lower() != "true":
+        return send_telegram(message)
+    buttons = [[{"text": label, "callback_data": callback_data(analysis["job_id"], action, TELEGRAM_BOT_TOKEN)}
+                for label, action in pair] for pair in (
+                    (("Applied", "applied"), ("Not suitable", "notfit"), ("Snooze", "snooze")),
+                    (("Reply", "reply"), ("Interview", "interview"), ("Rejected", "rejected")))]
+    return send_telegram(message, {"inline_keyboard": buttons})
 
 
 def _write_run_report(report):
@@ -939,110 +922,17 @@ def _write_run_report(report):
     print("RUN_REPORT=" + json.dumps(report, sort_keys=True))
 
 
-def main():
-    print("=== Job Scout Agent Starting ===")
-    required = [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
-    if SEND_EMAILS:
-        required.extend([GMAIL_SENDER, GMAIL_PASSWORD])
-    if not all(required):
-        print("[Fatal] One or more required environment variables are missing.")
-        send_telegram("❗ Job Scout stopped: missing API keys or secrets.")
-        raise SystemExit(1)
-    email_delivery_ready = SEND_EMAILS
-    if SEND_EMAILS and SMTP_PREFLIGHT and not smtp_preflight():
-        email_delivery_ready = False
-        send_telegram("⚠️ <b>Job Scout partial run</b>\nGmail SMTP authentication failed; discovery and direct-apply alerts will continue.")
-    history = load_history()
-    remaining_daily_capacity = max(0, MAX_EMAILS_PER_DAY - _emails_sent_today(history))
-    follow_up_stats = process_pending_follow_ups(min(MAX_FOLLOWUPS_PER_RUN, remaining_daily_capacity)) if email_delivery_ready else {"sent": 0, "failed": 0, "pending": len(load_follow_up()), "sent_records": []}
-    for sent_record in follow_up_stats.pop("sent_records", []):
-        history.append({"job_id": sent_record.get("job_id", ""), "route": "follow_up", "email": sent_record.get("email", ""), "step": sent_record.get("step"), "timestamp": datetime.now(timezone.utc).isoformat()})
-    save_history(history)
-    send_telegram("🤖 <b>Job Scout Started</b>\n\n" f"👤 {html.escape(CANDIDATE_NAME)}\n" "🎯 Data / Research / BI / Business / Operations Analyst\n" "📍 Delhi-NCR / India Remote\n" "⚙️ Public ATS feeds + rotating public LinkedIn search")
-    known_job_ids = {item.get("job_id") or _job_fingerprint(item) for item in history if isinstance(item, dict)}
-    report = {"status": "healthy", "queries_attempted": 0, "queries_successful": 0, "query_errors": [], "source_stats": {}, "results_discovered": 0, "pages_fetched": 0, "relevant_email_leads": 0, "relevant_apply_leads": 0, "emails_attempted": 0, "emails_accepted_by_smtp": 0, "duplicates": 0, "irrelevant": 0, "model_errors": 0, "safety_skips": 0, "follow_ups": follow_up_stats}
-    try:
-        posts = search_recruiter_posts()
-    except Exception as exc:
-        report["status"] = "failed"
-        report["query_errors"] = [str(exc)[:180]]
-        _write_run_report(report)
-        send_telegram(f"🛑 <b>Job Scout stopped</b>\nDiscovery failed: {html.escape(str(exc)[:300])}")
-        raise SystemExit(1)
-    report.update(LAST_SEARCH_STATS)
-    source_values = list(report.get("source_stats", {}).values())
-    if report["query_errors"] or any(item.get("status") == "error" for item in source_values):
-        report["status"] = "partial"
-    if SEND_EMAILS and not email_delivery_ready:
-        report["status"] = "partial"
-    apply_alerts_sent, emails_this_run = 0, 0
-    emails_today = _emails_sent_today(history)
-    for index, raw_post in enumerate(posts, 1):
-        print(f"\n[{index}/{len(posts)}] {raw_post.get('href', '')}")
-        post = enrich_post(raw_post)
-        report["pages_fetched"] += int(bool(post.get("page_fetched")))
-        analysis, verdict = analyze_post_verbose(post)
-        if analysis is None:
-            if verdict == "irrelevant":
-                report["irrelevant"] += 1
-            else:
-                report["model_errors"] += 1
-            continue
-        job_id = analysis["job_id"]
-        if job_id in known_job_ids:
-            report["duplicates"] += 1
-            continue
-        if verdict == "apply":
-            report["relevant_apply_leads"] += 1
-            if apply_alerts_sent < MAX_APPLY_ALERTS:
-                if _send_apply_alert(analysis):
-                    apply_alerts_sent += 1
-                    _record_history(history, analysis, post, "apply")
-                    known_job_ids.add(job_id)
-            continue
-        email = analysis["recruiter_email"]
-        report["relevant_email_leads"] += 1
-        if _is_suppressed(email) or _recipient_in_cooldown(history, email):
-            report["safety_skips"] += 1
-            print(f"[Safety] Suppressed or recently contacted recipient: {email}")
-            continue
-        if emails_this_run >= MAX_EMAILS_PER_RUN or emails_today >= MAX_EMAILS_PER_DAY:
-            report["safety_skips"] += 1
-            report["status"] = "safety_stop"
-            print("[Safety] Email run/day cap reached")
-            continue
-        written, writer_status = compose_email(post, analysis)
-        if written is None:
-            report["model_errors"] += 1
-            print(f"[Writer Error] {writer_status}")
-            continue
-        report["emails_attempted"] += 1
-        if not email_delivery_ready:
-            print(f"[Dry Run] Would email verified source address {email}")
-            continue
-        if send_email(email, written["email_subject"], written["email_body"]):
-            report["emails_accepted_by_smtp"] += 1
-            emails_this_run += 1
-            emails_today += 1
-            _record_history(history, analysis, post, "email", email)
-            known_job_ids.add(job_id)
-            schedule_follow_up(email, written["email_subject"], written["email_body"], job_id)
-            send_telegram("🚀 <b>Email accepted by SMTP</b>\n" f"📧 <code>{html.escape(email)}</code>\n" f"💼 {html.escape(str(analysis.get('job_title', 'Analyst role')))}\n" f"🔗 <a href='{html.escape(str(analysis.get('application_url', '')), quote=True)}'>job</a>")
-    if not posts or report["relevant_apply_leads"] + report["relevant_email_leads"] == 0:
-        report["status"] = "no_matches" if report["status"] == "healthy" else report["status"]
-    _write_run_report(report)
-    healthy_sources = sum(1 for item in report.get("source_stats", {}).values() if item.get("status") == "ok")
-    total_sources = sum(1 for item in report.get("source_stats", {}).values() if item.get("status") != "disabled")
-    summary = (f"✅ <b>Job Scout — {html.escape(report['status'])}</b>\n\n" f"🌐 Sources healthy: {healthy_sources}/{total_sources}\n" f"🔎 Discovered: {report['results_discovered']}\n" f"📄 Full pages fetched: {report['pages_fetched']}\n" f"🎯 Direct-apply leads: {report['relevant_apply_leads']}\n" f"📧 Verified email leads: {report['relevant_email_leads']}\n" f"✉️ SMTP accepted: {report['emails_accepted_by_smtp']}\n" f"🔄 Duplicates: {report['duplicates']}\n" f"🚫 Irrelevant: {report['irrelevant']}\n" f"🛡️ Safety skips: {report['safety_skips']}\n" f"⚠️ Model errors: {report['model_errors']}")
-    source_errors = [f"{name}: {item.get('error', 'source failed')}" for name, item in report.get("source_stats", {}).items() if item.get("status") == "error"]
-    warnings = report["query_errors"] + source_errors
-    if warnings:
-        summary += "\n\n<b>Discovery warnings</b>\n" + "\n".join(f" • {html.escape(error)}" for error in warnings[:3])
-    send_telegram(summary)
-    print("=== Done ===")
+def main(*, dry_run=False, notify=True):
+    import sys
+    from scout_runtime import run
+    return run(sys.modules[__name__], dry_run=dry_run, notify=notify)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Zero-cost public-careers job scout")
+    parser.add_argument("--dry-run", action="store_true", help="Discover and rank without sending email or job alerts")
+    parser.add_argument("--no-notify", action="store_true", help="Do not send Telegram messages")
+    args = parser.parse_args()
+    main(dry_run=args.dry_run, notify=not args.no_notify)
 
 

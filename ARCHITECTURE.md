@@ -1,43 +1,69 @@
-# Hermes Job Scout
+# Hermes architecture
 
-Hermes is an unattended, zero-paid-API job discovery and outreach pipeline designed for GitHub Actions. It keeps the existing resume attachment (`Shivank_Shukla_Data_Analyst.pdf`) and does not require a personal computer to remain online.
+## Runtime and zero-cost boundary
 
-## Discovery
+The scheduled GitHub Actions job and Telegram `/run` use the same scout entrypoint.
+Standard Ubuntu runners, bounded runtime/requests and the existing Cloudflare Free
+Worker keep the device-independent design. Paid search and model calls default to
+disabled. Included account usage is shared: the verified $0 Actions stop-usage
+budget is an essential deployment control, not a promise that quotas never expire.
 
-Each run reads public, official ATS feeds listed in `config/employers.json`:
+## Discovery and matching
 
-- Greenhouse Job Board API
-- Lever Postings API
-- SmartRecruiters Posting API
+1. Rotate the employer registry by polling tier, preserving cursors and source status.
+2. Read public official feeds or structured career pages; optionally read the opted-in Gmail label.
+3. Deduplicate before enrichment. Keep source publication dates separate from first-seen dates.
+4. Apply location, employment, shift, pay and mandatory-qualification gates.
+5. Score responsibilities, résumé evidence, experience, location and freshness.
+6. Separate core recommendations from experience-stretch roles.
 
-A single rotating public LinkedIn Google query supplements these feeds when `SERPAPI_KEY` is available. LinkedIn is not scraped with a logged-in session and no cookies are stored in GitHub.
+The registry has 30 employers but is not a claim of 30 working adapters. Blocked,
+JavaScript-only and unreadable pages remain explicitly unavailable/link-only.
+No authenticated scraping or protective-control bypass is used; Naukri is excluded.
 
-The ATS feeds are free and remain the primary source if SerpAPI has no results, reaches quota, or is not configured. One source failing produces a partial run; other sources continue.
+The candidate profile records confirmed ProSca internship January–July 2026 and
+full-time employment from August 2026, completed degrees, distinct internships and
+project evidence. Titles cannot override missing mandatory experience. The updated
+PDF is attached unchanged to permitted recruiter emails.
 
-## Eligibility and ranking
+## Durable state and outcomes
 
-Hard gates reject:
+`state/scout.json` stores versioned job metadata, alert quotas, outcomes and send
+intents. Raw source pages and unrelated inbox messages are not stored there.
 
-- senior, lead, manager, director, internship, contract, or part-time roles;
-- explicit requirements above two years unless the role is clearly junior/fresher-friendly;
-- locations outside Delhi-NCR unless the listing is explicitly remote;
-- night, US, or rotational shifts;
-- explicit compensation below 6.5 LPA;
-- expired or unverifiably old public posts.
+- Discovery, alerting, submission and email acceptance are independent facts.
+- Legacy direct-apply entries migrate to alerted/unconfirmed, not submitted.
+- A pre-send intent is persisted remotely before SMTP; pending/uncertain intents cannot blindly resend.
+- Repository commits preserve concurrent feedback and unrelated changes.
+- Corrupt state or failed persistence closes unsafe outreach rather than returning empty history.
+- Up to 500 jobs retain active descriptive metadata; compact historical dedup evidence remains.
 
-Surviving jobs receive a deterministic 0-100 score for role fit, relevant skills, location, experience, source quality, and a verified contact route. The optional NVIDIA model can review wording, but discovery, qualification, alerts, and email composition continue when it is unavailable.
+Telegram buttons authenticate the webhook, chat and sender, then verify a
+seven-day HMAC callback bound to a known 24-hex job ID. The Worker writes immutable
+`state/feedback/<update_id>.json` files and acknowledges only successful storage.
+The next scout consumes events in update-ID order, idempotently; stale callbacks
+cannot roll back newer outcomes. Buttons do not start Actions runs.
 
-## Delivery safeguards
+## Delivery and failure modes
 
-- Email is sent only to an address present verbatim in the public source content.
-- The candidate's own address, placeholders, no-reply addresses, suppressed addresses, and recently contacted recipients are rejected.
-- Limits default to 3 initial emails per run and 6 per UTC day.
-- Direct-apply jobs are sent to Telegram; they are recorded only after Telegram accepts the alert.
-- Follow-ups default to day 4 and day 9. IMAP checks stop a chain after a reply or bounce, and bounced recipients are suppressed.
-- Job fingerprints prevent duplicate alerts and applications.
+At most five new alerts per IST day include at most one stretch role. Apply links
+require user submission; pressing Applied confirms it. Autonomous emails require
+a core match and an explicit vacancy-linked recruitment address. Personalisation
+uses evidence-backed templates; no mandatory paid inference service is involved.
 
-## Runtime
+Mailbox checks gate follow-ups and reconcile uncertain sends. Reply/bounce/outcome
+evidence stops a chain; ambiguous or unavailable mailbox checks defer it. Source
+failure degrades coverage without fabricating jobs or blocking independent sources.
 
-GitHub Actions runs at 08:17, 14:37, and 20:23 IST. Runs are serialized to protect the JSON state files. The workflow tests the code before every live run and commits only durable outreach, follow-up, and suppression state.
+## Worker deployment
 
-The schedule and thresholds can be tuned with the environment variables documented in `.env.example`. Employer coverage can be expanded by adding a verified public ATS slug to `config/employers.json`.
+Repository changes do not automatically deploy Cloudflare. Deploy the JavaScript
+Worker to the existing Free service and enable message plus callback_query webhook
+updates. A dedicated repository-scoped Contents token is recommended; the existing
+GITHUB_PAT may serve as a fallback only if it already has the necessary permission.
+No new credential scope is silently added. See the Worker deployment guide.
+
+Commands read private state; a known paused budget prevents `/run`, and unavailable
+state fails closed. Statistics reflect reconciled records, not unprocessed feedback.
+Regression tests cover legacy migration, caps, signatures, idempotence, persistence
+failures, uncertain sends and budget-pause dispatch prevention.

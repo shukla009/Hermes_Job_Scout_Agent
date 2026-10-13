@@ -1,5 +1,30 @@
 # Deploying Telegram /run Trigger to Cloudflare Workers (Free)
 
+## Queue upgrade: required configuration
+
+The JavaScript Worker now supports `/run`, `/queue`, `/status`, `/stats`, and signed
+recommendation buttons. Outcomes are immutable private GitHub files; buttons do
+not start Actions runs or require a database. Deploy the updated JavaScript source
+to the existing Worker; a repository push alone does not deploy Cloudflare.
+
+- Add secret `GITHUB_STATE_PAT`: a fine-grained token restricted to this private
+  repository, **Contents read/write** only. `GITHUB_PAT` retains **Actions write**
+  for dispatch. Existing tokens may be used temporarily if they have both rights.
+- Set `TELEGRAM_USER_ID` to the authorised sender ID. For a private chat, omission
+  defaults to `TELEGRAM_CHAT_ID`; groups require the explicit sender ID.
+- Keep `TELEGRAM_WEBHOOK_SECRET` and `TELEGRAM_BOT_TOKEN` secret.
+- Set webhook `allowed_updates` to `["message", "callback_query"]`, not messages
+  alone. Never paste bot tokens into chat or store them in tracked files.
+- Callbacks expire after seven days, bind to a registered job, and authenticate
+  HMAC signatures with the bot token. Failed GitHub writes are not acknowledged.
+- Saved outcomes appear in statistics on the next scheduled scout run. `/queue`
+  does not imply an application was sent; the **Applied** action confirms one.
+- Validate with `node tests/worker_test.mjs` before deployment and check `/status`
+  after the first successful scout state migration.
+- Retain the Cloudflare Free plan and stopped paid upgrades. No new paid services
+  or database are required. GitHub budget enforcement remains in the workflow;
+  a persisted `budget.paused` blocks manual dispatch in the Worker too.
+
 ## 1. Prerequisites
 - Cloudflare account (free at dash.cloudflare.com)
 - GitHub PAT with `workflow` scope (fine-grained token)

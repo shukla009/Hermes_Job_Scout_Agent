@@ -1,0 +1,121 @@
+{
+    "name": "Shivank Shukla",
+    "email": "work.shuklashivank@gmail.com",
+    "verified_on": "2026-10-11",
+    "education": [
+        {
+            "degree": "BSc Data Analytics",
+            "completed": true,
+            "year": 2026
+        },
+        {
+            "degree": "BCA",
+            "completed": true,
+            "year": 2024
+        }
+    ],
+    "experience": [
+        {
+            "employer": "ProSca",
+            "title": "Lead Research and Strategy Associate",
+            "kind": "full_time",
+            "start": "2026-08",
+            "end": null
+        },
+        {
+            "employer": "ProSca",
+            "kind": "internship",
+            "start": "2026-01",
+            "end": "2026-07"
+        },
+        {
+            "employer": "Upto",
+            "kind": "internship",
+            "start": "2025-06",
+            "end": "2025-09"
+        },
+        {
+            "employer": "IBM",
+            "kind": "internship",
+            "start": "2024-06",
+            "end": "2024-08"
+        },
+        {
+            "employer": "Vodafone Idea",
+            "kind": "internship",
+            "start": "2024-06",
+            "end": "2024-07"
+        }
+    ],
+    "skills": [
+        "Excel",
+        "Power BI",
+        "DAX",
+        "Tableau",
+        "Python",
+        "Power Query",
+        "Pandas",
+        "NumPy",
+        "EDA",
+        "statistical analysis",
+        "SQL",
+        "MySQL",
+        "Oracle",
+        "ETL",
+        "data governance",
+        "research",
+        "market intelligence",
+        "competitive analysis",
+        "data cleaning",
+        "data validation",
+        "gap analysis",
+        "workflow mapping"
+    ],
+    "listed_only_skills": [
+        "SQL",
+        "MySQL",
+        "Oracle",
+        "ETL",
+        "data governance",
+        "Power Query",
+        "Pandas",
+        "NumPy",
+        "EDA",
+        "statistical analysis"
+    ],
+    "evidence": {
+        "research": [
+            "Delivered 12+ strategic intelligence reports across five industry verticals.",
+            "Performed market-entry research and competitive analysis."
+        ],
+        "process": [
+            "Performed gap assessments and workflow mapping.",
+            "Reduced research turnaround by 20%."
+        ],
+        "reporting": [
+            "Built Power BI and Tableau dashboards during internships using Excel and DAX."
+        ],
+        "data": [
+            "Analysed 10,000+ healthcare records during an internship.",
+            "Improved data acquisition efficiency by 40% across 1,000+ institutions during an internship.",
+            "Performed dataset cleaning and validation during internships."
+        ],
+        "project": [
+            "Built an LSTM forecasting project reporting 1.9% MAPE; this is not professional ML employment."
+        ]
+    },
+    "preferences": {
+        "minimum_salary_lpa": 6.5,
+        "locations": [
+            "Delhi",
+            "Noida",
+            "Gurgaon",
+            "Gurugram"
+        ],
+        "india_remote": true,
+        "full_time_only": true,
+        "day_shift_only": true
+    },
+    "portfolio": "https://shivank-shukla-portfolio.vercel.app/",
+    "linkedin": "https://www.linkedin.com/in/shivank-shukla09"
+}
