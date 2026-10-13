@@ -38,8 +38,8 @@
     "jobs": []
   },
   "lever:Paytm": {
-    "last_poll": "2026-10-13T16:47:05.260138+00:00",
-    "cursor": 100,
+    "last_poll": "2026-10-13T16:54:32.038719+00:00",
+    "cursor": 125,
     "jobs": [
       {
         "title": "Associate - User Growth (Market intelligence)",
@@ -86,7 +86,7 @@
         "needs_reverification": true
       }
     ],
-    "pick_cursor": 1
+    "pick_cursor": 0
   },
   "lever:Portcast": {
     "last_poll": "2026-10-13T16:28:01.566861+00:00",
@@ -135,11 +135,11 @@
         "last_verified_at": "2026-10-13T16:28:01.566861+00:00"
       }
     ],
-    "pick_cursor": 0
+    "pick_cursor": 1
   },
   "html:ProcDNA": {
-    "last_poll": "2026-10-13T16:47:05.260138+00:00",
-    "cursor": 0,
+    "last_poll": "2026-10-13T16:54:32.038719+00:00",
+    "cursor": 5,
     "jobs": [
       {
         "title": "[India] - Power BI Developer",
@@ -160,14 +160,13 @@
         "updated_at": "",
         "date_posted": "",
         "first_seen_at": "2026-10-13T16:28:01.566861+00:00",
-        "last_verified_at": "2026-10-13T16:36:06.596231+00:00",
-        "needs_reverification": true
+        "last_verified_at": "2026-10-13T16:54:32.038719+00:00"
       }
     ],
     "pick_cursor": 0
   },
   "smartrecruiters:NielsenIQ": {
-    "last_poll": "2026-10-13T16:47:05.260138+00:00",
+    "last_poll": "2026-10-13T16:54:32.038719+00:00",
     "cursor": 0,
     "jobs": []
   },
@@ -177,8 +176,8 @@
     "jobs": []
   },
   "lever:ION": {
-    "last_poll": "2026-10-13T16:47:05.260138+00:00",
-    "cursor": 0,
+    "last_poll": "2026-10-13T16:54:32.038719+00:00",
+    "cursor": 25,
     "jobs": [
       {
         "title": "AP Analyst - Noida",
@@ -199,54 +198,10 @@
         "updated_at": "",
         "date_posted": "2026-07-02T11:30:14.266000+00:00",
         "first_seen_at": "2026-10-13T16:28:01.566861+00:00",
-        "last_verified_at": "2026-10-13T16:28:01.566861+00:00",
-        "needs_reverification": true
-      },
-      {
-        "title": "PMO Analyst, LAB49 Noida",
-        "job_title": "PMO Analyst, LAB49 Noida",
-        "company": "ION",
-        "location": "Noida",
-        "body": "About Lab49 Lab49 is an award-winning specialist consultancy that creates bespoke technology solutions and products for the world's leading financial institutions. Founded in 2002, Lab49 combines strategy, design, and technology expertise to deliver transformative outcomes for investment banks, asset managers, exchanges, and other capital markets participants. Role Overview Lab49 is seeking a highly organized and detail-oriented PMO Analyst to support the successful delivery of strategic technology and transformation initiatives. The PMO Analyst will play a key role in driving project governance, integrated planning, reporting, risk management, resource coordination, and delivery controls across complex programs. This role requires strong stakeholder management, analytical skills, and the ability to provide transparency into project performance, dependencies, risks, and milestones while supporting delivery teams and leadership. “ Success in this role means building a PMO that improves delivery outcomes, not simply administering governance activities” Key Responsibilities PMO Capability Building and Operating Model Help design, establish, and mature a scalable PMO operating model covering governance, integrated planning, reporting, financial controls, resource management, risk management, and delivery assurance. Establish common delivery metrics and dashboards that give leadership a clear view of progress, risks, dependencies, capacity, quality, and financial performance. Crea",
-        "source_text": "About Lab49 Lab49 is an award-winning specialist consultancy that creates bespoke technology solutions and products for the world's leading financial institutions. Founded in 2002, Lab49 combines strategy, design, and technology expertise to deliver transformative outcomes for investment banks, asset managers, exchanges, and other capital markets participants. Role Overview Lab49 is seeking a highly organized and detail-oriented PMO Analyst to support the successful delivery of strategic technology and transformation initiatives. The PMO Analyst will play a key role in driving project governance, integrated planning, reporting, risk management, resource coordination, and delivery controls across complex programs. This role requires strong stakeholder management, analytical skills, and the ability to provide transparency into project performance, dependencies, risks, and milestones while supporting delivery teams and leadership. “ Success in this role means building a PMO that improves delivery outcomes, not simply administering governance activities” Key Responsibilities PMO Capability Building and Operating Model Help design, establish, and mature a scalable PMO operating model covering governance, integrated planning, reporting, financial controls, resource management, risk management, and delivery assurance. Establish common delivery metrics and dashboards that give leadership a clear view of progress, risks, dependencies, capacity, quality, and financial performance. Create reusable playbooks for discovery, mobilization, execution, release readiness, stabilization, and program closure. End-to-End Delivery Management Support delivery from initial discovery and mobilization through planning, execution, release, stabilization, and closure. Maintain an end-to-end view across business, product, design, architecture, engineering, quality engineering, cybersecurity, compliance, and operations. Identify sequencing issues, delivery gaps, conflicting priorities, and cross-team dependencies before they affect critical milestones. Drive ownership of actions and decisions, ensuring unresolved items are escalated with clear impact assessments and recommended options. Conduct delivery health checks, provide an independent evidence-based view of status, and support recovery planning for at-risk workstreams. Coordinate distributed teams and stakeholders across regions, functions, and partner organizations. AI-Enabled Delivery and PMO Use approved AI capabilities to improve the speed and quality of planning, reporting, meeting synthesis, dependency analysis, knowledge retrieval, and management communications. Ensure AI use complies with firm’s confidentiality, data-protection, information-security, and responsible-use requirements. Identify opportunities to automate repetitive PMO activities such as status consolidation, action tracking, document classification, and governance-pack preparation. Governance and Executive Communication Prepare concise executive updates that clearly distinguish progress, risks, decisions required, implications, and recommended actions. Maintain accurate records of decisions, commitments, actions, and escalations. Prepare and maintain governance materials, status reports, steering committee packs, and executive dashboards. Monitor project progress against agreed milestones and provide delivery traceability and reporting. Integrated Planning, Risks, and Dependencies Own or coordinate integrated planning across multiple workstreams and delivery organizations. Establish dependency-management practices that identify upstream and downstream impacts across product, technology, operations, and third parties. Facilitate RAID (Risks, Assumptions, Issues, and Dependencies) management and ensure timely escalation of delivery risks and blockers. Financial, Commercial, and Resource Management Support program budgeting, forecasting, actuals tracking, and variance analysis. Maintain visibility into team capacity, onboarding, allocation, role requirements, and forward demand. Connect resource plans with delivery milestones, critical skills, and workstream priorities. Support commercial tracking across statements of work, deliverables, milestones, change requests, and client commitments. Identify potential scope, timeline, or cost impacts early and support structured change-control discussions. Provide forward-looking views of capacity gaps and delivery constraints rather than relying only on retrospective reporting. Required Qualifications Bachelor's degree in Business, Technology, Engineering, Finance, or a related discipline. 3 to 7 years of experience in PMO, project governance, delivery management, program controls, or related technology-delivery roles. Demonstrated experience independently owning PMO workstreams and building or improving delivery-governance practices within complex technology programs. Experience with RAID management, integrated planning, milestone tracking, dependency management, governance forums, and executive reporting. Proficiency with Jira, Confluence, Microsoft Excel, PowerPoint, and reporting tools. Strong analytical, organizational, and problem-solving skills. Excellent written and verbal communication skills, with the ability to work effectively with global stakeholders in a fast-paced consulting environment. Preferred Qualifications Experience supporting technology delivery programs within financial services, capital markets, banking, or fintech organizations. Exposure to Agile, Scrum, or hybrid delivery methodologies. Experience with financial tracking, resource planning, and executive reporting. PMP, PRINCE2, Agile, Scrum, or equivalent project management certifications. What You'll Bring Strong attention to detail and execution excellence. Ability to manage multiple priorities simultaneously. Proactive communication and stakeholder management skills. A collaborative mindset with a focus on delivery outcomes. Data-driven decision-making and reporting capabilities. Information Security Responsibilities Comply with all Information Security Management System (ISMS) policies, standards, and procedures. Protect confidential, client, and company information in accordance with Lab49 and ION security requirements. Promptly report security incidents, risks, or policy violations. Participate in mandatory security awareness and compliance training. Ensure adherence to applicable regulatory, contractual, and information security obligations. About Lab49 Lab49 is an award-winning specialist consultancy that creates bespoke technology solutions and products for the world's leading financial institutions. Founded in 2002, Lab49 combines strategy, design, and technology expertise to deliver transformative outcomes for investment banks, asset managers, exchanges, and other capital markets participants. Role Overview Lab49 is seeking a highly organized and detail-oriented PMO Analyst to support the successful delivery of strategic technology and transformation initiatives. The PMO Analyst will play a key role in driving project governance, integrated planning, reporting, risk management, resource coordination, and delivery controls across complex programs. This role requires strong stakeholder management, analytical skills, and the ability to provide transparency into project performance, dependencies, risks, and milestones while supporting delivery teams and leadership. “Success in this role means building a PMO that improves delivery outcomes, not simply administering governance activities” Key Responsibilities PMO Capability Building and Operating Model Help design, establish, and mature a scalable PMO operating model covering governance, integrated planning, reporting, financial controls, resource management, risk management, and delivery assurance. Establish common delivery metrics and dashboards that give leadership a clear view of progress, risks, dependencies, capacity, quality, and financial performance. Create reusable playbooks for discovery, mobilization, execution, release readiness, stabilization, and program closure. End-to-End Delivery Management Support delivery from initial discovery and mobilization through planning, execution, release, stabilization, and closure. Maintain an end-to-end view across business, product, design, architecture, engineering, quality engineering, cybersecurity, compliance, and operations. Identify sequencing issues, delivery gaps, conflicting priorities, and cross-team dependencies before they affect critical milestones. Drive ownership of actions and decisions, ensuring unresolved items are escalated with clear impact assessments and recommended options. Conduct delivery health checks, provide an independent evidence-based view of status, and support recovery planning for at-risk workstreams. Coordinate distributed teams and stakeholders across regions, functions, and partner organizations. AI-Enabled Delivery and PMO Use approved AI capabilities to improve the speed and quality of planning, reporting, meeting synthesis, dependency analysis, knowledge retrieval, and management communications. Ensure AI use complies with firm’s confidentiality, data-protection, information-security, and responsible-use requirements. Identify opportunities to automate repetitive PMO activities such as status consolidation, action tracking, document classification, and governance-pack preparation. Governance and Executive Communication Prepare concise executive updates that clearly distinguish progress, risks, decisions required, implications, and recommended actions. Maintain accurate records of decisions, commitments, actions, and escalations. Prepare and maintain governance materials, status reports, steering committee packs, and executive dashboards. Monitor project progress against agreed milestones and provide delivery traceability and reporting. Integrated Planning, Risks, and Dependencies Own or coordinate integrated planning across multiple workstreams and delivery organizations. Establish dependency-management practices that identify upstream and downstream impacts across product, technology, operations, and third parties. Facilitate RAID (Risks, Assumptions, Issues, and Dependencies) management and ensure timely escalation of delivery risks and blockers. Financial, Commercial, and Resource Management Support program budgeting, forecasting, actuals tracking, and variance analysis. Maintain visibility into team capacity, onboarding, allocation, role requirements, and forward demand. Connect resource plans with delivery milestones, critical skills, and workstream priorities. Support commercial tracking across statements of work, deliverables, milestones, change requests, and client commitments. Identify potential scope, timeline, or cost impacts early and support structured change-control discussions. Provide forward-looking views of capacity gaps and delivery constraints rather than relying only on retrospective reporting. Required Qualifications Bachelor's degree in Business, Technology, Engineering, Finance, or a related discipline. 3 to 7 years of experience in PMO, project governance, delivery management, program controls, or related technology-delivery roles. Demonstrated experience independently owning PMO workstreams and building or improving delivery-governance practices within complex technology programs. Experience with RAID management, integrated planning, milestone tracking, dependency management, governance forums, and executive reporting. Proficiency with Jira, Confluence, Microsoft Excel, PowerPoint, and reporting tools. Strong analytical, organizational, and problem-solving skills. Excellent written and verbal communication skills, with the ability to work effectively with global stakeholders in a fast-paced consulting environment. Preferred Qualifications Experience supporting technology delivery programs within financial services, capital markets, banking, or fintech organizations. Exposure to Agile, S",
-        "source_emails": [],
-        "href": "https://jobs.lever.co/ion/774c4a59-4a29-4602-9313-8ba6682ef7e6",
-        "application_url": "https://jobs.lever.co/ion/774c4a59-4a29-4602-9313-8ba6682ef7e6",
-        "employment_type": "Full-time",
-        "source_type": "direct_apply",
-        "page_fetched": true,
-        "active_listing": true,
-        "source_id": "774c4a59-4a29-4602-9313-8ba6682ef7e6",
-        "posted_at": "2026-09-29T05:20:05.207000+00:00",
-        "updated_at": "",
-        "date_posted": "2026-09-29T05:20:05.207000+00:00",
-        "first_seen_at": "2026-10-13T16:34:13.333173+00:00",
-        "last_verified_at": "2026-10-13T16:34:13.333173+00:00",
-        "needs_reverification": true
-      },
-      {
-        "title": "Technical Product Analyst, 2027 Leadership Development Program, ION Group, India",
-        "job_title": "Technical Product Analyst, 2027 Leadership Development Program, ION Group, India",
-        "company": "ION",
-        "location": "Noida; Mumbai; Pune",
-        "body": "Your Role As a Technical Product Analyst, you will work at the intersection of Product, Data, AI, and Business Operations to help build, improve, and scale ION products used by Tier 1 banks , Fortune 100 global corporations and other leading enterprises worldwide. You will transform data into insights, customer challenges into product opportunities, and ideas into measurable business outcomes. Working closely with Product Managers, Engineers, customers, and business stakeholders, you will contribute to product innovation, process improvement, and data-driven decision-making across the organization. This role offers a unique opportunity to combine analytical thinking, product understanding, customer engagement, and emerging technologies to shape the future of financial technology solutions. Your Role As a Technical Product Analyst, you will work at the intersection of Product, Data, AI, and Business Operations to help build, improve, and scale ION products used by Tier 1 banks , Fortune 100 global corporations and other leading enterprises worldwide. You will transform data into insights, customer challenges into product opportunities, and ideas into measurable business outcomes. Working closely with Product Managers, Engineers, customers, and business stakeholders, you will contribute to product innovation, process improvement, and data-driven decision-making across the organization. This role offers a unique opportunity to combine analytical thinking, product understanding, ",
-        "source_text": "Your Role As a Technical Product Analyst, you will work at the intersection of Product, Data, AI, and Business Operations to help build, improve, and scale ION products used by Tier 1 banks , Fortune 100 global corporations and other leading enterprises worldwide. You will transform data into insights, customer challenges into product opportunities, and ideas into measurable business outcomes. Working closely with Product Managers, Engineers, customers, and business stakeholders, you will contribute to product innovation, process improvement, and data-driven decision-making across the organization. This role offers a unique opportunity to combine analytical thinking, product understanding, customer engagement, and emerging technologies to shape the future of financial technology solutions. Your Role As a Technical Product Analyst, you will work at the intersection of Product, Data, AI, and Business Operations to help build, improve, and scale ION products used by Tier 1 banks , Fortune 100 global corporations and other leading enterprises worldwide. You will transform data into insights, customer challenges into product opportunities, and ideas into measurable business outcomes. Working closely with Product Managers, Engineers, customers, and business stakeholders, you will contribute to product innovation, process improvement, and data-driven decision-making across the organization. This role offers a unique opportunity to combine analytical thinking, product understanding, customer engagement, and emerging technologies to shape the future of financial technology solutions. Our Company: We’re a diverse group of visionary innovators who provide trading and workflow automation software, high-value analytics, and strategic consulting to corporations, central banks, financial institutions, and governments. Founded in 1999, we’ve achieved tremendous growth by bringing together some of the best and most successful financial technology companies in the world. Learn more at iongroup.com . Our Company: We’re a diverse group of visionary innovators who provide trading and workflow automation software, high-value analytics, and strategic consulting to corporations, central banks, financial institutions, and governments. Founded in 1999, we’ve achieved tremendous growth by bringing together some of the best and most successful financial technology companies in the world. Learn more at iongroup.com. Data & Insights: Analyze product, customer, and business data to identify trends, root causes, risks, and opportunities. Define, track, and measure key product and business metrics. Build dashboards, reports, and scalable analytics solutions that support data-driven decision making. Generate actionable insights and recommendations for Product, Engineering, and business teams. Support the development and maintenance of reliable data assets, pipelines, and reporting capabilities. Assist in building and validating predictive models to support business and product objectives. AI & Automation: Identify opportunities for AI-driven innovation, automation, and process optimization. Design and build analytical tools, automations, and workflow improvements that help teams turn data into action. Evaluate and leverage AI technologies, machine learning capabilities, and emerging tools to improve products and internal operations. Support the implementation, testing, monitoring, and continuous improvement of AI-powered solutions. Contribute to reducing operational complexity through scalable, technology-driven solutions. Product & Customer Impact: Partner with Product Managers and Engineers to define requirements, validate product ideas, and measure outcomes. Support product strategy, roadmap planning, and feature development through data-driven recommendations. Build a deep understanding of customer workflows, product usage patterns, and business requirements. Collaborate directly with customers and internal stakeholders to understand challenges, resolve issues, and support product adoption. Communicate insights and recommendations effectively to both technical and non-technical audiences. Own initiatives end-to-end, from problem identification and analysis through delivery and measurable business outcome. You will work closely with Product, Engineering, Data, AI, Client Services, and business teams — building fluency across multiple disciplines rather than progressing along a narrow, single-track path. You will learn: Product Management and End-to-End Product Delivery Data analytics, reporting, and visualization Data Engineering and modern data platforms AI, automation, and data-driven decision making Financial technology and enterprise software Customer-centric problem solving You will gain exposure to: Product Strategy and Roadmap Planning Customer and Market Insights Leadership Client interactions, and Stakeholder Management Real-world business challenges faced by global institutions You will develop expertise in: Product Analysis Data Analytics & Visualization AI &Automation Data Engineering Product Management Customer relationship",
-        "source_emails": [],
-        "href": "https://jobs.lever.co/ion/83539ab9-431f-43e3-9179-f891eeb16db9",
-        "application_url": "https://jobs.lever.co/ion/83539ab9-431f-43e3-9179-f891eeb16db9",
-        "employment_type": "Full-time",
-        "source_type": "direct_apply",
-        "page_fetched": true,
-        "active_listing": true,
-        "source_id": "83539ab9-431f-43e3-9179-f891eeb16db9",
-        "posted_at": "2026-09-30T13:52:04.716000+00:00",
-        "updated_at": "",
-        "date_posted": "2026-09-30T13:52:04.716000+00:00",
-        "first_seen_at": "2026-10-13T16:47:05.260138+00:00",
-        "last_verified_at": "2026-10-13T16:47:05.260138+00:00"
+        "last_verified_at": "2026-10-13T16:54:32.038719+00:00"
       }
     ],
-    "pick_cursor": 2
+    "pick_cursor": 0
   },
   "html:EXL": {
     "last_poll": "2026-10-13T16:28:01.566861+00:00",
@@ -335,6 +290,11 @@
   },
   "html:Escalent": {
     "last_poll": "2026-10-13T16:34:13.333173+00:00",
+    "cursor": 0,
+    "jobs": []
+  },
+  "html:Evalueserve": {
+    "last_poll": "2026-10-13T16:54:32.038719+00:00",
     "cursor": 0,
     "jobs": []
   }
