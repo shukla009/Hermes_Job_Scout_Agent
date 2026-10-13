@@ -19,7 +19,7 @@ jobs:
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         shell: python
         run: |
-          import json, os, time, urllib.request
+          import json, os, time, urllib.request, urllib.error
           token = os.environ['BOT_TOKEN']
           secret = os.environ['WEBHOOK_SECRET']
           chat = os.environ['CHAT_ID']
@@ -48,6 +48,9 @@ jobs:
           try:
               with urllib.request.urlopen(request, timeout=30) as response:
                   assert response.status == 200, 'Worker status check failed'
+          except urllib.error.HTTPError as error:
+              print('Worker check returned HTTP', error.code)
+              raise RuntimeError('Secured Worker status check failed; inspect configuration') from None
           except Exception:
               raise RuntimeError('Secured Worker status check failed; inspect configuration') from None
           print('Worker status command accepted; check Telegram for its recorded-state summary.')
