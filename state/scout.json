@@ -453,5 +453,15 @@
     ],
     "paused": false,
     "monthly_ceiling": 1200
+  },
+  "shadow_runs_completed": 1,
+  "last_run": {
+    "status": "partial",
+    "results_discovered": 6,
+    "relevant_apply_leads": 2,
+    "alerts_sent": 2,
+    "emails_accepted_by_smtp": 0,
+    "shadow_run": true,
+    "at": "2026-10-13T16:28:28.743008+00:00"
   }
 }
