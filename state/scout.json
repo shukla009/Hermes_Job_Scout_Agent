@@ -520,12 +520,12 @@
   "shadow_runs_completed": 3,
   "last_run": {
     "status": "partial",
-    "results_discovered": 8,
+    "results_discovered": 9,
     "relevant_apply_leads": 3,
     "alerts_sent": 0,
     "emails_accepted_by_smtp": 0,
-    "shadow_run": true,
-    "at": "2026-10-13T16:36:15.402723+00:00"
+    "shadow_run": false,
+    "at": "2026-10-13T16:47:27.993113+00:00"
   },
   "reported_week": "2026-W42",
   "legacy_dates_repaired": true
