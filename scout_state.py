@@ -61,6 +61,18 @@ class StateStore:
                 if not isinstance(value.get("processed_feedback"), list):
                     raise ValueError("invalid feedback ledger")
                 self.data = value
+                if not value.get("legacy_dates_repaired") and self.history_path.exists():
+                    legacy = json.loads(self.history_path.read_text(encoding="utf-8"))
+                    if not isinstance(legacy, list):
+                        raise ValueError("Invalid legacy history")
+                    for entry in legacy:
+                        if not isinstance(entry, dict):
+                            raise ValueError("Invalid legacy history entry")
+                        record = value["jobs"].get(job_id(entry, entry))
+                        if record and not record.get("tier"):
+                            record["first_seen"] = entry.get("timestamp") or "1970-01-01T00:00:00+00:00"
+                            record["legacy_unverified"] = True
+                    value["legacy_dates_repaired"] = True
             except (ValueError, OSError, TypeError, AttributeError) as exc:
                 raise StateCorruptError("Scout state cannot be safely loaded") from exc
             return self
@@ -74,6 +86,8 @@ class StateStore:
                     if not isinstance(entry, dict):
                         raise ValueError("invalid history entry")
                     record = self.upsert_job(entry, entry)
+                    record["first_seen"] = entry.get("timestamp") or "1970-01-01T00:00:00+00:00"
+                    record["legacy_unverified"] = True
                     if entry.get("route") in ("apply", "alert"):
                         record["alerted"] = True
                         record["submission_unconfirmed"] = True

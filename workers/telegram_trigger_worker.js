@@ -119,7 +119,8 @@ export default {
             }
           }
         } else if (command === "/queue") {
-          const pending = jobs.filter(j => !j.archived && !j.submitted && !j.outcome && (!j.snoozed_until || j.snoozed_until < new Date().toISOString())).sort((a,b) => (b.fit_score || b.score || 0) - (a.fit_score || a.score || 0)).slice(0,5);
+          const cutoff = new Date(Date.now() - 21 * 86400000).toISOString();
+          const pending = jobs.filter(j => ["core","stretch"].includes(j.tier) && String(j.last_seen || "") >= cutoff && !j.archived && !j.submitted && !j.outcome && (!j.snoozed_until || j.snoozed_until < new Date().toISOString())).sort((a,b) => (b.fit_score || b.score || 0) - (a.fit_score || a.score || 0)).slice(0,5);
           if (!pending.length) await reply(env, env.TELEGRAM_CHAT_ID, "No pending recommendations yet.");
           else for (const job of pending) await queueCard(env, job);
         } else if (command === "/status") {

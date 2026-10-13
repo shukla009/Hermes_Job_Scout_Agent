@@ -46,11 +46,12 @@ assert.ok(!calls.some(c=>c.url.includes('/dispatches')));
 calls=[];
 globalThis.fetch=async(url,options)=>{
   calls.push({url,options});
-  if(url.includes('contents/state/scout.json'))return new Response(JSON.stringify({content:Buffer.from(JSON.stringify({version:1,jobs:{[ident]:{id:ident,title:'Analyst',url:'https://company/jobs/1'}},sends:{},budget:{}})).toString('base64')}));
+  if(url.includes('contents/state/scout.json'))return new Response(JSON.stringify({content:Buffer.from(JSON.stringify({version:1,jobs:{[ident]:{id:ident,title:'Analyst',url:'https://company/jobs/1',tier:'core',last_seen:new Date().toISOString()},legacy:{id:'b'.repeat(24),title:'Unverified old alert',url:'https://old/jobs/1'}},sends:{},budget:{}})).toString('base64')}));
   return new Response(JSON.stringify({ok:true}));
 };
 assert.equal((await worker.fetch(request({message:{chat:{id:10},from:{id:10},text:'/queue'}}),env)).status,200);
 const card=JSON.parse(calls.find(c=>c.url.includes('/sendMessage')).options.body);
+assert.equal(calls.filter(c=>c.url.includes('/sendMessage')).length,1);
 assert.equal(card.reply_markup.inline_keyboard.flat().length,6);
 for(const button of card.reply_markup.inline_keyboard.flat()) {
   assert.ok(Buffer.byteLength(button.callback_data)<=64);
