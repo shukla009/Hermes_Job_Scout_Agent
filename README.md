@@ -62,6 +62,8 @@ See `workers/DEPLOY_TELEGRAM_TRIGGER.md` for deployment and permissions. On 13 O
 2026, GitHub Actions validation passed three shadow runs and a post-validation run;
 three qualified vacancies were found. The repository-only token permissions were
 updated and the secured Worker state-access check passed on the same date.
+Live `/status`, `/stats`, `/queue` and `/run` checks also passed. Signed action buttons
+are enabled on future recommendations; mark **Applied** only after you submit a real application.
 Scheduled discovery and outgoing Telegram alerts do not depend on that Worker token.
 
 ## Email safeguards
