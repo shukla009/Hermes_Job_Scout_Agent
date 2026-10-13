@@ -375,10 +375,94 @@
       "last_seen": "2026-10-13T16:13:35.921875+00:00",
       "alerted": true,
       "submission_unconfirmed": true
+    },
+    "5c788dcf1fde794980ab577e": {
+      "id": "5c788dcf1fde794980ab577e",
+      "first_seen": "2026-10-13T16:28:11.699925+00:00",
+      "submitted": false,
+      "emailed": false,
+      "job_title": "Data Analyst",
+      "company": "Portcast",
+      "location": "Remote; Bangalore; Bangkok; Chennai; Delhi; Hyderabad; Kolkata; Mumbai; Singapore; Cebu; Manila; Hanoi; Ho Chi Minh",
+      "application_url": "https://jobs.lever.co/portcast/e66df487-0622-480f-8506-532b3db5db28",
+      "fit_score": 84,
+      "warnings": [
+        "Shift undisclosed",
+        "Salary undisclosed",
+        "Experience requirement undisclosed",
+        "Some skills listed without implementation proof"
+      ],
+      "family": "data",
+      "tier": "core",
+      "reason": "Relevant evidence-backed match; currently returned by the official ATS feed",
+      "evidence": [
+        "Analysed 10,000+ healthcare records during an internship.",
+        "Improved data acquisition efficiency by 40% across 1,000+ institutions during an internship.",
+        "Performed dataset cleaning and validation during internships."
+      ],
+      "source_id": "e66df487-0622-480f-8506-532b3db5db28",
+      "url": "https://jobs.lever.co/portcast/e66df487-0622-480f-8506-532b3db5db28",
+      "apply_url": "https://jobs.lever.co/portcast/e66df487-0622-480f-8506-532b3db5db28",
+      "last_seen": "2026-10-13T16:28:11.699925+00:00",
+      "alerted": true,
+      "alerted_at": "2026-10-13T16:28:17.774452+00:00"
+    },
+    "19c14d9150f7938c47f6499d": {
+      "id": "19c14d9150f7938c47f6499d",
+      "first_seen": "2026-10-13T16:28:11.703524+00:00",
+      "submitted": false,
+      "emailed": false,
+      "job_title": "[India] - Power BI Developer",
+      "company": "ProcDNA",
+      "location": "Gurugram, Haryana",
+      "application_url": "https://procdna.applytojob.com/apply/7oZUPAWw4c/India-Power-BI-Developer",
+      "fit_score": 77,
+      "warnings": [
+        "Shift undisclosed",
+        "Salary undisclosed",
+        "Experience stretch; internships are not full-time employment",
+        "Some skills listed without implementation proof"
+      ],
+      "family": "reporting",
+      "tier": "stretch",
+      "reason": "Relevant evidence-backed match; currently returned by the official ATS feed",
+      "evidence": [
+        "Built Power BI and Tableau dashboards during internships using Excel and DAX."
+      ],
+      "source_id": "job_20260430125636_JJY2P3CAN90XULRF",
+      "url": "https://procdna.applytojob.com/apply/7oZUPAWw4c/India-Power-BI-Developer",
+      "apply_url": "https://procdna.applytojob.com/apply/7oZUPAWw4c/India-Power-BI-Developer",
+      "last_seen": "2026-10-13T16:28:11.703524+00:00",
+      "alerted": true,
+      "alerted_at": "2026-10-13T16:28:23.458050+00:00"
     }
   },
   "sends": {},
-  "alerts": {},
+  "alerts": {
+    "2026-10-13": {
+      "count": 2,
+      "stretch": 1
+    }
+  },
   "processed_feedback": [],
-  "budget": {}
+  "budget": {
+    "month": "2026-10",
+    "used_minutes_estimate": 10,
+    "runs": [
+      "38430681768:1"
+    ],
+    "paused": false,
+    "monthly_ceiling": 1200
+  },
+  "shadow_runs_completed": 1,
+  "last_run": {
+    "status": "partial",
+    "results_discovered": 6,
+    "relevant_apply_leads": 2,
+    "alerts_sent": 2,
+    "emails_accepted_by_smtp": 0,
+    "shadow_run": true,
+    "at": "2026-10-13T16:28:28.743008+00:00"
+  },
+  "reported_week": "2026-W42"
 }
