@@ -433,7 +433,7 @@
       "source_id": "e66df487-0622-480f-8506-532b3db5db28",
       "url": "https://jobs.lever.co/portcast/e66df487-0622-480f-8506-532b3db5db28",
       "apply_url": "https://jobs.lever.co/portcast/e66df487-0622-480f-8506-532b3db5db28",
-      "last_seen": "2026-10-13T16:36:09.402776+00:00",
+      "last_seen": "2026-10-13T16:47:22.725204+00:00",
       "alerted": true,
       "alerted_at": "2026-10-13T16:28:17.774452+00:00"
     },
@@ -444,9 +444,9 @@
       "emailed": false,
       "job_title": "[India] - Power BI Developer",
       "company": "ProcDNA",
-      "location": "Gurugram, Haryana",
+      "location": "Gurugram",
       "application_url": "https://procdna.applytojob.com/apply/7oZUPAWw4c/India-Power-BI-Developer",
-      "fit_score": 77,
+      "fit_score": 82,
       "warnings": [
         "Shift undisclosed",
         "Salary undisclosed",
@@ -455,14 +455,14 @@
       ],
       "family": "reporting",
       "tier": "stretch",
-      "reason": "Relevant evidence-backed match; currently returned by the official ATS feed",
+      "reason": "Relevant evidence-backed match; application deadline is still open",
       "evidence": [
         "Built Power BI and Tableau dashboards during internships using Excel and DAX."
       ],
       "source_id": "job_20260430125636_JJY2P3CAN90XULRF",
       "url": "https://procdna.applytojob.com/apply/7oZUPAWw4c/India-Power-BI-Developer",
       "apply_url": "https://procdna.applytojob.com/apply/7oZUPAWw4c/India-Power-BI-Developer",
-      "last_seen": "2026-10-13T16:36:09.407282+00:00",
+      "last_seen": "2026-10-13T16:47:08.227830+00:00",
       "alerted": true,
       "alerted_at": "2026-10-13T16:28:23.458050+00:00"
     },
@@ -492,7 +492,7 @@
       "source_id": "df935f72-9721-414e-9a3b-e20a679fef07",
       "url": "https://jobs.lever.co/paytm/df935f72-9721-414e-9a3b-e20a679fef07",
       "apply_url": "https://jobs.lever.co/paytm/df935f72-9721-414e-9a3b-e20a679fef07",
-      "last_seen": "2026-10-13T16:36:09.793339+00:00",
+      "last_seen": "2026-10-13T16:47:07.222463+00:00",
       "alerted": true,
       "alerted_at": "2026-10-13T16:34:38.758632+00:00"
     }
