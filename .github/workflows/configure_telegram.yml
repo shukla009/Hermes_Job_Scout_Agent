@@ -19,7 +19,7 @@ jobs:
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         shell: python
         run: |
-          import json, os, time, urllib.request, urllib.error
+          import json, os, time, urllib.request, urllib.error, re
           token = os.environ['BOT_TOKEN']
           secret = os.environ['WEBHOOK_SECRET']
           chat = os.environ['CHAT_ID']
@@ -52,7 +52,7 @@ jobs:
           except urllib.error.HTTPError as error:
               print('Worker check returned HTTP', error.code)
               body = error.read(200).decode(errors='replace').strip()
-              print('Response category:', body if body in ('Forbidden', 'Method not allowed', 'Temporary service failure') else 'Upstream HTTP denial')
+              print('Response category:', body if body in ('Forbidden', 'Method not allowed', 'Temporary service failure') or re.fullmatch(r'state_read_http_\d{3}', body) else 'Upstream HTTP denial')
               raise RuntimeError('Secured Worker status check failed; inspect configuration') from None
           except Exception:
               raise RuntimeError('Secured Worker status check failed; inspect configuration') from None

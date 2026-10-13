@@ -13,7 +13,7 @@ async function telegram(env, method, body) {
 async function reply(env, chat, text) { return telegram(env, "sendMessage", {chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true}); }
 async function stateFile(env) {
   const response = await api(env, "contents/state/scout.json?ref=main", {}, true);
-  if (!response.ok) throw new Error("State unavailable");
+  if (!response.ok) throw new Error(`state_read_http_${response.status}`);
   const result = await response.json();
   const bytes = Uint8Array.from(atob(result.content.replace(/\s/g, "")), c => c.charCodeAt(0));
   const value = JSON.parse(new TextDecoder().decode(bytes));
@@ -133,6 +133,9 @@ export default {
         }
       }
       return new Response("OK");
-    } catch { return new Response("Temporary service failure", {status: 503}); }
+    } catch (error) {
+      const reason = /^state_read_http_\d{3}$/.test(error?.message || "") ? error.message : "Temporary service failure";
+      return new Response(reason, {status: 503});
+    }
   }
 };
