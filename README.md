@@ -60,8 +60,8 @@ source does not make all other sources fail.
 
 See `workers/DEPLOY_TELEGRAM_TRIGGER.md` for deployment and permissions. On 13 October
 2026, GitHub Actions validation passed three shadow runs and a post-validation run;
-three qualified vacancies were found. Telegram command activation is awaiting the
-approved token-permission update behind GitHub's account confirmation screen.
+three qualified vacancies were found. The repository-only token permissions were
+updated and the secured Worker state-access check passed on the same date.
 Scheduled discovery and outgoing Telegram alerts do not depend on that Worker token.
 
 ## Email safeguards

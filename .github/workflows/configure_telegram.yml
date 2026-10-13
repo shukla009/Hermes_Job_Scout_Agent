@@ -2,6 +2,11 @@ name: Secure existing Telegram webhook
 
 on:
   workflow_dispatch:
+    inputs:
+      verify_dispatch:
+        description: Also verify /run by starting one scout run
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -17,6 +22,7 @@ jobs:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          VERIFY_DISPATCH: ${{ inputs.verify_dispatch }}
         shell: python
         run: |
           import json, os, time, urllib.request, urllib.error, re
@@ -41,19 +47,24 @@ jobs:
           assert info.get('url') == url and 'callback_query' in info.get('allowed_updates', []), 'Webhook verification failed'
           print('Existing webhook secured; messages and callbacks enabled. No secret values logged.')
           # A read-only command probes Worker authentication and existing GitHub access.
-          request = urllib.request.Request(url, data=json.dumps({
-              'update_id':int(time.time()), 'message':{'chat':{'id':chat},
-              'from':{'id':chat}, 'text':'/status'}}).encode(), headers={
-              'Content-Type':'application/json', 'User-Agent':'Hermes-Job-Scout-Webhook-Verification/1.0',
-              'X-Telegram-Bot-Api-Secret-Token':secret})
-          try:
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  assert response.status == 200, 'Worker status check failed'
-          except urllib.error.HTTPError as error:
-              print('Worker check returned HTTP', error.code)
-              body = error.read(200).decode(errors='replace').strip()
-              print('Response category:', body if body in ('Forbidden', 'Method not allowed', 'Temporary service failure') or re.fullmatch(r'state_read_http_\d{3}', body) else 'Upstream HTTP denial')
-              raise RuntimeError('Secured Worker status check failed; inspect configuration') from None
-          except Exception:
-              raise RuntimeError('Secured Worker status check failed; inspect configuration') from None
-          print('Worker status command accepted; check Telegram for its recorded-state summary.')
+          commands = ['/status', '/stats', '/queue']
+          if os.getenv('VERIFY_DISPATCH', '').lower() == 'true':
+              commands.append('/run')
+          identity = int(time.time() * 1000)
+          for index, command in enumerate(commands):
+              request = urllib.request.Request(url, data=json.dumps({
+                  'update_id':identity + index, 'message':{'chat':{'id':chat},
+                  'from':{'id':chat}, 'text':command}}).encode(), headers={
+                  'Content-Type':'application/json', 'User-Agent':'Hermes-Job-Scout-Webhook-Verification/1.0',
+                  'X-Telegram-Bot-Api-Secret-Token':secret})
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      assert response.status == 200, 'Worker command check failed'
+              except urllib.error.HTTPError as error:
+                  print('Worker check returned HTTP', error.code)
+                  body = error.read(200).decode(errors='replace').strip()
+                  print('Response category:', body if body in ('Forbidden', 'Method not allowed', 'Temporary service failure') or re.fullmatch(r'state_read_http_\d{3}', body) else 'Upstream HTTP denial')
+                  raise RuntimeError('Secured Worker command check failed; inspect configuration') from None
+              except Exception:
+                  raise RuntimeError('Secured Worker command check failed; inspect configuration') from None
+              print(command, 'accepted; check Telegram for its response.')
