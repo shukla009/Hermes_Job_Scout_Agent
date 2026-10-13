@@ -194,7 +194,9 @@
       "last_seen": "2026-10-13T16:13:35.921005+00:00",
       "alerted": true,
       "submission_unconfirmed": true,
-      "legacy_unverified": true
+      "legacy_unverified": true,
+      "archived": true,
+      "exclusion_reason": "Outside supported role families"
     },
     "8cd071fca6e03837f52b4f96": {
       "id": "8cd071fca6e03837f52b4f96",
@@ -299,7 +301,9 @@
       "last_seen": "2026-10-13T16:13:35.921266+00:00",
       "alerted": true,
       "submission_unconfirmed": true,
-      "legacy_unverified": true
+      "legacy_unverified": true,
+      "archived": true,
+      "exclusion_reason": "Outside supported role families"
     },
     "6cd375f3ed7539acbd6feca7": {
       "id": "6cd375f3ed7539acbd6feca7",
@@ -438,7 +442,9 @@
       "alerted_at": "2026-10-13T16:28:17.774452+00:00",
       "submission_unconfirmed": false,
       "applied_at": "2026-10-13T17:32:44.349Z",
-      "feedback_update_id": 421690159
+      "feedback_update_id": 421690159,
+      "archived": true,
+      "exclusion_reason": "original posting age is 1627.0 hours"
     },
     "19c14d9150f7938c47f6499d": {
       "id": "19c14d9150f7938c47f6499d",
@@ -467,7 +473,9 @@
       "apply_url": "https://procdna.applytojob.com/apply/7oZUPAWw4c/India-Power-BI-Developer",
       "last_seen": "2026-10-13T16:55:13.972385+00:00",
       "alerted": true,
-      "alerted_at": "2026-10-13T16:28:23.458050+00:00"
+      "alerted_at": "2026-10-13T16:28:23.458050+00:00",
+      "archived": true,
+      "exclusion_reason": "original posting age is 139.0 hours"
     },
     "77dbc29155cb04ec4200f25e": {
       "id": "77dbc29155cb04ec4200f25e",
@@ -500,7 +508,9 @@
       "alerted_at": "2026-10-13T16:34:38.758632+00:00",
       "submission_unconfirmed": false,
       "applied_at": "2026-10-13T17:27:26.123Z",
-      "feedback_update_id": 421690158
+      "feedback_update_id": 421690158,
+      "archived": true,
+      "exclusion_reason": "Sales/acquisition duties rather than analyst work"
     }
   },
   "sends": {},
