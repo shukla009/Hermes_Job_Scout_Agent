@@ -507,12 +507,13 @@
   "processed_feedback": [],
   "budget": {
     "month": "2026-10",
-    "used_minutes_estimate": 40,
+    "used_minutes_estimate": 50,
     "runs": [
       "38430681768:1",
       "38431525753:1",
       "38431789110:1",
-      "38433273335:1"
+      "38433273335:1",
+      "38434273745:1"
     ],
     "paused": false,
     "monthly_ceiling": 1200
