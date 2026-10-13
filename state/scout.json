@@ -432,14 +432,16 @@
       "source_id": "job_20260430125636_JJY2P3CAN90XULRF",
       "url": "https://procdna.applytojob.com/apply/7oZUPAWw4c/India-Power-BI-Developer",
       "apply_url": "https://procdna.applytojob.com/apply/7oZUPAWw4c/India-Power-BI-Developer",
-      "last_seen": "2026-10-13T16:28:11.703524+00:00"
+      "last_seen": "2026-10-13T16:28:11.703524+00:00",
+      "alerted": true,
+      "alerted_at": "2026-10-13T16:28:23.458050+00:00"
     }
   },
   "sends": {},
   "alerts": {
     "2026-10-13": {
-      "count": 1,
-      "stretch": 0
+      "count": 2,
+      "stretch": 1
     }
   },
   "processed_feedback": [],
