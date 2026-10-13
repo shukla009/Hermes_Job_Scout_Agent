@@ -462,20 +462,17 @@ def _structured_freshness(post):
     valid_through = _parse_iso_datetime(post.get("valid_through"))
     if valid_through and valid_through < now:
         return False, "application deadline has passed"
-    if valid_through and valid_through >= now:
-        return True, "application deadline is still open"
-    if post.get("active_listing") and post.get("source_type") == "direct_apply":
-        return True, "currently returned by the official ATS feed"
-    posted = _parse_iso_datetime(post.get("date_posted"))
+    posted = _parse_iso_datetime(post.get("date_posted") or post.get("posted_at") or post.get("published_at"))
     if posted:
         age = (now - posted).total_seconds() / 86400
-        limit = MAX_DIRECT_APPLY_AGE_DAYS if post.get("source_type") == "direct_apply" else MAX_POST_AGE_HOURS / 24
-        return age <= limit, f"structured posting age is {age:.1f} days"
+        return 0 <= age * 24 <= MAX_POST_AGE_HOURS, f"original posting age is {age * 24:.1f} hours"
     age = _parse_serpapi_date_days(post.get("date", ""))
     if age is None:
         age = _linkedin_post_age_days(post.get("href", ""))
     if age is not None:
-        return age * 24 <= MAX_POST_AGE_HOURS, f"source posting age is {age:.1f} days"
+        return 0 <= age * 24 <= MAX_POST_AGE_HOURS, f"source posting age is {age:.1f} days"
+    if post.get("active_listing") and post.get("source_type") == "direct_apply":
+        return True, "currently open; original publication date unavailable, not verified latest"
     if post.get("source_type") == "direct_apply" and post.get("page_fetched"):
         return True, "live official application page; date unavailable"
     return False, "publication date could not be verified"
@@ -737,6 +734,10 @@ def analyze_post_verbose(post, max_retries=3):
         post["rejection_reason"] = checked["reason"] if not checked["eligible"] else freshness_reason
         return None, "irrelevant"
     contacts = recruitment_contacts(post, CANDIDATE_EMAIL) if checked["email_safe"] else []
+    if "unavailable" in freshness_reason:
+        checked["warnings"].append("Original posting date unavailable; not verified latest")
+        checked["email_safe"] = False
+        contacts = []
     source_emails = [x for x in contacts if _valid_recruiter_email(x)]
     result = {
         "is_relevant": True, "job_title": post.get("job_title") or post.get("title", ""),

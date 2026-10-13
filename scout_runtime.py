@@ -182,6 +182,12 @@ def run(agent, *, dry_run=False, notify=True):
             reasons["analysis error: " + type(exc).__name__] += 1
             continue
         if not analysis:
+            if store:
+                stale_id = agent._job_fingerprint(enriched)
+                stale = store.data["jobs"].get(stale_id)
+                if stale:
+                    stale["archived"] = True
+                    stale["exclusion_reason"] = enriched.get("rejection_reason") or "No longer qualifies"
             reasons[enriched.get("rejection_reason") or "Not eligible"] += 1
             report["irrelevant"] += 1
             continue
@@ -208,7 +214,8 @@ def run(agent, *, dry_run=False, notify=True):
             continue
         ident = analysis["job_id"]
         stretch = analysis.get("tier") == "stretch"
-        if notify and not dry_run and store.can_alert(ident, stretch):
+        verified_latest = not any("not verified latest" in warning for warning in analysis.get("warnings", []))
+        if notify and not dry_run and verified_latest and store.can_alert(ident, stretch):
             if agent._send_apply_alert(analysis):
                 if store.record_alert(ident, stretch):
                     agent._record_history(history, analysis, post, "alert")

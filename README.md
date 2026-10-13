@@ -9,6 +9,11 @@ an application or an interview: those outcomes are tracked separately.
 - Scheduled runs: approximately **08:17, 14:37 and 20:23 IST**. GitHub schedules can be delayed.
 - Read public official job listings and opted-in alerts, within request/time limits.
 - Match duties, mandatory requirements and résumé evidence—not title keywords alone.
+- Reject field-sales/acquisition work even when its title contains “market intelligence”.
+- Include dashboard, data-validation, research-executive and business-process title variants.
+- New-job alerts require freshness evidence within 48 hours. Older dated jobs are rejected;
+  open jobs with an unknown original date remain available for review in `/queue`, clearly
+  labelled “not verified latest”, and do not trigger automatic application emails.
 - Recommend up to five new jobs per IST day, including at most one clearly labelled stretch role.
 - Show official application links, fit evidence, missing requirements and salary/shift uncertainty.
 - Email a suitable recruiter only when the vacancy explicitly provides a recruitment contact.

@@ -52,7 +52,7 @@ def evaluate_job(post, profile=None, now=None):
     title = str(post.get("job_title") or post.get("title") or "").lower()
     text = "\n".join(str(post.get(k) or "") for k in ("description", "source_text", "body", "snippet", "requirements")).lower()
     location = str(post.get("location") or post.get("job_location") or "").lower()
-    family = next((name for name, pattern in (("research", r"research|market intelligence|competitive intelligence|market insights"), ("reporting", r"\bmis\b|reporting|power bi|\bbi\b|business intelligence"), ("process", r"business analyst|process analyst|operations (?:analyst|insights)"), ("data", r"data (?:analyst|quality|operations)|analytics analyst|insights analyst")) if re.search(pattern, title)), None)
+    family = next((name for name, pattern in (("research", r"research|market intelligence|competitive intelligence|market insights|consumer insights|research executive"), ("reporting", r"\bmis\b|reporting|power bi|\bbi\b|business intelligence|dashboard analyst|tableau analyst|data visuali[sz]ation"), ("process", r"business analyst|business process analyst|process analyst|operations (?:analyst|insights)|business operations analyst|process improvement analyst"), ("data", r"data (?:analyst|quality|operations|validation|management)|analytics (?:analyst|associate)|insights analyst|research data analyst")) if re.search(pattern, title)), None)
     if not family and re.search(r"associate|junior|analyst i\b", title) and re.search(r"data analysis|dashboard|research|reporting", text):
         family = "data"
     result = {"eligible":False,"reason":"","family":family,"tier":"core","score":0,"evidence":proof_points(family, profile),"warnings":[],"email_safe":False,"matched_skills":[],"experience_min":None}
@@ -70,6 +70,10 @@ def evaluate_job(post, profile=None, now=None):
         return reject("Vacancy closed")
     if not family:
         return reject("Outside supported role families")
+    if re.search(r"field sales|on.ground user acquisition|merchant acquisition|door.to.door|telecalling|cold calling|sales targets", text) and not re.search(r"(?:analyse|analyze|analysis of).{0,30}(?:sales|acquisition) data", text):
+        return reject("Sales/acquisition duties rather than analyst work")
+    if re.search(r"(?:must have|required|mandatory).{0,100}(?:server installation|cloud administration|team management)|(?:server installation|cloud administration).{0,50}(?:required|mandatory)", text):
+        return reject("Mandatory administration or management experience not evidenced")
     responsibility_patterns = {"research":r"research|market intelligence|competitive analysis|market.entry|intelligence reports|insights", "reporting":r"dashboard|reporting|reports|power bi|tableau|excel|\bmis\b", "process":r"gap analysis|gap assessment|workflow|process|business requirements|stakeholder|operations analysis", "data":r"data analysis|data cleaning|data validation|data quality|analyse|analyze|analytics|python|pandas|dashboard|\bsql\b"}
     duties = re.findall(responsibility_patterns[family], text)
     if len(text.strip()) < 35 or not duties:
