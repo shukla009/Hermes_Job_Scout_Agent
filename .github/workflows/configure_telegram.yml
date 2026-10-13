@@ -1,0 +1,53 @@
+name: Secure existing Telegram webhook
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    if: vars.ZERO_COST_VERIFIED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Configure and verify the existing webhook
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        shell: python
+        run: |
+          import json, os, time, urllib.request
+          token = os.environ['BOT_TOKEN']
+          secret = os.environ['WEBHOOK_SECRET']
+          chat = os.environ['CHAT_ID']
+          assert token and secret and chat, 'Existing bot secrets are required'
+          url = 'https://telegram-job-scout-trigger.ranjitrana-rana123.workers.dev/'
+          def call(method, body=None):
+              request = urllib.request.Request('https://api.telegram.org/bot' + token + '/' + method,
+                  data=json.dumps(body or {}).encode(), headers={'Content-Type':'application/json'})
+              try:
+                  with urllib.request.urlopen(request, timeout=15) as response:
+                      result = json.load(response)
+              except Exception:
+                  raise RuntimeError('Telegram configuration request failed') from None
+              assert result.get('ok'), 'Telegram operation was not accepted'
+              return result.get('result')
+          call('setWebhook', {'url':url, 'secret_token':secret,
+              'allowed_updates':['message','callback_query'], 'drop_pending_updates':False})
+          info = call('getWebhookInfo')
+          assert info.get('url') == url and 'callback_query' in info.get('allowed_updates', []), 'Webhook verification failed'
+          print('Existing webhook secured; messages and callbacks enabled. No secret values logged.')
+          # A read-only command probes Worker authentication and existing GitHub access.
+          request = urllib.request.Request(url, data=json.dumps({
+              'update_id':int(time.time()), 'message':{'chat':{'id':chat},
+              'from':{'id':chat}, 'text':'/status'}}).encode(), headers={
+              'Content-Type':'application/json', 'X-Telegram-Bot-Api-Secret-Token':secret})
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  assert response.status == 200, 'Worker status check failed'
+          except Exception:
+              raise RuntimeError('Secured Worker status check failed; inspect configuration') from None
+          print('Worker status command accepted; check Telegram for its recorded-state summary.')

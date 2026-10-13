@@ -561,6 +561,7 @@ class TestConfig:
 
 class TestMainRouting:
     def test_main_preserves_apply_and_email_outcomes(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(scout_agent, "HISTORY_FILE", str(tmp_path / "history.json"))
         monkeypatch.setattr(scout_agent, "FOLLOW_UP_FILE", str(tmp_path / "follow.json"))
