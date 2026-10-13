@@ -403,7 +403,9 @@
       "source_id": "e66df487-0622-480f-8506-532b3db5db28",
       "url": "https://jobs.lever.co/portcast/e66df487-0622-480f-8506-532b3db5db28",
       "apply_url": "https://jobs.lever.co/portcast/e66df487-0622-480f-8506-532b3db5db28",
-      "last_seen": "2026-10-13T16:28:11.699925+00:00"
+      "last_seen": "2026-10-13T16:28:11.699925+00:00",
+      "alerted": true,
+      "alerted_at": "2026-10-13T16:28:17.774452+00:00"
     },
     "19c14d9150f7938c47f6499d": {
       "id": "19c14d9150f7938c47f6499d",
@@ -434,7 +436,12 @@
     }
   },
   "sends": {},
-  "alerts": {},
+  "alerts": {
+    "2026-10-13": {
+      "count": 1,
+      "stretch": 0
+    }
+  },
   "processed_feedback": [],
   "budget": {
     "month": "2026-10",
