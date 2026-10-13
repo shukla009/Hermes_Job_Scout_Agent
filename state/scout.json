@@ -413,7 +413,7 @@
       "emailed": false,
       "job_title": "Data Analyst",
       "company": "Portcast",
-      "location": "Remote; Bangalore; Bangkok; Chennai; Delhi; Hyderabad; Kolkata; Mumbai; Singapore; Cebu; Manila; Hanoi; Ho Chi Minh",
+      "location": "Bangkok; Chennai; Delhi; Hyderabad; Kolkata; Mumbai; Singapore; Cebu; Manila; Hanoi; Ho Chi Minh; Bangalore",
       "application_url": "https://jobs.lever.co/portcast/e66df487-0622-480f-8506-532b3db5db28",
       "fit_score": 84,
       "warnings": [
@@ -433,7 +433,7 @@
       "source_id": "e66df487-0622-480f-8506-532b3db5db28",
       "url": "https://jobs.lever.co/portcast/e66df487-0622-480f-8506-532b3db5db28",
       "apply_url": "https://jobs.lever.co/portcast/e66df487-0622-480f-8506-532b3db5db28",
-      "last_seen": "2026-10-13T16:28:11.699925+00:00",
+      "last_seen": "2026-10-13T16:34:33.886875+00:00",
       "alerted": true,
       "alerted_at": "2026-10-13T16:28:17.774452+00:00"
     },
@@ -444,9 +444,9 @@
       "emailed": false,
       "job_title": "[India] - Power BI Developer",
       "company": "ProcDNA",
-      "location": "Gurugram, Haryana",
+      "location": "Gurugram",
       "application_url": "https://procdna.applytojob.com/apply/7oZUPAWw4c/India-Power-BI-Developer",
-      "fit_score": 77,
+      "fit_score": 82,
       "warnings": [
         "Shift undisclosed",
         "Salary undisclosed",
@@ -455,16 +455,44 @@
       ],
       "family": "reporting",
       "tier": "stretch",
-      "reason": "Relevant evidence-backed match; currently returned by the official ATS feed",
+      "reason": "Relevant evidence-backed match; application deadline is still open",
       "evidence": [
         "Built Power BI and Tableau dashboards during internships using Excel and DAX."
       ],
       "source_id": "job_20260430125636_JJY2P3CAN90XULRF",
       "url": "https://procdna.applytojob.com/apply/7oZUPAWw4c/India-Power-BI-Developer",
       "apply_url": "https://procdna.applytojob.com/apply/7oZUPAWw4c/India-Power-BI-Developer",
-      "last_seen": "2026-10-13T16:28:11.703524+00:00",
+      "last_seen": "2026-10-13T16:34:32.299346+00:00",
       "alerted": true,
       "alerted_at": "2026-10-13T16:28:23.458050+00:00"
+    },
+    "77dbc29155cb04ec4200f25e": {
+      "id": "77dbc29155cb04ec4200f25e",
+      "first_seen": "2026-10-13T16:34:31.703860+00:00",
+      "submitted": false,
+      "emailed": false,
+      "job_title": "Associate - User Growth (Market intelligence)",
+      "company": "Paytm",
+      "location": "Bangalore, Karnataka; Pune, Maharashtra; Chennai, Tamil Nadu; Hyderabad, Telangana; Ahmedabad, Gujarat; Jaipur, Rajasthan; Delhi-NCR; Thane,Maharashtra; Mumbai, Maharashtra; Kolkata, West Bengal; Noida, Uttar Pradesh",
+      "application_url": "https://jobs.lever.co/paytm/df935f72-9721-414e-9a3b-e20a679fef07",
+      "fit_score": 83,
+      "warnings": [
+        "Full-time employment not confirmed",
+        "Shift undisclosed",
+        "Salary undisclosed",
+        "Experience requirement undisclosed"
+      ],
+      "family": "research",
+      "tier": "core",
+      "reason": "Relevant evidence-backed match; currently returned by the official ATS feed",
+      "evidence": [
+        "Delivered 12+ strategic intelligence reports across five industry verticals.",
+        "Performed market-entry research and competitive analysis."
+      ],
+      "source_id": "df935f72-9721-414e-9a3b-e20a679fef07",
+      "url": "https://jobs.lever.co/paytm/df935f72-9721-414e-9a3b-e20a679fef07",
+      "apply_url": "https://jobs.lever.co/paytm/df935f72-9721-414e-9a3b-e20a679fef07",
+      "last_seen": "2026-10-13T16:34:31.703860+00:00"
     }
   },
   "sends": {},
