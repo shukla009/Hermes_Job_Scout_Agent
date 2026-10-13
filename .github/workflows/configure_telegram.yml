@@ -50,6 +50,8 @@ jobs:
                   assert response.status == 200, 'Worker status check failed'
           except urllib.error.HTTPError as error:
               print('Worker check returned HTTP', error.code)
+              body = error.read(200).decode(errors='replace').strip()
+              print('Response category:', body if body in ('Forbidden', 'Method not allowed', 'Temporary service failure') else 'Upstream HTTP denial')
               raise RuntimeError('Secured Worker status check failed; inspect configuration') from None
           except Exception:
               raise RuntimeError('Secured Worker status check failed; inspect configuration') from None
