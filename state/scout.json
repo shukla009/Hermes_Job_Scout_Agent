@@ -444,7 +444,7 @@
       "applied_at": "2026-10-13T17:32:44.349Z",
       "feedback_update_id": 421690159,
       "archived": true,
-      "exclusion_reason": "original posting age is 1640.0 hours"
+      "exclusion_reason": "original posting age is 1646.5 hours"
     },
     "19c14d9150f7938c47f6499d": {
       "id": "19c14d9150f7938c47f6499d",
@@ -475,7 +475,7 @@
       "alerted": true,
       "alerted_at": "2026-10-13T16:28:23.458050+00:00",
       "archived": true,
-      "exclusion_reason": "original posting age is 140.4 hours"
+      "exclusion_reason": "original posting age is 158.5 hours"
     },
     "77dbc29155cb04ec4200f25e": {
       "id": "77dbc29155cb04ec4200f25e",
@@ -511,6 +511,32 @@
       "feedback_update_id": 421690158,
       "archived": true,
       "exclusion_reason": "Sales/acquisition duties rather than analyst work"
+    },
+    "352e57ca0961a2a52fc8324e": {
+      "id": "352e57ca0961a2a52fc8324e",
+      "first_seen": "2026-10-14T14:29:03.804672+00:00",
+      "submitted": false,
+      "emailed": false,
+      "job_title": "Research Executive",
+      "company": "NielsenIQ",
+      "location": "Bangalore/ Delhi, , India",
+      "application_url": "https://jobs.smartrecruiters.com/NielsenIQ/744000155487420-research-executive?oga=true",
+      "fit_score": 92,
+      "warnings": [
+        "Shift undisclosed",
+        "Salary undisclosed"
+      ],
+      "family": "research",
+      "tier": "core",
+      "reason": "Relevant evidence-backed match; original posting age is 2.8 hours",
+      "evidence": [
+        "Delivered 12+ strategic intelligence reports across five industry verticals.",
+        "Performed market-entry research and competitive analysis."
+      ],
+      "source_id": "744000155487420",
+      "url": "https://jobs.smartrecruiters.com/NielsenIQ/744000155487420-research-executive?oga=true",
+      "apply_url": "https://jobs.smartrecruiters.com/NielsenIQ/744000155487420-research-executive?oga=true",
+      "last_seen": "2026-10-14T14:29:03.804672+00:00"
     }
   },
   "sends": {},
