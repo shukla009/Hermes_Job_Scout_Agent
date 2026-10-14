@@ -536,7 +536,9 @@
       "source_id": "744000155487420",
       "url": "https://jobs.smartrecruiters.com/NielsenIQ/744000155487420-research-executive?oga=true",
       "apply_url": "https://jobs.smartrecruiters.com/NielsenIQ/744000155487420-research-executive?oga=true",
-      "last_seen": "2026-10-14T14:29:03.804672+00:00"
+      "last_seen": "2026-10-14T14:29:03.804672+00:00",
+      "alerted": true,
+      "alerted_at": "2026-10-14T14:29:10.650255+00:00"
     }
   },
   "sends": {},
@@ -544,6 +546,10 @@
     "2026-10-13": {
       "count": 3,
       "stretch": 1
+    },
+    "2026-10-14": {
+      "count": 1,
+      "stretch": 0
     }
   },
   "processed_feedback": [
