@@ -583,14 +583,14 @@
   "last_run": {
     "status": "partial",
     "results_discovered": 9,
-    "relevant_apply_leads": 0,
+    "relevant_apply_leads": 1,
     "alerts_sent": 0,
     "emails_accepted_by_smtp": 0,
     "shadow_run": false,
-    "at": "2026-10-15T18:43:58.900588+00:00",
+    "at": "2026-10-16T07:32:43.523632+00:00",
     "outreach": {
       "smtp": "passed",
-      "status": "no_eligible_vacancies"
+      "status": "no_eligible_email_leads"
     }
   },
   "reported_week": "2026-W42",
@@ -656,6 +656,14 @@
       "at": "2026-10-15T18:43:58.900588+00:00",
       "smtp": "passed",
       "status": "no_eligible_vacancies",
+      "eligible_email_leads": 0,
+      "attempted": 0,
+      "smtp_accepted": 0
+    },
+    {
+      "at": "2026-10-16T07:32:43.523632+00:00",
+      "smtp": "passed",
+      "status": "no_eligible_email_leads",
       "eligible_email_leads": 0,
       "attempted": 0,
       "smtp_accepted": 0
