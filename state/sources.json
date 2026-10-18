@@ -38,8 +38,8 @@
     "jobs": []
   },
   "lever:Paytm": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
-    "cursor": 175,
+    "last_poll": "2026-10-18T17:35:58.050591+00:00",
+    "cursor": 0,
     "jobs": [
       {
         "title": "Associate - User Growth (Market intelligence)",
@@ -130,7 +130,7 @@
         "needs_reverification": true
       }
     ],
-    "pick_cursor": 2
+    "pick_cursor": 3
   },
   "lever:Portcast": {
     "last_poll": "2026-10-13T16:28:01.566861+00:00",
@@ -179,11 +179,11 @@
         "last_verified_at": "2026-10-13T16:28:01.566861+00:00"
       }
     ],
-    "pick_cursor": 1
+    "pick_cursor": 0
   },
   "html:ProcDNA": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
-    "cursor": 5,
+    "last_poll": "2026-10-18T17:35:58.050591+00:00",
+    "cursor": 0,
     "jobs": [
       {
         "title": "[India] - Power BI Developer",
@@ -204,13 +204,14 @@
         "updated_at": "",
         "date_posted": "",
         "first_seen_at": "2026-10-13T16:28:01.566861+00:00",
-        "last_verified_at": "2026-10-18T13:12:32.585687+00:00"
+        "last_verified_at": "2026-10-18T13:12:32.585687+00:00",
+        "needs_reverification": true
       }
     ],
     "pick_cursor": 0
   },
   "smartrecruiters:NielsenIQ": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
+    "last_poll": "2026-10-18T17:35:58.050591+00:00",
     "cursor": 0,
     "jobs": []
   },
@@ -220,8 +221,8 @@
     "jobs": []
   },
   "lever:ION": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
-    "cursor": 75,
+    "last_poll": "2026-10-18T17:35:58.050591+00:00",
+    "cursor": 0,
     "jobs": [
       {
         "title": "AP Analyst - Noida",
@@ -266,9 +267,30 @@
         "first_seen_at": "2026-10-18T07:26:37.802067+00:00",
         "last_verified_at": "2026-10-18T07:26:37.802067+00:00",
         "needs_reverification": true
+      },
+      {
+        "title": "Technical Product Analyst, 2027 Leadership Development Program, ION Group, India",
+        "job_title": "Technical Product Analyst, 2027 Leadership Development Program, ION Group, India",
+        "company": "ION",
+        "location": "Noida; Mumbai; Pune",
+        "body": "Your Role As a Technical Product Analyst, you will work at the intersection of Product, Data, AI, and Business Operations to help build, improve, and scale ION products used by Tier 1 banks , Fortune 100 global corporations and other leading enterprises worldwide. You will transform data into insights, customer challenges into product opportunities, and ideas into measurable business outcomes. Working closely with Product Managers, Engineers, customers, and business stakeholders, you will contribute to product innovation, process improvement, and data-driven decision-making across the organization. This role offers a unique opportunity to combine analytical thinking, product understanding, customer engagement, and emerging technologies to shape the future of financial technology solutions. Your Role As a Technical Product Analyst, you will work at the intersection of Product, Data, AI, and Business Operations to help build, improve, and scale ION products used by Tier 1 banks , Fortune 100 global corporations and other leading enterprises worldwide. You will transform data into insights, customer challenges into product opportunities, and ideas into measurable business outcomes. Working closely with Product Managers, Engineers, customers, and business stakeholders, you will contribute to product innovation, process improvement, and data-driven decision-making across the organization. This role offers a unique opportunity to combine analytical thinking, product understanding, ",
+        "source_text": "Your Role As a Technical Product Analyst, you will work at the intersection of Product, Data, AI, and Business Operations to help build, improve, and scale ION products used by Tier 1 banks , Fortune 100 global corporations and other leading enterprises worldwide. You will transform data into insights, customer challenges into product opportunities, and ideas into measurable business outcomes. Working closely with Product Managers, Engineers, customers, and business stakeholders, you will contribute to product innovation, process improvement, and data-driven decision-making across the organization. This role offers a unique opportunity to combine analytical thinking, product understanding, customer engagement, and emerging technologies to shape the future of financial technology solutions. Your Role As a Technical Product Analyst, you will work at the intersection of Product, Data, AI, and Business Operations to help build, improve, and scale ION products used by Tier 1 banks , Fortune 100 global corporations and other leading enterprises worldwide. You will transform data into insights, customer challenges into product opportunities, and ideas into measurable business outcomes. Working closely with Product Managers, Engineers, customers, and business stakeholders, you will contribute to product innovation, process improvement, and data-driven decision-making across the organization. This role offers a unique opportunity to combine analytical thinking, product understanding, customer engagement, and emerging technologies to shape the future of financial technology solutions. Our Company: We’re a diverse group of visionary innovators who provide trading and workflow automation software, high-value analytics, and strategic consulting to corporations, central banks, financial institutions, and governments. Founded in 1999, we’ve achieved tremendous growth by bringing together some of the best and most successful financial technology companies in the world. Learn more at iongroup.com . Our Company: We’re a diverse group of visionary innovators who provide trading and workflow automation software, high-value analytics, and strategic consulting to corporations, central banks, financial institutions, and governments. Founded in 1999, we’ve achieved tremendous growth by bringing together some of the best and most successful financial technology companies in the world. Learn more at iongroup.com. Data & Insights: Analyze product, customer, and business data to identify trends, root causes, risks, and opportunities. Define, track, and measure key product and business metrics. Build dashboards, reports, and scalable analytics solutions that support data-driven decision making. Generate actionable insights and recommendations for Product, Engineering, and business teams. Support the development and maintenance of reliable data assets, pipelines, and reporting capabilities. Assist in building and validating predictive models to support business and product objectives. AI & Automation: Identify opportunities for AI-driven innovation, automation, and process optimization. Design and build analytical tools, automations, and workflow improvements that help teams turn data into action. Evaluate and leverage AI technologies, machine learning capabilities, and emerging tools to improve products and internal operations. Support the implementation, testing, monitoring, and continuous improvement of AI-powered solutions. Contribute to reducing operational complexity through scalable, technology-driven solutions. Product & Customer Impact: Partner with Product Managers and Engineers to define requirements, validate product ideas, and measure outcomes. Support product strategy, roadmap planning, and feature development through data-driven recommendations. Build a deep understanding of customer workflows, product usage patterns, and business requirements. Collaborate directly with customers and internal stakeholders to understand challenges, resolve issues, and support product adoption. Communicate insights and recommendations effectively to both technical and non-technical audiences. Own initiatives end-to-end, from problem identification and analysis through delivery and measurable business outcome. You will work closely with Product, Engineering, Data, AI, Client Services, and business teams — building fluency across multiple disciplines rather than progressing along a narrow, single-track path. You will learn: Product Management and End-to-End Product Delivery Data analytics, reporting, and visualization Data Engineering and modern data platforms AI, automation, and data-driven decision making Financial technology and enterprise software Customer-centric problem solving You will gain exposure to: Product Strategy and Roadmap Planning Customer and Market Insights Leadership Client interactions, and Stakeholder Management Real-world business challenges faced by global institutions You will develop expertise in: Product Analysis Data Analytics & Visualization AI &Automation Data Engineering Product Management Customer relationship",
+        "source_emails": [],
+        "href": "https://jobs.lever.co/ion/83539ab9-431f-43e3-9179-f891eeb16db9",
+        "application_url": "https://jobs.lever.co/ion/83539ab9-431f-43e3-9179-f891eeb16db9",
+        "employment_type": "Full-time",
+        "source_type": "direct_apply",
+        "page_fetched": true,
+        "active_listing": true,
+        "source_id": "83539ab9-431f-43e3-9179-f891eeb16db9",
+        "posted_at": "2026-09-30T13:52:04.716000+00:00",
+        "updated_at": "",
+        "date_posted": "2026-09-30T13:52:04.716000+00:00",
+        "first_seen_at": "2026-10-18T17:35:58.050591+00:00",
+        "last_verified_at": "2026-10-18T17:35:58.050591+00:00"
       }
     ],
-    "pick_cursor": 0
+    "pick_cursor": 2
   },
   "html:EXL": {
     "last_poll": "2026-10-18T13:12:32.585687+00:00",
