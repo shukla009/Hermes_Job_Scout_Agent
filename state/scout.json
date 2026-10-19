@@ -599,7 +599,7 @@
     "alerts_sent": 0,
     "emails_accepted_by_smtp": 0,
     "shadow_run": false,
-    "at": "2026-10-19T13:42:16.370351+00:00",
+    "at": "2026-10-19T16:25:34.150254+00:00",
     "outreach": {
       "smtp": "passed",
       "status": "no_eligible_vacancies"
@@ -771,6 +771,14 @@
     },
     {
       "at": "2026-10-19T13:42:16.370351+00:00",
+      "smtp": "passed",
+      "status": "no_eligible_vacancies",
+      "eligible_email_leads": 0,
+      "attempted": 0,
+      "smtp_accepted": 0
+    },
+    {
+      "at": "2026-10-19T16:25:34.150254+00:00",
       "smtp": "passed",
       "status": "no_eligible_vacancies",
       "eligible_email_leads": 0,
