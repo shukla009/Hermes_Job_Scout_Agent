@@ -2,9 +2,7 @@ name: Autonomous Job Scout Agent
 
 on:
   schedule:
-    - cron: '47 2 * * *'   # 08:17 AM IST
-    - cron: '7 9 * * *'    # 02:37 PM IST
-    - cron: '53 14 * * *'  # 08:23 PM IST
+    - cron: '47 */2 * * *' # Every two hours; initial emails obey weekday IST hours.
   workflow_dispatch:          # Allows manual trigger anytime from GitHub web/mobile UI
 
 permissions:
@@ -40,15 +38,20 @@ jobs:
       # Scheduled runs only need a fast integrity check, preserving free minutes.
       - name: Verify Runtime Imports
         run: |
-          python -m compileall -q scout_agent.py scout_mail.py scout_matching.py scout_persistence.py scout_runtime.py scout_sources.py scout_state.py
-          python -c "import scout_agent, scout_mail, scout_matching, scout_persistence, scout_runtime, scout_sources, scout_state"
+          python -m compileall -q scout_agent.py scout_mail.py scout_matching.py scout_persistence.py scout_runtime.py scout_sources.py scout_state.py scout_storage.py scout_discovery.py scout_applications.py
+          python -c "import scout_agent, scout_mail, scout_matching, scout_persistence, scout_runtime, scout_sources, scout_state, scout_storage, scout_discovery, scout_applications"
 
       - name: Run Job Scout Agent
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ZERO_COST_VERIFIED: ${{ vars.ZERO_COST_VERIFIED }}
           TELEGRAM_TRACKING_READY: ${{ vars.TELEGRAM_TRACKING_READY || 'false' }}
-          ENABLE_JOB_ALERT_EMAILS: ${{ vars.ENABLE_JOB_ALERT_EMAILS || 'false' }}
+          ENABLE_JOB_ALERT_EMAILS: ${{ vars.ENABLE_JOB_ALERT_EMAILS || 'true' }}
+          HANDS_OFF_ONLY: "true"
+          SCOUT_ENCRYPT_STATE: ${{ vars.SCOUT_ENCRYPT_STATE || 'false' }}
+          SCOUT_STATE_KEY: ${{ secrets.SCOUT_STATE_KEY }}
+          SCOUT_APPLICATION_ANSWERS: ${{ secrets.SCOUT_APPLICATION_ANSWERS }}
+          SCOUT_ALERT_SENDER_DOMAINS: ${{ vars.SCOUT_ALERT_SENDER_DOMAINS || '' }}
           SCOUT_SHADOW_RUNS: "3"
           NVIDIA_API_KEY: ""
           SERPAPI_KEY: ""

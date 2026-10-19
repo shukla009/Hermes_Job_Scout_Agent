@@ -101,8 +101,8 @@ def _load_json_list(path, label):
     if not os.path.exists(path):
         return []
     try:
-        with open(path, "r", encoding="utf-8") as file:
-            data = json.load(file)
+        from scout_storage import load_json
+        data = load_json(path)
         if not isinstance(data, list):
             raise ValueError("expected a JSON list")
         return data
@@ -168,7 +168,7 @@ def send_telegram(message, reply_markup=None):
         print("[Telegram] Alert sent successfully.")
         return True
     except Exception as exc:
-        print(f"[Telegram Error] {exc}")
+        print(f"[Telegram Error] {type(exc).__name__}")
         return False
 
 
@@ -183,7 +183,7 @@ def smtp_preflight():
         print("[SMTP] Authentication successful.")
         return True
     except Exception as exc:
-        print(f"[SMTP Error] Authentication failed: {exc}")
+        print(f"[SMTP Error] Authentication failed: {type(exc).__name__}")
         return False
 
 
@@ -192,7 +192,7 @@ def send_email(to_email, subject, body_text, *, attach_resume=True):
         print("[Email Error] Missing Gmail credentials.")
         return False
     if not _valid_recruiter_email(to_email):
-        print(f"[Email Error] Refusing invalid recipient: {to_email}")
+        print("[Email Error] Refusing invalid recipient")
         return False
     subject = " ".join(str(subject).split())
     message = MIMEMultipart()
@@ -217,16 +217,16 @@ def send_email(to_email, subject, body_text, *, attach_resume=True):
             attachment.add_header("Content-Disposition", f'attachment; filename="{os.path.basename(RESUME_PATH)}"')
             message.attach(attachment)
     except Exception as exc:
-        print(f"[Email Error] Could not attach resume: {exc}")
+        print(f"[Email Error] Could not attach resume: {type(exc).__name__}")
         return False
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
             server.login(GMAIL_SENDER, GMAIL_PASSWORD.replace(" ", ""))
             server.send_message(message)
-        print(f"[Email Success] SMTP accepted message for {to_email}")
+        print("[Email Success] SMTP accepted application message")
         return True
     except Exception as exc:
-        print(f"[Email Error] Failed to send to {to_email}: {exc}")
+        print(f"[Email Error] Send outcome uncertain: {type(exc).__name__}")
         return False
 
 
@@ -290,7 +290,7 @@ def _job_fingerprint(item):
     canonical_url = _normalize_url(item.get("href") or item.get("url") or "")
     title = " ".join(str(item.get("job_title") or item.get("title") or "").lower().split())
     company = " ".join(str(item.get("company") or "").lower().split())
-    return hashlib.sha256("|".join((canonical_url, title, company)).encode("utf-8")).hexdigest()[:24]
+    return hashlib.sha256((canonical_url or "|".join((title, company))).encode("utf-8")).hexdigest()[:24]
 
 
 def _is_job_board_url(url):
@@ -400,22 +400,11 @@ def _extract_job_json_ld(page_html):
     return {}
 
 
-def _request_with_retries(url, *, params=None, timeout=25, max_retries=None):
+def _request_with_retries(url, *, params=None, timeout=25, max_retries=None, method="GET", **kwargs):
     if ACTIVE_BUDGET is not None:
-        return ACTIVE_BUDGET.request(url, params=params, timeout=timeout, max_retries=max_retries)
-    attempts = max_retries or HTTP_RETRIES
-    last_error = None
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; HermesJobScout/2.0)"}
-    for attempt in range(attempts):
-        try:
-            response = requests.get(url, params=params, headers=headers, timeout=timeout)
-            response.raise_for_status()
-            return response
-        except requests.RequestException as exc:
-            last_error = exc
-            if attempt < attempts - 1:
-                time.sleep(2 ** attempt)
-    raise last_error
+        return ACTIVE_BUDGET.request(url, params=params, timeout=timeout, max_retries=max_retries, method=method, **kwargs)
+    from scout_persistence import RuntimeBudget
+    return RuntimeBudget().request(url, params=params, timeout=timeout, max_retries=max_retries, method=method, **kwargs)
 
 
 def enrich_post(post):
@@ -453,7 +442,7 @@ def enrich_post(post):
         enriched["active_listing"] = False
         enriched["reverification_failed"] = True
         enriched["fetch_error"] = str(exc)[:160]
-        print(f"[Fetch Warning] {url}: {exc}")
+        print(f"[Fetch Warning] {urllib.parse.urlsplit(url).hostname}: {type(exc).__name__}")
     return enriched
 
 
@@ -462,7 +451,8 @@ def _structured_freshness(post):
     valid_through = _parse_iso_datetime(post.get("valid_through"))
     if valid_through and valid_through < now:
         return False, "application deadline has passed"
-    posted = _parse_iso_datetime(post.get("date_posted") or post.get("posted_at") or post.get("published_at"))
+    originals = [_parse_iso_datetime(post.get(key)) for key in ("first_published", "date_posted", "posted_at", "published_at")]
+    posted = min((stamp for stamp in originals if stamp), default=None)
     if posted:
         age = (now - posted).total_seconds() / 86400
         return 0 <= age * 24 <= MAX_POST_AGE_HOURS, f"original posting age is {age * 24:.1f} hours"
@@ -471,10 +461,6 @@ def _structured_freshness(post):
         age = _linkedin_post_age_days(post.get("href", ""))
     if age is not None:
         return 0 <= age * 24 <= MAX_POST_AGE_HOURS, f"source posting age is {age:.1f} days"
-    if post.get("active_listing") and post.get("source_type") == "direct_apply":
-        return True, "currently open; original publication date unavailable, not verified latest"
-    if post.get("source_type") == "direct_apply" and post.get("page_fetched"):
-        return True, "live official application page; date unavailable"
     return False, "publication date could not be verified"
 
 
@@ -647,20 +633,27 @@ def search_recruiter_posts():
     results, source_stats = discover_ats_jobs()
     LAST_SEARCH_STATS["source_stats"].update(source_stats)
     if os.getenv("ENABLE_JOB_ALERT_EMAILS", "false").lower() == "true":
-        from scout_mail import ingest_alert_emails
-        hints = ingest_alert_emails(__import__(__name__), max_messages=10)
-        accepted_hints = 0
-        for hint in hints:
-            url = hint.get("url", "")
-            if not _is_direct_apply_url(url) or _is_job_board_url(url):
-                continue
-            results.append(dict(hint, href=url, body=hint.get("source_text", ""),
-                                application_url=url))
-            accepted_hints += 1
-            if accepted_hints >= 10:
-                break
+        from scout_mail import ingest_alert_batch
+        from scout_discovery import resolve_alert_hints
+        cursor = ACTIVE_STORE.data.get("mailbox_alerts", {}) if ACTIVE_STORE else {}
+        batch = ingest_alert_batch(__import__(__name__), max_messages=20, cursor=cursor)
+        backlog = ACTIVE_STORE.data.get("alert_hint_queue", []) if ACTIVE_STORE else []
+        hints = list({hint["url"]: hint for hint in [*backlog, *batch.get("hints", [])] if hint.get("url")}.values())[:100]
+        alert_jobs, alert_stats = resolve_alert_hints(hints, _request_with_retries)
+        pending = alert_stats.pop("pending_hints", [])
+        if ACTIVE_STORE:
+            ACTIVE_STORE.data["alert_hint_queue"] = pending
+        if ACTIVE_STORE and batch.get("status") in {"ok", "empty", "authentication_rejected"}:
+            ACTIVE_STORE.data["mailbox_alerts"] = batch.get("cursor", cursor)
+        if batch.get("status") in {"unavailable", "invalid_config"}:
+            alert_stats["status"] = "error"
+        if batch.get("status") == "disabled":
+            alert_stats["status"] = "disabled"
         LAST_SEARCH_STATS["source_stats"]["gmail_alert_label"] = {
-            "status": "optional_unverified_hints", "leads": accepted_hints}
+            **alert_stats, "mailbox_status": batch.get("status"),
+            "checked": batch.get("checked", 0), "auth_rejected": batch.get("auth_rejected", 0)}
+        # Interleave the alert channel, rather than dropping it behind large feeds.
+        results = [row for pair in zip(results, alert_jobs) for row in pair] + results[len(alert_jobs):] + alert_jobs[len(results):]
     if SERPAPI_KEY and os.getenv("ENABLE_PAID_SEARCH", "false").lower() == "true":
         query = _rotating_linkedin_query()
         LAST_SEARCH_STATS["queries_attempted"] += 1
@@ -762,6 +755,8 @@ def analyze_post_verbose(post, max_retries=3):
         "risk_flags": checked.get("risk_flags", []),
         "score_breakdown": checked.get("score_breakdown", {}),
         "score_kind": checked.get("score_kind", "deterministic_fit_points_not_probability"),
+        "date_posted": post.get("date_posted") or post.get("posted_at") or post.get("published_at"),
+        "vacancy_reference": str(post.get("vacancy_reference") or post.get("source_id") or "")[:100],
     }
     result["job_id"] = _job_fingerprint({"href": result["application_url"], "job_title": result["job_title"], "company": result["company"]})
     return result, "ok" if result["recruiter_email"] else "apply"
@@ -839,20 +834,36 @@ def process_pending_follow_ups(max_sends=None):
             continue
         job = ACTIVE_STORE.data.get("jobs", {}).get(record.get("job_id", ""), {}) if hasattr(ACTIVE_STORE, "data") else {}
         if (job.get("outcome") in {"notfit", "rejected", "reply", "interview"}
-                or job.get("submitted") or job.get("delivery_status") == "bounced"):
+                or job.get("submitted") or job.get("delivery_status") == "bounced"
+                or job.get("active_listing") is False
+                or str(job.get("exclusion_reason", "")).lower() in {"vacancy closed", "application deadline expired"}):
             continue
         checked += 1
         mailbox_status = _mailbox_status(record)
         if mailbox_status == "reply":
-            print(f"[Follow-up] Stopped after reply from {record.get('email', '')}")
             continue
         if mailbox_status == "bounce":
-            print(f"[Follow-up] Stopped after bounce for {record.get('email', '')}")
             _suppress_email(record.get("email", ""), "bounce")
             continue
         if mailbox_status != "none" or _is_suppressed(record.get("email", "")):
             updated.append(record)
             continue
+        if hasattr(ACTIVE_STORE, 'data'):
+            vacancy = job.get("apply_url") or job.get("application_url") or job.get("url")
+            if not vacancy:
+                updated.append(record)
+                continue
+            try:
+                page = enrich_post({"href": vacancy, "source_type": "direct_apply", "needs_reverification": True})
+                expiry = _parse_iso_datetime(page.get("valid_through"))
+                if page.get("reverification_failed"):
+                    updated.append(record)
+                    continue
+                if page.get("active_listing") is False or (expiry and expiry <= datetime.now(timezone.utc)):
+                    continue
+            except Exception:
+                updated.append(record)
+                continue
         intent = ACTIVE_STORE.reserve_send(record.get("job_id", ""), record.get("email", ""), step=f"followup-{step}")
         if not intent:
             updated.append(record)

@@ -17,7 +17,7 @@ def test_future_deadline_does_not_make_old_job_new():
 
 def test_unknown_date_is_not_labelled_latest():
     ok, reason = scout_agent._structured_freshness({'source_type':'direct_apply','active_listing':True})
-    assert ok and 'not verified latest' in reason
+    assert not ok and 'could not be verified' in reason
 
 
 def test_yesterdays_post_is_fresh():

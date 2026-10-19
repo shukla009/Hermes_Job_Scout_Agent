@@ -1,5 +1,24 @@
 # Hermes architecture
 
+## Current hands-off upgrade
+
+- Every-two-hour public-runner discovery; weekday IST email window; strict original-date 48h gate.
+- Workday/Oracle public discovery is separate from authenticated employer application APIs.
+- Gmail alert intake uses authenticated senders, UID cursors and a bounded unresolved-link queue.
+- The public-form engine prepares only exact audited no-login/no-challenge forms.
+  Zero production adapters are enabled until real contracts are verified. A tested engine
+  is not proof that an employer accepts automated submissions.
+- Form and email ledgers share job identity, employer cooldown and daily action caps.
+  Pending/uncertain results cannot retry through another contact or route.
+- GitHub state and immutable feedback support path-authenticated AES-GCM envelopes.
+  The Worker accepts legacy JSON during rollout. Enable encryption only after Worker deployment.
+- Public visibility is checked each run; private/unknown mode retains conservative quota/cadence fallback.
+- Hands-off mode suppresses manual recommendation alerts; outcome buttons remain for already-sent
+  applications. See README and docs/ONE_TIME_SETUP.md for current operation.
+
+The sections below describe the legacy-compatible components. Recommendation
+cards remain available only when hands-off mode is explicitly disabled.
+
 ## Runtime and zero-cost boundary
 
 The scheduled GitHub Actions job and Telegram `/run` use the same scout entrypoint.

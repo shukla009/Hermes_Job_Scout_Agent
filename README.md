@@ -1,130 +1,104 @@
 # Hermes Job Scout Agent
 
-Hermes helps Shivank find relevant Indian-market vacancies and track applications.
-It runs on GitHub Actions while his computer is off. A successful workflow is not
-an application or an interview: those outcomes are tracked separately.
+- Finds suitable Indian-market jobs and sends truthful applications automatically.
+- Runs on GitHub Actions while your computer is off; `/run` starts the same workflow.
+- Uses existing Gmail, Telegram and Cloudflare Free. No paid model/search service is required.
+- A green workflow means execution succeeded; it does not mean an application or interview happened.
 
-## What happens each day
+## What the scout does
 
-- Scheduled runs: approximately **08:17, 14:37 and 20:23 IST**. GitHub schedules can be delayed.
-- Read public official job listings and opted-in alerts, within request/time limits.
-- Match duties, mandatory requirements and résumé evidence—not title keywords alone.
-- Separate mandatory and preferred requirements: unsupported mandatory skills can reject a job,
-  uncertain requirements are labelled for review, and preferred gaps only reduce fit points.
-- Reject field-sales/acquisition work even when its title contains “market intelligence”.
-- Include dashboard, data-validation, research-executive and business-process title variants.
-- New-job alerts require freshness evidence within 48 hours. Older dated jobs are rejected;
-  open jobs with an unknown original date remain available for review in `/queue`, clearly
-  labelled “not verified latest”, and do not trigger automatic application emails.
-- Recommend up to five new jobs per IST day, including at most one clearly labelled stretch role.
-- Show official application links, fit evidence, missing requirements and salary/shift uncertainty.
-- Email a suitable recruiter only when the vacancy explicitly provides a recruitment contact.
-- Attach the updated `Shivank_Shukla_Data_Analyst.pdf`; never edit it or invent achievements.
-- Reconcile feedback, replies and send history before considering follow-ups.
-- Keep failures visible without repeating unchanged routine messages.
+- Checks public sources every two hours. GitHub schedules may be delayed.
+- Fetches real vacancy details from working employer feeds, then checks your fit.
+- Accepts only verified original publication dates within **48 hours**. An unknown date,
+  refreshed listing, future closing date or new alert cannot make an old job new.
+- Reads authenticated job alerts only from the dedicated Gmail label `HermesJobAlerts`.
+- Resolves bounded tracking links and verifies public vacancy evidence. Failed links have a small retry queue.
+- Rejects unsuitable roles, unsupported mandatory requirements, closed jobs and risky offers.
+- Sends a personalised email with the existing `Shivank_Shukla_Data_Analyst.pdf` only when
+  the vacancy provides a verified recruitment address and permits email applications.
+- Sends initial emails on weekdays between **08:30 and 18:30 IST**. Other runs can discover jobs.
+- Rechecks freshness before sending; queued jobs expire after 48 hours.
+- Uses at most three application attempts per run and six outbound actions per IST day,
+  including at most two follow-ups daily. Uncertain attempts count toward limits.
+- Stops duplicate applications across email/form routes, including uncertain submissions.
+- Follows up on days four and nine only after checking the mailbox and vacancy is still open.
+- Reports human replies immediately; it never conducts a recruiter conversation automatically.
 
-## Your matching preferences
+## What can currently submit an application?
 
-- Delhi-NCR, Delhi, Noida, Gurgaon/Gurugram; remote roles must allow India-based applicants.
-- Full-time jobs; no explicit night, US or rotational shifts. An undisclosed shift is flagged.
-- Reject a stated maximum salary below ₹6.5 LPA; undisclosed pay is flagged. Salary is never put in recruiter emails.
-- Prioritise research/market intelligence, MIS/reporting, junior BI/data analysis, data quality and process/business analysis.
-- ProSca internship: January–July 2026; full-time employment started August 2026.
-- Both degrees are formally completed. Internships, full-time experience and projects remain distinct.
-- Overlapping internships are not double-counted; the word “Lead” does not establish managerial seniority.
-- SQL listed as a skill does not establish years of professional SQL engineering.
-- Core recommendations first; evidence-backed experience-stretch jobs are separate, not automatic-email targets.
+- **Verified recruitment email: operational.** Delivery is reported as SMTP acceptance,
+  separately from human replies and interviews.
+- **Public form engine: implemented and tested, with zero live adapters enabled.**
+  Four employer forms were audited, but none met the required freshness, eligibility and
+  submission/confirmation checks. It would be misleading to claim those applications work.
+- A form can be enabled only after its exact fields, consent, resume upload and confirmation
+  have been verified. Login, OTP, CAPTCHA, unknown answers and changed forms are skipped.
+- New adapters first run three scheduled shadow runs, then a two-application daily canary
+  cap for seven days. Ambiguous submissions are held without automatic retries.
+- No daily approval queue is required. Unsupported routes appear as coverage gaps.
 
-Candidate facts and evidence live in `config/candidate_profile.json`. The résumé
-is the attachment, not an instruction source.
+## Jobs and locations
+
+- Delhi-NCR, Delhi, Noida, Gurgaon/Gurugram. Remote vacancies must permit India-based applicants.
+- Permanent full-time work. Explicit night, US and rotational shifts are rejected.
+- Salary maxima below ₹6.5 LPA are rejected. Undisclosed salary or shift is flagged, but allowed.
+- Salary is never included in application emails.
+- Prioritises research/market intelligence, MIS/reporting, junior BI/data analysis,
+  data quality/operations and process/business analysis based on actual responsibilities.
+- Verified listed SQL knowledge can meet a knowledge requirement; it cannot establish
+  professional production experience. Alternative requirements are distinguished from AND requirements.
+- ProSca internship ended July 2026; full-time role began August 2026. Both degrees are completed.
+- Internships, projects and full-time work remain separate; overlapping internships are not double-counted.
+- The current resume stays unchanged. No invented experience, guessed recruiter emails or fake claims.
 
 ## Where jobs come from
 
-- A 31-source registry prioritises NCR research, consulting, analytics-services and GCC employers.
-- Public Greenhouse, Lever, SmartRecruiters, Ashby and Workable interfaces are supported when employers actually use them.
-- Greenhouse detail records are checked only for shortlisted jobs whose list response lacks an
-  original publication date; this preserves the strict 48-hour rule without excessive requests.
-- Himalayas' public remote-jobs API is polled in a small cached window. Only permanent full-time
-  roles open to India/worldwide/APAC and compatible with IST continue to matching.
-- Official career-page structured data and readable listing links supplement those feeds.
-- Oracle/Workday career pages are monitored through their public pages; no private or reverse-engineered login API is used.
-- Registry membership **does not mean every employer is currently readable or has a suitable vacancy**.
-- JavaScript-only, blocked or changed pages are reported as unreadable/link-only; they do not produce invented jobs.
-- Productive public feeds are checked often enough for the 48-hour window. Low-yield generic
-  pages rotate in bounded six-source batches and failed pages cool down instead of being hammered.
-- Optional job-alert ingestion uses only a dedicated Gmail label, `HermesJobAlerts`, not unrelated inbox messages.
-- Paid-model and paid-search integrations are **off by default**. Public discovery and deterministic matching do not depend on them.
-- Naukri remains excluded. No authenticated job-board scraping, CAPTCHA solving, proxies or guessed recruiter addresses.
+- The registry contains 31 sources, not a promise of 31 productive employers.
+- Public Greenhouse, Lever, SmartRecruiters, Ashby and Workable connectors where supported.
+- **Genpact Workday:** public search and vacancy details, including NCR location filtering.
+- **EXL Oracle Recruiting:** public search and details, including original posting dates.
+- Workday/Oracle listing access does not provide employer credentials for application APIs.
+- Himalayas' free feed supplies a bounded slice of full-time India-compatible remote jobs.
+- Official readable career pages and structured vacancy data supplement feeds.
+- Authenticated alerts from supported free platforms provide additional discovery hints.
+- Diagnostics distinguish productive feeds, verified feeds without matches, discovery-only
+  pages and temporarily failing sources. Blocked sources never produce invented vacancies.
+- Generic watchlists rotate and cool down; sources share request and runtime limits.
+- **Naukri is excluded:** no requests, profile actions or Telegram features.
+- No authenticated job-board scraping, CAPTCHA bypass, paid proxies or paid fallback.
 
-Employers and polling tiers are configured in `config/employers.json`. A failed
-source does not make all other sources fail.
+## Telegram
 
-## Telegram and application tracking
+- `/run`: start the scout while your device is off.
+- `/queue`: show hands-off processing status and outcome buttons for already-sent applications.
+- `/status`: show the last run, SMTP acceptance, portal confirmation and form readiness.
+- `/stats`: show recorded applications, replies and interviews separately.
+- Reply/Interview/Rejected buttons record outcomes; they are not application approvals.
+- Routine unchanged zero-result runs stay quiet apart from the daily summary; important failures remain visible.
 
-- `/run`: request a run; a persisted budget pause blocks dispatch.
-- `/queue`: view outstanding recommendations.
-- `/status` and `/stats`: inspect recorded activity and outcomes.
-- Recommendation buttons: **Applied**, **Not suitable**, **Snooze**, **Reply**, **Interview**, **Rejected**.
-- Opening an application link does not mean you applied. Press **Applied** only after submission.
-- Outcomes are acknowledged only after being saved privately in GitHub, then reconciled on the next run.
-- Old direct-apply alerts migrate to “submission unconfirmed”; historical recruiter emails remain separate.
-- The Worker is deployed and the secured webhook accepts `message` and `callback_query` updates. Private-state commands require the existing repository-scoped token to have Contents read/write as well as Actions write.
+## Privacy and ₹0 operation
 
-See `workers/DEPLOY_TELEGRAM_TRIGGER.md` for deployment and permissions. On 13 October
-2026, GitHub Actions validation passed three shadow runs and a post-validation run;
-three qualified vacancies were found. The repository-only token permissions were
-updated and the secured Worker state-access check passed on the same date.
-Live `/status`, `/stats`, `/queue` and `/run` checks also passed. Signed action buttons
-are enabled on future recommendations; mark **Applied** only after you submit a real application.
-Scheduled discovery and outgoing Telegram alerts do not depend on that Worker token.
+- Sensitive state can be encrypted with AES-256-GCM before it reaches the public repo.
+- Deploy the compatible Worker first, then enable `SCOUT_ENCRYPT_STATE`; a repository
+  push does not deploy Cloudflare automatically.
+- Credentials and the optional verified application-answer bank belong in secrets.
+- No private email bodies, answer payloads or form tokens are persisted in reports.
+- Encryption does not erase plaintext in old Git history. Key rotation needs migration with the old key.
+- Standard Ubuntu runners are free for this public repo. Private/unknown visibility activates
+  a conservative 1,200-minute guard and three scheduled runs daily; no paid fallback is selected.
+- Runs are bounded to 120 HTTP requests, six minutes of discovery and a ten-minute workflow timeout.
+- Regression tests run on code pushes; scheduled runs use a lightweight import/compile check.
+- Source yield, confirmed submissions, human replies and interviews matter more than raw job counts.
 
-## Email safeguards
+## Setup and development
 
-- The current email introduces Shivank's full-time ProSca role and completed degrees,
-  uses role-specific evidence and supported matching skills, and links the exact vacancy.
-- The updated résumé is attached as a PDF. Older already-sent emails are not rewritten
-  or resent simply because the résumé/template changed.
-- The last 30 outreach run summaries record SMTP authentication and the reason for
-  no sending, separately from job discovery and SMTP acceptance.
-
-- Recruitment intent and a vacancy-linked address are required; a footer email is insufficient.
-- Candidate, placeholder, no-reply, suppressed and recently contacted addresses are rejected.
-- A durable pending-send record is saved before SMTP. Uncertain sends are not blindly resent.
-- Replies, bounces and confirmed outcomes stop inappropriate follow-ups.
-- One bounded read-only inbox scan classifies exact-thread human replies, out-of-office messages,
-  auto-acknowledgements, bounces and ambiguous senders. Only an exact sender-and-thread human
-  reply changes the recorded outcome; the agent never replies automatically.
-- Payment/deposit, paid-equipment or training, credential requests, shortened/lookalike links,
-  free-mail contacts and unidentified agencies are surfaced as review signals. Critical risks
-  always block automatic résumé sending; free-mail alone is never labelled as fraud.
-- Mailbox or persistence errors stop unsafe outreach while discovery may continue.
-- The agent generates only truthful role-specific proof points from the candidate profile.
-
-## Keeping it ₹0 and device-independent
-
-- Standard GitHub-hosted Ubuntu runners; no always-on personal device.
-- Existing Gmail, Telegram and Cloudflare Free services; no new database or paid hosting.
-- Bounded HTTP requests, concurrency, retries and runtime; no automatic paid fallback.
-- Full regression tests run on code pushes and pull requests. Scheduled scouting uses a fast
-  compile/import integrity check, avoiding repeated test-minute spend on unchanged code.
-- Quota exhaustion reduces coverage or pauses execution instead of upgrading a service.
-- GitHub's Actions budget was verified at **$0 with stop usage enabled on 11 October 2026**. Included usage is shared across the account; other workflows may exhaust it.
-- Keep that billing stop enabled and do not upgrade Cloudflare or optional APIs automatically.
-
-Free operation cannot guarantee a daily supply of matching jobs or interviews.
-Measure relevance, confirmed submissions, replies and interview invitations—not
-just discovered counts or green workflow badges. The weekly Telegram report now includes
-30-day source and role-family funnel counts so low-yield coverage can be tuned using outcomes.
-
-## Development checks
-
-Run the Python regression suite and Worker fixtures before deployment:
+- See [one-time setup](docs/ONE_TIME_SETUP.md) for free alerts, answer-bank format and encryption rollout.
+- Configure sources in `config/employers.json`; public forms in `config/application_adapters.json`.
+- Keep the existing Cloudflare plan Free and paid overages stopped.
 
 ```powershell
-python -m pytest -q
+python -m pytest tests -q
 node tests/worker_test.mjs
 ```
 
-State and feedback are private GitHub files. Credentials belong in GitHub/Worker
-secrets, never tracked files or Telegram messages. See `ARCHITECTURE.md` for the
-implementation boundaries.
+No source or automation can guarantee enough matching vacancies, recruiter responses or interviews.

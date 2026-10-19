@@ -38,7 +38,7 @@
   {
     "name": "listed_only_mandatory_skill_forces_review",
     "changes": {
-      "description": "Full-time day shift. Research and competitive analysis. 0-2 years experience. SQL is required."
+      "description": "Full-time day shift. Research and competitive analysis. 0-2 years experience. Professional SQL implementation experience is required."
     },
     "expected": {
       "eligible": true,

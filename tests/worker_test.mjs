@@ -16,7 +16,7 @@ globalThis.fetch = async (url, options) => {
   calls.push({url,options});
   return new Response('{}', {status:201});
 };
-const env = {TELEGRAM_WEBHOOK_SECRET:'secret',TELEGRAM_BOT_TOKEN:'bot',TELEGRAM_CHAT_ID:'10',GITHUB_PAT:'gh',GITHUB_STATE_PAT:'state'};
+const env = {TELEGRAM_WEBHOOK_SECRET:'secret',TELEGRAM_BOT_TOKEN:'bot',TELEGRAM_CHAT_ID:'10',GITHUB_PAT:'gh',GITHUB_STATE_PAT:'state',HANDS_OFF_ONLY:'false'};
 assert.equal((await worker.fetch(new Request('https://w',{method:'POST',body:'{}'}),env)).status,403);
 assert.equal(calls.length,0);
 const request = update => new Request('https://w',{method:'POST',headers:{'X-Telegram-Bot-Api-Secret-Token':'secret'},body:JSON.stringify(update)});
@@ -59,6 +59,11 @@ for(const button of card.reply_markup.inline_keyboard.flat()) {
 }
 const fresh=await createCallback('interview',ident,'bot',now);
 assert.equal((await verifyCallback(fresh,'bot',now)).action,'interview');
+calls=[];
+assert.equal((await worker.fetch(request({message:{chat:{id:10},from:{id:10},text:'/queue'}}),{...env,HANDS_OFF_ONLY:'true'})).status,200);
+const automaticQueue = JSON.parse(calls.find(c=>c.url.includes('/sendMessage')).options.body);
+assert.match(automaticQueue.text,/No manual approval queue/);
+assert.equal(automaticQueue.reply_markup,undefined);
 // Telegram retries must not dispatch twice, even if the first reply is lost.
 calls=[];
 let reservedEvent;

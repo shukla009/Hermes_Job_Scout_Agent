@@ -132,6 +132,41 @@ def _profile_evidence_text(profile):
     return evidence, skills, listed_only
 
 
+def _degree_requirement(sentence, profile):
+    """Match completed, attested degrees without inventing field equivalence."""
+    if not re.search(r"\b(?:degree|bachelor|undergraduate|graduate|graduation|bca|b\.?\s?sc|b\.?\s?tech|mba|m\.?\s?sc|m\.?\s?tech|ph\.?d|postgraduate)\b", sentence):
+        return None
+    completed = [str(row.get("degree", "")).lower() for row in profile.get("education", [])
+                 if isinstance(row, dict) and row.get("completed") is True]
+    undergraduate = any(re.search(r"\b(?:bca|bsc|bachelor|undergraduate|btech|bcom|ba)\b", value) for value in completed)
+    has_bca = any(re.search(r"\bbca\b|bachelor.{0,8}computer applications", value) for value in completed)
+    has_bsc = any(re.search(r"\bbsc\b|bachelor.{0,8}science", value) for value in completed)
+    requires_bachelor = bool(re.search(r"\bbachelor|\bundergraduate|\bgraduat(?:e|ion)\b|\bbca\b|\bb\.?\s?sc\b", sentence))
+    alternative = bool(re.search(r"\bor\b|equivalent", sentence))
+    higher_or_other = re.search(r"\b(?:mba|master(?:s|'s)?|postgraduate|m\.?\s?tech|m\.?\s?sc|ph\.?d|doctorate|b\.?\s?tech)\b", sentence)
+    if higher_or_other and not (requires_bachelor and alternative):
+        return "Specified mandatory degree", "unknown" if alternative else "unmet"
+    # A discipline is not inferred from a related degree. BCA does not establish
+    # a Computer Science/Engineering degree; a BSc title alone proves no major.
+    specialties = re.findall(r"\b(?:computer science|engineering|statistics|mathematics|economics|finance|commerce|business administration|information technology|computer applications|data analytics|stem)\b", sentence)
+    field_clause = re.search(r"(?:degree|bachelor(?:['\u2019]s)?|bca|b\.?\s?sc|bachelor\s+of\s+science)\s+in\s+([^.;\n]{1,100})", sentence)
+    if field_clause and not specialties and not re.search(r"any (?:discipline|field|degree|stream)", field_clause.group(1)):
+        return "Specified degree discipline (equivalence unverified)", "unknown"
+    if specialties and not re.search(r"any (?:discipline|field|degree|stream)", sentence):
+        attested = [specialty for specialty in specialties
+                    if any(specialty in value for value in completed)
+                    or (specialty == "computer applications" and has_bca)]
+        if not attested or (not alternative and len(attested) != len(specialties)):
+            return "Specified degree discipline (equivalence unverified)", "unknown"
+    if re.search(r"\bbca\b", sentence) and has_bca:
+        return "Completed BCA degree", "met"
+    if re.search(r"\bb\.?\s?sc\b|bachelor.{0,8}science", sentence) and has_bsc:
+        return "Completed BSc degree", "met"
+    if requires_bachelor and undergraduate:
+        return "Completed undergraduate degree", "met"
+    return "Degree requirement (qualification unverified)", "unknown"
+
+
 def _assess_requirements(text, profile):
     """Classify only explicit requirement clauses; never infer missing experience."""
     assessment = {
@@ -139,6 +174,9 @@ def _assess_requirements(text, profile):
         "preferred": {"met": [], "unmet": [], "unknown": []},
     }
     evidence, skills, listed_only = _profile_evidence_text(profile)
+    professional_evidence = " ".join(
+        str(point) for points in profile.get("professional_evidence", {}).values() for point in points
+    ).lower()
     found = set()
     for sentence, inherited in _requirement_clauses(text):
         explicit_preferred = _has_requirement_marker(sentence, preferred=True)
@@ -146,27 +184,63 @@ def _assess_requirements(text, profile):
         group = "preferred" if explicit_preferred else "mandatory" if explicit_mandatory else inherited
         if not group:
             continue
-        matched = False
+        degree = _degree_requirement(sentence, profile)
+        if degree:
+            degree_label, degree_status = degree
+            identity = (group, degree_label, degree_status)
+            if identity not in found:
+                found.add(identity)
+                assessment[group][degree_status].append(degree_label)
+        matches = []
+        needs_professional = bool(re.search(r"\b(?:professional|commercial|production|industry)\b", sentence))
+        needs_implementation = needs_professional or bool(re.search(
+            r"\b(?:hands[- ]on|practical)\b|"
+            r"\b(?:implement(?:ation|ed|ing)?|deploy(?:ed|ing)?|built|building)\b", sentence
+        ))
         for key, (label, pattern) in {**_REQUIREMENT_TERMS, **_DOMAIN_TERMS}.items():
-            if not re.search(pattern, sentence):
+            occurrence = re.search(pattern, sentence)
+            if not occurrence:
                 continue
-            identity = (group, key)
-            if identity in found:
-                continue
-            found.add(identity); matched = True
-            if key in _DOMAIN_TERMS:
+            if needs_implementation:
+                implementation_evidence = professional_evidence if needs_professional else evidence
+                status = "met" if re.search(pattern, implementation_evidence) else (
+                    "unknown" if key in skills or re.search(pattern, evidence) else "unmet"
+                )
+                if status == "unknown":
+                    label += " (" + ("professional " if needs_professional else "") + "implementation evidence unavailable)"
+            elif key in _DOMAIN_TERMS:
                 status = "met" if re.search(pattern, evidence) else "unmet"
             elif key == "market research" and ({"research", "market intelligence"} & skills):
                 status = "met"
-            elif key in listed_only:
-                status = "unknown"
-                label += " (listed, implementation evidence unavailable)"
             else:
-                status = "met" if key in skills or re.search(pattern, evidence) else "unmet"
-            assessment[group][status].append(label)
+                # A verified CV skill establishes knowledge, not employment or
+                # production implementation. Do not turn a knowledge requirement
+                # into an unrequested professional-experience requirement.
+                status = "met" if key in skills or key in listed_only or re.search(pattern, evidence) else "unmet"
+            matches.append((occurrence.start(), occurrence.end(), key, label, status))
+        matches.sort()
+        connectors = [sentence[left[1]:right[0]] for left, right in zip(matches, matches[1:])]
+        alternative = len(matches) > 1 and any(re.search(r"\bor\b|/", value) for value in connectors)
+        if alternative:
+            pure_alternatives = all(re.fullmatch(r"\s*(?:,\s*)?(?:or|/)?\s*", value) for value in connectors)
+            label = " or ".join(item[3] for item in matches)
+            identity = (group, tuple(item[2] for item in matches), "alternative")
+            status = ("met" if any(item[4] == "met" for item in matches) else
+                      "unknown" if any(item[4] == "unknown" for item in matches) else "unmet")
+            if not pure_alternatives:
+                status, label = "unknown", "Mixed alternative requirement needs clarification: " + sentence[:150]
+            if identity not in found:
+                found.add(identity)
+                assessment[group][status].append(label)
+        else:
+            for _, _, key, label, status in matches:
+                identity = (group, key, needs_implementation, needs_professional)
+                if identity not in found:
+                    found.add(identity)
+                    assessment[group][status].append(label)
         # Surface an explicit but unrecognised qualification instead of silently
         # treating it as satisfied. Keep the excerpt bounded for state/Telegram.
-        if not matched and re.search(r"\b(?:technical|experience|proficiency|knowledge|certification|degree|domain|qualification)\b", sentence):
+        if not matches and (not degree or re.search(r"\b(?:technical|certification|proficiency)\b", sentence)) and re.search(r"\b(?:technical|experience|proficiency|knowledge|certification|degree|domain|qualification)\b", sentence):
             assessment[group]["unknown"].append(re.sub(r"\s+", " ", sentence)[:180])
     return assessment
 

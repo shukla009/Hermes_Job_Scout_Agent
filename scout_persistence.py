@@ -3,6 +3,7 @@ import base64
 from collections import defaultdict
 import ipaddress
 import json
+import os
 from pathlib import Path
 import re
 import socket
@@ -19,6 +20,7 @@ class RuntimeBudget:
         self.max_requests=max_requests; self.deadline_seconds=deadline_seconds
         self.clock=clock or time.monotonic; self.started=self.clock(); self.attempts=0
         self.dns_checker=dns_checker or self._public_dns; self.get=get or requests.get
+        self.transport = requests.request
         self.sleep=sleep or time.sleep; self.lock=threading.Lock()
         self.active=threading.BoundedSemaphore(6); self.hosts=defaultdict(lambda:threading.BoundedSemaphore(2))
     @staticmethod
@@ -44,8 +46,15 @@ class RuntimeBudget:
         with self.lock:
             if self.attempts>=self.max_requests or self.remaining()<=0: raise BudgetExhausted('public_http_budget_exhausted')
             self.attempts+=1
-    def request(self,url,params=None,timeout=25,max_retries=None):
+    def request(self,url,params=None,timeout=25,max_retries=None,method='GET',**payload):
+        method = str(method).upper()
+        if method not in ('GET', 'POST') or set(payload) - {'json', 'data', 'files', 'headers', 'allow_redirects', 'return_http_errors'}:
+            raise ValueError('unsupported_public_request')
+        follow_redirects = payload.pop('allow_redirects', True)
+        return_http_errors = payload.pop('return_http_errors', False)
         max_attempts=min(2,max(1,(max_retries+1) if max_retries is not None else 2))
+        # Form POSTs are never retried: a lost response may still mean accepted.
+        if method == 'POST': max_attempts = 1
         current=url; current_params=params; redirects=0; attempt=0
         while True:
             host=self._validate(current)
@@ -60,13 +69,16 @@ class RuntimeBudget:
                 acquired_host=host_slot.acquire(timeout=max(0,self.remaining()))
                 if not acquired_host: raise BudgetExhausted('public_http_deadline')
                 self._charge()
-                response=self.get(current,params=current_params,timeout=max(.1,min(float(timeout),self.remaining())),allow_redirects=False,stream=True)
+                options=dict(params=current_params,timeout=max(.1,min(float(timeout),self.remaining())),allow_redirects=False,stream=True,**payload)
+                response = self.get(current, **options) if method == 'GET' else self.transport(method,current,**options)
                 status=response.status_code
-                if status in (301,302,303,307,308):
+                if status in (301,302,303,307,308) and follow_redirects:
                     target=urljoin(current,response.headers.get('Location',''))
                     response.close(); redirects+=1
                     if redirects>3 or not target or target==current: raise ValueError('redirect_limit')
-                    self._validate(target); current=target; current_params=None
+                    self._validate(target)
+                    if method == 'POST': raise ValueError('post_redirect_requires_confirmation')
+                    current=target; current_params=None
                     continue
                 attempt+=1
                 if status in (429,500,502,503,504) and attempt<max_attempts:
@@ -75,7 +87,7 @@ class RuntimeBudget:
                     response.close()
                     if delay>=self.remaining(): raise BudgetExhausted('public_http_deadline')
                     self.sleep(delay); continue
-                response.raise_for_status()
+                if not return_http_errors: response.raise_for_status()
                 chunks=[]; size=0
                 for chunk in response.iter_content(chunk_size=65536):
                     size+=len(chunk)
@@ -122,7 +134,10 @@ class GitHubWriter:
                 if path.stat().st_size>3000000: return False
                 data=path.read_bytes(); size+=len(data)
                 if len(data)>3000000 or size>5000000: return False
-                json.loads(data)
+                from scout_storage import decode_state, encode_state
+                value = decode_state(json.loads(data), relative)
+                if os.getenv('SCOUT_ENCRYPT_STATE', 'false').lower() == 'true':
+                    data = json.dumps(encode_state(value, relative), separators=(',', ':')).encode()
                 contents.append((relative,data))
             if not contents: return False
             for attempt in range(3):

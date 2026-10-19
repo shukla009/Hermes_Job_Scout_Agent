@@ -5,10 +5,11 @@ GMAIL_PASSWORD and IMAP_CHECK). No credentials or message bodies are logged.
 Alert results are unverified discovery hints, never application instructions.
 """
 import imaplib
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from email import message_from_bytes
-from email.utils import parseaddr
+from email.utils import parseaddr, parsedate_to_datetime
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
@@ -493,22 +494,89 @@ def _decoded_parts(message):
                 yield part.get_content_type(), payload.decode("utf-8", errors="replace")[:250000]
 
 
-def ingest_alert_emails(agent, label="HermesJobAlerts", max_messages=30, allowed_sender_domains=None):
-    """Read ONLY an opted-in Gmail label; return unverified link hints.
+def _authenticated_alert_sender(message, allowed):
+    address = parseaddr(str(message.get("From", "")))[1].lower()
+    domain = address.rsplit("@", 1)[-1]
+    roots = [root for root in allowed if domain == root or domain.endswith("." + root)]
+    if not roots:
+        return None
+    # Gmail prepends its own Authentication-Results. Never accept a result
+    # supplied by another authserv-id, or a later forged duplicate header.
+    results = message.get_all("Authentication-Results", [])
+    if not results:
+        return None
+    result = re.sub(r"\s+", " ", str(results[0])).lower()
+    if not re.match(r"^\s*mx\.google\.com\s*;", result):
+        return None
+    for mechanism, clause in re.findall(r"(?:^|;)\s*(dkim|spf)\s*=\s*pass\b([^;]*)", result):
+        identity = re.search(r"\b(?:header\.d|header\.i|smtp\.mailfrom)\s*=\s*([^\s;]+)", clause)
+        if not identity:
+            continue
+        authenticated_domain = identity.group(1).strip('<>"').rsplit("@", 1)[-1].rstrip(".")
+        if any(authenticated_domain == root or authenticated_domain.endswith("." + root) for root in roots):
+            return {"domain": domain, "mechanism": mechanism, "authserv_id": "mx.google.com"}
+    return None
 
-    Operational failures return an empty list; callers must not equate this
-    with a successful inbox check or use it to authorize follow-ups.
+
+def _alert_text_parts(mailbox, uid, root_type):
+    """Read at most two bounded text parts; inspect MIME before reading payload."""
+    pending = ["1", "2"] if root_type.startswith("multipart/") else ["1"]
+    inspected = 0
+    yielded = 0
+    read_metadata = False
+    while pending and inspected < 8 and yielded < 2:
+        part = pending.pop(0)
+        inspected += 1
+        try:
+            mime = b"\r\n".join(_fetch_uid_section(mailbox, uid, f"(BODY.PEEK[{part}.MIME])", 8192))
+        except RuntimeError:
+            # A MIME part absent in this message is not an inbox failure.
+            continue
+        metadata = message_from_bytes(mime)
+        read_metadata = True
+        kind = metadata.get_content_type().lower()
+        if "attachment" in str(metadata.get("Content-Disposition", "")).lower() or metadata.get_filename():
+            continue
+        if kind.startswith("multipart/") and part.count(".") < 2:
+            pending[0:0] = [part + ".1", part + ".2"]
+            continue
+        if kind not in {"text/plain", "text/html"}:
+            continue
+        raw = b"\r\n".join(_fetch_uid_section(mailbox, uid, f"(BODY.PEEK[{part}]<0.32768>)", 32768))
+        parsed = message_from_bytes(mime + b"\r\n" + raw)
+        for content_kind, content in _decoded_parts(parsed):
+            yielded += 1
+            yield content_kind, content[:32768]
+    if not read_metadata:
+        raise RuntimeError("Alert MIME metadata unavailable")
+
+
+def ingest_alert_batch(agent, label="HermesJobAlerts", max_messages=30, allowed_sender_domains=None, cursor=None):
+    """Read an opted-in label with authenticated senders and a durable UID cursor.
+
+    Returned links remain discovery hints. Received time is never a vacancy's
+    publication date, and bodies/attachments are never persisted in results.
     """
+    original_cursor = dict(cursor or {})
+    report = {"status": "unavailable", "hints": [], "checked": 0, "authenticated": 0,
+              "auth_rejected": 0, "cursor": original_cursor, "label": label}
     credentials = _credentials(agent)
-    if not credentials or not re.fullmatch(r"[A-Za-z0-9 _/-]{1,80}", label):
-        return []
+    if not credentials:
+        report["status"] = "disabled"
+        return report
+    if not isinstance(label, str) or not re.fullmatch(r"[A-Za-z0-9 _/-]{1,80}", label):
+        report["status"] = "invalid_config"
+        return report
     try:
         limit = min(30, max(0, int(max_messages)))
     except (ValueError, TypeError):
-        return []
+        report["status"] = "invalid_config"
+        return report
     if not limit:
-        return []
-    allowed = {"cutshort.io", "instahyre.com", "linkedin.com"}
+        report["status"] = "disabled"
+        return report
+    allowed = {"cutshort.io", "instahyre.com", "linkedin.com", "indeed.com", "indeedemail.com", "foundit.in"}
+    allowed.update(value.strip().lower() for value in os.getenv("SCOUT_ALERT_SENDER_DOMAINS", "").split(","))
     allowed.update(str(d).lower().strip() for d in (allowed_sender_domains or []))
     allowed = {d for d in allowed if re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}", d) and "naukri" not in d}
     hints, seen = [], set()
@@ -516,18 +584,31 @@ def ingest_alert_emails(agent, label="HermesJobAlerts", max_messages=30, allowed
         with imaplib.IMAP4_SSL("imap.gmail.com", 993, timeout=30) as mailbox:
             mailbox.login(*credentials)
             if mailbox.select('"' + label + '"', readonly=True)[0] != "OK":
-                return []
-            status, data = mailbox.search(None, "ALL")
+                return report
+            validity_response = mailbox.response("UIDVALIDITY")[1]
+            validity = (validity_response[0] or b"").decode("ascii", errors="ignore")
+            if not validity.isdigit():
+                return report
+            last_uid = int(original_cursor.get("last_uid", 0)) if str(original_cursor.get("uidvalidity", "")) == validity else 0
+            status, data = mailbox.uid("search", None, "UID", f"{last_uid + 1}:*") if last_uid else mailbox.uid("search", None, "ALL")
             if status != "OK":
-                return []
-            for uid in (data[0] or b"").split()[-limit:]:
-                message = _fetch(mailbox, uid)
-                address = parseaddr(str(message.get("From", "")))[1].lower()
-                domain = address.rsplit("@", 1)[-1]
-                if not any(domain == d or domain.endswith("." + d) for d in allowed):
+                return report
+            values = sorted(int(value) for value in (data[0] or b"").split() if value.isdigit() and int(value) > last_uid)
+            # Bootstrap only the latest bounded batch; later runs consume oldest
+            # unseen UIDs first so a busy label cannot permanently starve alerts.
+            values = values[:limit] if last_uid else values[-limit:]
+            for uid in values:
+                fields = "FROM MESSAGE-ID DATE AUTHENTICATION-RESULTS CONTENT-TYPE SUBJECT"
+                raw_headers = b"\r\n".join(_fetch_uid_section(mailbox, str(uid), f"(BODY.PEEK[HEADER.FIELDS ({fields})])", 32768))
+                message = message_from_bytes(raw_headers)
+                report["checked"] += 1
+                proof = _authenticated_alert_sender(message, allowed)
+                if not proof:
+                    report["auth_rejected"] += 1
                     continue
+                report["authenticated"] += 1
                 links = []
-                for kind, content in _decoded_parts(message):
+                for kind, content in _alert_text_parts(mailbox, str(uid), message.get_content_type()):
                     if kind == "text/html":
                         parser = _Links()
                         parser.feed(content)
@@ -539,14 +620,34 @@ def ingest_alert_emails(agent, label="HermesJobAlerts", max_messages=30, allowed
                     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or "naukri" in parsed.hostname.lower() or url in seen:
                         continue
                     path = parsed.path.lower()
-                    if re.search(r"unsubscribe|privacy|preferences|settings|login|signin", path):
+                    if re.search(r"unsubscribe|privacy|preferences|settings|login|signin", path + " " + parsed.query.lower() + " " + caption.lower()):
                         continue
-                    if not re.search(r"job|career|position|vacan|opening", path + " " + caption.lower()):
+                    # Preserve platform tracking URLs; the caller resolves them
+                    # through its bounded public-URL fetcher before qualification.
+                    context = path + " " + parsed.query.lower() + " " + caption.lower()
+                    if not re.search(r"job|career|position|vacan|opening|analyst|research|reporting|intelligence|dashboard", context) and not re.search(r"track|click|redirect|url|link|email", parsed.hostname.lower() + path):
                         continue
                     seen.add(url)
-                    hints.append({"url":url,"link":url,"title":caption[:200] or "Job-alert discovery link","source_text":caption[:500],"source_type":"job_alert","page_fetched":False,"alert_sender_domain":domain,"alert_message_id":str(message.get("Message-ID", ""))[:200],"unverified":True})
+                    received = ""
+                    try:
+                        received = parsedate_to_datetime(str(message.get("Date", ""))).isoformat()
+                    except (ValueError, TypeError, OverflowError):
+                        pass
+                    hints.append({"url":url,"link":url,"title":caption[:200] or "Job-alert discovery link","source_text":caption[:500],"source_type":"job_alert","page_fetched":False,"alert_sender_domain":proof["domain"],"alert_authentication":proof,"alert_message_id":str(message.get("Message-ID", ""))[:200],"alert_received_at":received,"unverified":True})
                     if len(hints) >= 100:
-                        return hints
-        return hints
+                        break
+                if len(hints) >= 100:
+                    break
+            processed_uid = uid if values else last_uid
+            next_cursor = {"uidvalidity": validity, "last_uid": processed_uid}
+        report["cursor"] = next_cursor
+        report["hints"] = hints
+        report["status"] = "ok" if report["authenticated"] else "authentication_rejected" if report["auth_rejected"] else "empty"
+        return report
     except Exception:
-        return []
+        return report
+
+
+def ingest_alert_emails(agent, label="HermesJobAlerts", max_messages=30, allowed_sender_domains=None):
+    """Compatibility wrapper; use ingest_alert_batch for diagnostics/cursors."""
+    return ingest_alert_batch(agent, label, max_messages, allowed_sender_domains)["hints"]

@@ -404,7 +404,8 @@ class TestFollowUps:
         monkeypatch.setattr(scout_agent, "_mailbox_status", lambda record: "none")
         monkeypatch.setattr(scout_agent, "_is_suppressed", lambda email: False)
         store = MagicMock()
-        store.data = {"jobs": {}}
+        store.data = {"jobs": {str(i): {"apply_url": f"https://example.com/jobs/{i}"} for i in range(4)}}
+        monkeypatch.setattr(scout_agent, "enrich_post", lambda post: {**post, "active_listing": True})
         store.reserve_send.return_value = {"id":"intent","message_id":"<follow@scout>"}
         store.finish_send.return_value = True
         monkeypatch.setattr(scout_agent, "ACTIVE_STORE", store)
@@ -586,6 +587,8 @@ class TestConfig:
 
 class TestMainRouting:
     def test_main_preserves_apply_and_email_outcomes(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HANDS_OFF_ONLY", "false")
+        monkeypatch.setattr("scout_runtime.email_window", lambda: True)
         monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(scout_agent, "HISTORY_FILE", str(tmp_path / "history.json"))
@@ -605,6 +608,8 @@ class TestMainRouting:
             {"title": "Data Analyst", "body": "Apply", "href": "https://example.com/jobs/1"},
             {"title": "Business Analyst", "body": "Email", "href": "https://example.com/jobs/2"},
         ]
+        for post in posts:
+            post["date_posted"] = datetime.now(timezone.utc).isoformat()
         monkeypatch.setattr(scout_agent, "search_recruiter_posts", lambda: posts)
         monkeypatch.setattr(scout_agent, "LAST_SEARCH_STATS", {
             "queries_attempted": 2, "queries_successful": 2,

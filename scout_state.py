@@ -6,8 +6,10 @@ import json
 import os
 import re
 import tempfile
+from statistics import median
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from scout_storage import load_json
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -47,7 +49,7 @@ class StateStore:
         for legacy_path in (followups_path, suppressions_path):
             if legacy_path and Path(legacy_path).exists():
                 try:
-                    if not isinstance(json.loads(Path(legacy_path).read_text(encoding="utf-8")), (dict, list)):
+                    if not isinstance(load_json(legacy_path), (dict, list)):
                         raise ValueError("Invalid legacy state")
                 except (ValueError, OSError) as exc:
                     raise StateCorruptError("Ancillary history cannot be safely loaded") from exc
@@ -55,14 +57,14 @@ class StateStore:
     def load(self):
         if self.path.exists():
             try:
-                value = json.loads(self.path.read_text(encoding="utf-8"))
+                value = load_json(self.path)
                 if value.get("version") != 1 or not all(isinstance(value.get(k), dict) for k in ("jobs", "sends", "alerts")):
                     raise ValueError("unsupported state shape")
                 if not isinstance(value.get("processed_feedback"), list):
                     raise ValueError("invalid feedback ledger")
                 self.data = value
                 if not value.get("legacy_dates_repaired") and self.history_path.exists():
-                    legacy = json.loads(self.history_path.read_text(encoding="utf-8"))
+                    legacy = load_json(self.history_path)
                     if not isinstance(legacy, list):
                         raise ValueError("Invalid legacy history")
                     for entry in legacy:
@@ -79,7 +81,7 @@ class StateStore:
         self.data = {"version": 1, "jobs": {}, "sends": {}, "alerts": {}, "processed_feedback": [], "budget": {}}
         if self.history_path.exists():
             try:
-                history = json.loads(self.history_path.read_text(encoding="utf-8"))
+                history = load_json(self.history_path)
                 if not isinstance(history, list):
                     raise ValueError("history must be a list")
                 for entry in history:
@@ -115,12 +117,21 @@ class StateStore:
 
     def upsert_job(self, analysis, post=None):
         ident = job_id(analysis, post)
+        # Preserve historical identity if a prior release included title/company
+        # in its hash. Tracking aliases must not recreate an old application.
+        from scout_agent import _normalize_url
+        target = _normalize_url(analysis.get("application_url") or (post or {}).get("href") or "")
+        if target:
+            existing = next((row for row in self.data["jobs"].values()
+                             if _normalize_url(row.get("apply_url") or row.get("application_url") or row.get("url") or "") == target), None)
+            if existing:
+                ident = existing["id"]
         now = datetime.now(timezone.utc).isoformat()
         record = self.data["jobs"].setdefault(ident, {"id": ident, "first_seen": now, "submitted": False, "emailed": False})
         if record.get("archived"):
             record["last_seen"] = now
             return record
-        for key in ("job_title", "title", "company", "location", "application_url", "apply_url", "url", "score", "fit_score", "fit_reason", "stretch", "email", "warnings", "family", "tier", "reason", "evidence", "source_id", "source_name", "requirements", "review_required", "review_reasons", "risk_assessment", "risk_flags", "score_breakdown", "score_kind"):
+        for key in ("job_title", "title", "company", "location", "application_url", "apply_url", "url", "score", "fit_score", "fit_reason", "stretch", "email", "warnings", "family", "tier", "reason", "evidence", "source_id", "source_name", "requirements", "review_required", "review_reasons", "risk_assessment", "risk_flags", "score_breakdown", "score_kind", "date_posted", "vacancy_reference"):
             if key in analysis:
                 record[key] = analysis[key]
         if post:
@@ -149,12 +160,14 @@ class StateStore:
     def weekly_metrics(self):
         jobs = list(self.data["jobs"].values())
         cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        delays = [j["minutes_to_application"] for j in jobs if j.get("first_seen", "") >= cutoff and isinstance(j.get("minutes_to_application"), (int, float))]
         return {"discovered": sum(j.get("first_seen", "") >= cutoff for j in jobs),
                 "alerted": sum(j.get("alerted_at", "") >= cutoff for j in jobs),
                 "submitted": sum(j.get("applied_at", "") >= cutoff for j in jobs),
                 "emailed": sum(j.get("emailed_at", "") >= cutoff for j in jobs),
                 "replies": sum(j.get("outcome") == "reply" and j.get("outcome_at", "") >= cutoff for j in jobs),
-                "interviews": sum(j.get("outcome") == "interview" and j.get("outcome_at", "") >= cutoff for j in jobs)}
+                "interviews": sum(j.get("outcome") == "interview" and j.get("outcome_at", "") >= cutoff for j in jobs),
+                "median_minutes_to_application": round(median(delays), 1) if delays else "unavailable"}
 
     def conversion_cohorts(self, days=30):
         """Return explainable source/family funnel counts for recently found jobs.
@@ -213,7 +226,7 @@ class StateStore:
             if not path.stem.isdigit() or path.stem in self.data["processed_feedback"]:
                 continue
             try:
-                event = json.loads(path.read_text(encoding="utf-8"))
+                event = load_json(path)
                 ident, action = event["job_id"], event["action"]
                 record = self.data["jobs"].get(ident)
                 if not record or action not in ("applied", "notfit", "snooze", "reply", "interview", "rejected"):
@@ -244,9 +257,14 @@ class StateStore:
         record = self.data["jobs"].get(ident, {})
         if recipient in self.data.get("suppressed_recipients", {}):
             return None
-        if not record or record.get("outcome") in ("notfit", "rejected", "reply", "interview") or record.get("submitted"):
+        if not record or record.get("outcome") in ("notfit", "rejected", "reply", "interview") or record.get("submitted") or self.application_reserved(ident):
+            return None
+        if step == "initial" and self.company_in_cooldown(ident):
             return None
         if intent_id in self.data["sends"] or (step == "initial" and self.known_emailed(ident)):
+            return None
+        if step == "initial" and any(send.get("job_id") == ident and send.get("step") == "initial"
+                and send.get("status") in {"pending", "uncertain", "accepted"} for send in self.data["sends"].values()):
             return None
         now = datetime.now(timezone.utc)
         for send in self.data["sends"].values():
@@ -285,4 +303,71 @@ class StateStore:
                 if intent.get("step") == "initial":
                     record["email"] = intent["recipient"]
                 record.setdefault("emailed_at", datetime.now(timezone.utc).isoformat())
+                if intent.get("step") == "initial":
+                    self._record_application_delay(record)
+        return self.save()
+
+    @staticmethod
+    def _record_application_delay(record):
+        try:
+            published = datetime.fromisoformat(str(record.get("date_posted", "")).replace("Z", "+00:00"))
+            if published.tzinfo is None:
+                published = published.replace(tzinfo=timezone.utc)
+            record.setdefault("minutes_to_application", round(max(0, (datetime.now(timezone.utc) - published).total_seconds() / 60), 1))
+        except (ValueError, TypeError):
+            pass
+
+    def company_in_cooldown(self, ident):
+        record = self.data["jobs"].get(ident, {})
+        company = re.sub(r"\W+", "", str(record.get("company", "")).lower())
+        if not company:
+            return False
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        for row in self.data["jobs"].values():
+            if row.get("id") == ident or re.sub(r"\W+", "", str(row.get("company", "")).lower()) != company:
+                continue
+            if row.get("applied_at", "") >= cutoff or row.get("emailed_at", "") >= cutoff:
+                return True
+            for ledger in (self.data.get("applications", {}), self.data["sends"]):
+                if any(item.get("job_id") == row.get("id") and item.get("step", "initial") == "initial"
+                       and item.get("status") in {"pending", "uncertain", "accepted", "confirmed", "ambiguous"}
+                       and item.get("created_at", "") >= cutoff for item in ledger.values()):
+                    return True
+        return False
+
+    def application_reserved(self, ident):
+        return any(row.get("job_id") == ident and row.get("status") in {"pending", "ambiguous", "confirmed"}
+                   for row in self.data.get("applications", {}).values())
+
+    def reserve_application(self, ident, adapter_id):
+        record = self.data["jobs"].get(ident, {})
+        if not record or record.get("submitted") or record.get("emailed") or record.get("outcome"):
+            return None
+        if self.application_reserved(ident) or self.company_in_cooldown(ident):
+            return None
+        if any(send.get("job_id") == ident and send.get("status") in {"pending", "uncertain", "accepted"}
+               for send in self.data["sends"].values()):
+            return None
+        identity = hashlib.sha256((ident + "|public_form").encode()).hexdigest()[:32]
+        if identity in self.data.setdefault("applications", {}):
+            return None
+        intent = {"id": identity, "job_id": ident, "adapter_id": adapter_id, "status": "pending",
+                  "created_at": datetime.now(timezone.utc).isoformat()}
+        self.data["applications"][identity] = intent
+        return intent if self.save() else None
+
+    def finish_application(self, identity, outcome):
+        status = outcome.get("status")
+        if status not in {"confirmed", "rejected", "ambiguous", "blocked"}:
+            raise ValueError("Invalid application result")
+        intent = self.data["applications"][identity]
+        intent["status"] = status
+        for key in ("application_id", "evidence_kind", "reason"):
+            if outcome.get(key):
+                intent[key] = str(outcome[key])[:200]
+        if status == "confirmed":
+            record = self.data["jobs"][intent["job_id"]]
+            record.update(submitted=True, submission_unconfirmed=False, application_route="public_form",
+                          applied_at=datetime.now(timezone.utc).isoformat())
+            self._record_application_delay(record)
         return self.save()

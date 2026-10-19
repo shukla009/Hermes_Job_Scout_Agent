@@ -28,6 +28,34 @@ class Mailbox:
     def fetch(self, uid, query):
         assert query == "(BODY.PEEK[])"
         return "OK", [(b"", self.messages[int(uid)].as_bytes())]
+    def response(self, name):
+        return name, [b"77"]
+    def uid(self, action, *args):
+        if action == "search":
+            values = range(1, len(self.messages) + 1)
+            if "UID" in args:
+                floor = int(args[-1].split(":")[0])
+                values = [value for value in values if value >= floor]
+            return "OK", [b" ".join(str(value).encode() for value in values)]
+        message = self.messages[int(args[0]) - 1]
+        query = args[1]
+        if "HEADER.FIELDS" in query:
+            raw = message.as_bytes().split(b"\n\n", 1)[0] + b"\n\n"
+            return "OK", [(b"", raw)]
+        part_path = query.split("[", 1)[1].split("]", 1)[0].replace(".MIME", "")
+        try:
+            part = message
+            for index in part_path.split("."):
+                if part.is_multipart():
+                    part = part.get_payload()[int(index) - 1]
+                elif index != "1":
+                    return "NO", []
+        except IndexError:
+            return "NO", []
+        raw = part.as_bytes()
+        headers, body = raw.split(b"\n\n", 1)
+        content = headers + b"\n\n" if ".MIME]" in query else body[:32768]
+        return "OK", [(b"", content)]
 
 
 def message(sender="recruiter@example.com", references="<job@scout>", mid="<reply@example>", body="hello"):
@@ -106,6 +134,7 @@ def test_sent_exact_identity(monkeypatch):
 
 def test_alert_label_sender_whitelist_and_hints(monkeypatch):
     value = message(sender="jobs@instahyre.com", references="", body="https://instahyre.com/job/123 https://www.naukri.com/job/456 https://instahyre.com/unsubscribe")
+    value["Authentication-Results"] = "mx.google.com; dkim=pass header.i=@instahyre.com"
     spoof = message(sender='"jobs@instahyre.com" <attacker@example.com>', body="https://evil.example/job/123")
     setup(monkeypatch, [value, spoof])
     hints = scout_mail.ingest_alert_emails(AGENT)
@@ -117,6 +146,7 @@ def test_alert_label_sender_whitelist_and_hints(monkeypatch):
 
 def test_alert_html_and_configured_employer(monkeypatch):
     value = message(sender="talent@careers.example.com")
+    value["Authentication-Results"] = "mx.google.com; spf=pass smtp.mailfrom=talent@careers.example.com"
     value.add_alternative('<a href="https://careers.example.com/positions/123">Research Analyst job</a>', subtype="html")
     setup(monkeypatch, [value])
     assert scout_mail.ingest_alert_emails(AGENT) == []

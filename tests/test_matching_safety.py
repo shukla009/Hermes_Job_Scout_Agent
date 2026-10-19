@@ -119,3 +119,97 @@ def test_requirement_section_ends_at_new_heading():
     result = evaluate_job(vacancy, now=NOW)
     assert "SAS" not in result["requirements"]["mandatory"]["unmet"]
     assert result["eligible"] and result["email_safe"]
+
+
+@pytest.mark.parametrize("requirement", ["SQL is required.", "Knowledge of SQL is required.", "Required skills: SQL"])
+def test_listed_verified_skill_satisfies_knowledge_requirement(requirement):
+    vacancy = base_job()
+    vacancy["description"] += " " + requirement
+    result = evaluate_job(vacancy, now=NOW)
+    assert result["email_safe"]
+    assert "SQL" in result["requirements"]["mandatory"]["met"]
+
+
+@pytest.mark.parametrize("requirement", ["Professional SQL implementation is required.", "Hands-on SQL experience is mandatory.", "Production SQL is required."])
+def test_knowledge_does_not_establish_professional_implementation(requirement):
+    vacancy = base_job()
+    vacancy["description"] += " " + requirement
+    result = evaluate_job(vacancy, now=NOW)
+    assert result["eligible"] and not result["email_safe"]
+    assert any("SQL" in value for value in result["requirements"]["mandatory"]["unknown"])
+
+
+def test_internship_dashboard_evidence_does_not_establish_professional_requirement():
+    vacancy = base_job()
+    vacancy["description"] += " Professional Power BI experience is mandatory."
+    result = evaluate_job(vacancy, now=NOW)
+    assert not result["email_safe"]
+    assert any("Power BI" in value for value in result["requirements"]["mandatory"]["unknown"])
+
+
+def test_internship_implementation_can_satisfy_handson_without_professional_tenure_claim():
+    vacancy = base_job()
+    vacancy["description"] += " Hands-on Power BI experience is mandatory."
+    result = evaluate_job(vacancy, now=NOW)
+    assert result["email_safe"]
+    assert "Power BI" in result["requirements"]["mandatory"]["met"]
+
+
+@pytest.mark.parametrize("requirement", ["Excel or SAS is required.", "SAS / Excel is required.", "Required skills: SAS, Excel or SQL"])
+def test_one_evidenced_alternative_satisfies_or_requirement(requirement):
+    vacancy = base_job()
+    vacancy["description"] += " " + requirement
+    result = evaluate_job(vacancy, now=NOW)
+    assert result["email_safe"]
+    assert result["requirements"]["mandatory"]["unmet"] == []
+
+
+def test_each_and_requirement_must_be_met():
+    vacancy = base_job()
+    vacancy["description"] += " Excel and SAS are required."
+    result = evaluate_job(vacancy, now=NOW)
+    assert not result["eligible"]
+    assert "SAS" in result["requirements"]["mandatory"]["unmet"]
+
+
+def test_ambiguous_mixed_alternatives_fail_closed_for_autosend():
+    vacancy = base_job()
+    vacancy["description"] += " Excel and SAS or Python are required."
+    result = evaluate_job(vacancy, now=NOW)
+    assert not result["email_safe"]
+    assert result["requirements"]["mandatory"]["unknown"]
+
+
+@pytest.mark.parametrize("requirement", ["Bachelor's degree is required.", "An undergraduate degree is required.", "BCA is mandatory.", "BSc degree required.", "Bachelor's degree in any discipline is required.", "BSc in Data Analytics is required."])
+def test_verified_completed_undergraduate_qualifications_pass(requirement):
+    vacancy = base_job()
+    vacancy["description"] += " " + requirement
+    result = evaluate_job(vacancy, now=NOW)
+    assert result["email_safe"], result["requirements"]
+    assert not result["requirements"]["mandatory"]["unknown"]
+
+
+@pytest.mark.parametrize("requirement", ["MBA degree is mandatory.", "BTech degree required.", "Master's degree required.", "PhD required."])
+def test_unattested_mandatory_degrees_stay_rejected(requirement):
+    vacancy = base_job()
+    vacancy["description"] += " " + requirement
+    result = evaluate_job(vacancy, now=NOW)
+    assert not result["eligible"] and not result["email_safe"]
+
+
+@pytest.mark.parametrize("requirement", ["Bachelor's degree in Computer Science required.", "BSc in Physics is required.", "Bachelor's degree in STEM is mandatory.", "A relevant degree is required."])
+def test_degree_discipline_and_equivalence_are_not_invented(requirement):
+    vacancy = base_job()
+    vacancy["description"] += " " + requirement
+    result = evaluate_job(vacancy, now=NOW)
+    assert not result["email_safe"]
+    assert result["requirements"]["mandatory"]["unknown"]
+
+
+def test_uncompleted_education_cannot_satisfy_degree_requirement():
+    from scout_matching import load_profile
+    profile = load_profile()
+    profile["education"] = [{"degree": "BCA", "completed": False}]
+    vacancy = base_job()
+    vacancy["description"] += " Bachelor's degree is required."
+    assert not evaluate_job(vacancy, profile=profile, now=NOW)["email_safe"]

@@ -9,13 +9,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from scout_state import StateStore, StateCorruptError, IST
+from scout_storage import load_json
 
 
 def read_state(path, kind, default):
     if not Path(path).exists():
         return default
     try:
-        value = json.loads(Path(path).read_text(encoding="utf-8"))
+        value = load_json(path)
         if not isinstance(value, kind):
             raise ValueError("Wrong state type")
         return value
@@ -31,6 +32,10 @@ def _history_aliases(agent, history):
 def reconcile_pending(agent, store):
     from scout_mail import sent_status
     checked = 0
+    for intent in store.data.get("applications", {}).values():
+        if intent.get("status") == "pending":
+            intent["status"] = "ambiguous"
+            intent["reason"] = "Previous form request may have been accepted; automatic retry prohibited"
     for intent in store.data["sends"].values():
         if intent.get("status") != "pending":
             continue
@@ -45,17 +50,50 @@ def reconcile_pending(agent, store):
 
 
 def _daily_sends(store, agent, history):
-    today = datetime.now(timezone.utc).date().isoformat()
-    ledger = sum(str(row.get("created_at", "")).startswith(today)
+    today = datetime.now(IST).date()
+    def same_day(value):
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(IST).date() == today
+        except (ValueError, TypeError):
+            return False
+    ledger = sum(same_day(row.get("created_at"))
                  and row.get("status") in {"pending", "uncertain", "accepted"}
                  for row in store.data["sends"].values())
-    legacy = sum(str(row.get("timestamp", "")).startswith(today)
+    legacy = sum(same_day(row.get("timestamp"))
                  and row.get("route") in {"email", "follow_up"}
                  and not any(intent.get("job_id") == row.get("job_id")
                              and intent.get("recipient") == row.get("email")
                              for intent in store.data["sends"].values())
                  for row in history if isinstance(row, dict))
-    return ledger + legacy
+    forms = sum(same_day(row.get("created_at"))
+                for row in store.data.get("applications", {}).values())
+    return ledger + legacy + forms
+
+
+def email_window(now=None):
+    now = (now or datetime.now(IST)).astimezone(IST)
+    return now.weekday() < 5 and 510 <= now.hour * 60 + now.minute < 1110
+
+
+def repository_mode(writer):
+    try:
+        return "standard_public" if writer._call("GET", "").get("private") is False else "private_allowance"
+    except Exception:
+        return "private_allowance"
+
+
+def _followups_today(store):
+    today = datetime.now(IST).date()
+    count = 0
+    for row in store.data["sends"].values():
+        try:
+            if (str(row.get("step", "")).startswith("followup-")
+                    and row.get("status") in {"pending", "uncertain", "accepted"}
+                    and datetime.fromisoformat(row["created_at"]).astimezone(IST).date() == today):
+                count += 1
+        except (ValueError, KeyError):
+            continue
+    return count
 
 
 def _weekly(agent, store, notify):
@@ -131,10 +169,15 @@ def run(agent, *, dry_run=False, notify=True):
         account_budget = store.data.setdefault("budget", {})
         if account_budget.get("month") != month:
             account_budget.update(month=month, used_minutes_estimate=0, runs=[], paused=False)
-        account_budget["monthly_ceiling"] = 1200
+        mode = repository_mode(writer) if writer else "local"
+        account_budget["mode"] = mode
+        account_budget["monthly_ceiling"] = None if mode == "standard_public" else 1200
         identity = os.getenv("GITHUB_RUN_ID", "") + ":" + os.getenv("GITHUB_RUN_ATTEMPT", "1")
+        if cloud and mode == "private_allowance" and os.getenv("GITHUB_EVENT_NAME") == "schedule" and datetime.now(IST).hour not in {8, 14, 20}:
+            report["status"] = "private_cadence_skip"
+            return report
         if cloud and identity not in account_budget["runs"]:
-            if account_budget["used_minutes_estimate"] + 10 > 1200:
+            if mode != "standard_public" and account_budget["used_minutes_estimate"] + 10 > 1200:
                 first_pause = not account_budget.get("paused")
                 account_budget["paused"] = True
                 store.save()
@@ -143,8 +186,9 @@ def run(agent, *, dry_run=False, notify=True):
                 if notify and first_pause:
                     agent.send_telegram("⏸️ Job Scout paused at its free-usage ceiling. No application emails sent; no paid fallback enabled.")
                 return report
-            account_budget["runs"].append(identity)
-            account_budget["used_minutes_estimate"] += 10
+            account_budget["runs"] = (account_budget["runs"] + [identity])[-1500:]
+            if mode != "standard_public":
+                account_budget["used_minutes_estimate"] += 10
         account_budget["paused"] = False
         if not store.save():
             safe_state = False
@@ -170,12 +214,12 @@ def run(agent, *, dry_run=False, notify=True):
         smtp_ok = agent.smtp_preflight()
         report["outreach"]["smtp"] = "passed" if smtp_ok else "failed"
         if not smtp_ok:
-            outbound = False
             report["status"] = "partial"
     agent.OUTBOUND_READY = outbound
-    if outbound:
+    email_outbound = outbound and report["outreach"]["smtp"] != "failed" and email_window()
+    if email_outbound:
         capacity = max(0, agent.MAX_EMAILS_PER_DAY - _daily_sends(store, agent, history))
-        follow = agent.process_pending_follow_ups(min(agent.MAX_FOLLOWUPS_PER_RUN, capacity))
+        follow = agent.process_pending_follow_ups(min(agent.MAX_FOLLOWUPS_PER_RUN, capacity, max(0, 2 - _followups_today(store))))
         for row in follow.pop("sent_records", []):
             history.append(dict(row, route="follow_up", timestamp=datetime.now(timezone.utc).isoformat()))
         report["follow_ups"] = follow
@@ -196,7 +240,7 @@ def run(agent, *, dry_run=False, notify=True):
     candidates = []
     reasons = Counter()
     for post in posts:
-        if time.monotonic() - started >= 480:
+        if time.monotonic() - started >= 360:
             report["status"] = "budget_limited"
             break
         # Avoid spending enrichment budget on already-submitted/emailed vacancies.
@@ -234,7 +278,7 @@ def run(agent, *, dry_run=False, notify=True):
             # outreach.  This is audit evidence, not a guessed contact source.
             record["recruitment_contact_evidence"] = contact_evidence[:3]
         analysis["job_id"] = record["id"]
-        if record.get("submitted") or record.get("emailed") or record.get("outcome"):
+        if record.get("submitted") or record.get("emailed") or record.get("outcome") or store.application_reserved(record["id"]):
             report["duplicates"] += 1
             continue
         candidates.append((analysis, enriched, verdict))
@@ -246,14 +290,29 @@ def run(agent, *, dry_run=False, notify=True):
         safe_state = outbound = False
         agent.OUTBOUND_READY = False
         report["status"] = "state_safety_stop"
-    alerts = emails = 0
+    from scout_applications import prepare_application, submit_application, load_answers, adapter_readiness
+    report["applications"] = {"attempted": 0, "confirmed": 0, "ambiguous": 0, "blocked": 0,
+                              "unsupported": 0, "validation_mode": False, **adapter_readiness()}
+    rollout = store.data.setdefault("forms_rollout", {"shadow_runs": 0}) if store else {"shadow_runs": 0}
+    revision = hashlib.sha256(json.dumps(report["applications"].get("adapters", []), sort_keys=True).encode()).hexdigest()
+    if rollout.get("revision") != revision:
+        rollout.clear()
+        rollout.update(revision=revision, shadow_runs=0)
+    form_shadow = bool(report["applications"].get("enabled_adapters")) and rollout.get("shadow_runs", 0) < 3
+    report["applications"]["validation_mode"] = form_shadow
+    try:
+        answers = load_answers()
+    except (ValueError, TypeError):
+        answers = None
+    report["coverage_gaps"] = Counter()
+    alerts = emails = forms = 0
     for analysis, post, verdict in candidates:
         if not safe_state or not store:
             continue
         ident = analysis["job_id"]
         stretch = analysis.get("tier") == "stretch"
         verified_latest = not any("not verified latest" in warning for warning in analysis.get("warnings", []))
-        if notify and not dry_run and verified_latest and store.can_alert(ident, stretch):
+        if os.getenv("HANDS_OFF_ONLY", "true").lower() != "true" and notify and not dry_run and verified_latest and store.can_alert(ident, stretch):
             if agent._send_apply_alert(analysis):
                 if store.record_alert(ident, stretch):
                     agent._record_history(history, analysis, post, "alert")
@@ -262,15 +321,64 @@ def run(agent, *, dry_run=False, notify=True):
                     outbound = False
                     report["status"] = "state_safety_stop"
         recipient = analysis.get("recruiter_email")
-        if not recipient or not outbound or not analysis.get("email_safe", False) or post.get("reverification_failed"):
+        if not analysis.get("email_safe", False) or post.get("reverification_failed"):
+            report["coverage_gaps"]["unverified_fit_or_requirements"] += 1
+            continue
+        if not recipient:
+            def public_request(method, url, **kwargs):
+                return agent._request_with_retries(url, method=method, return_http_errors=True, max_retries=0, **kwargs)
+            plan = prepare_application(post, analysis, public_request, answers=answers)
+            if plan.get("status") != "ready":
+                key = "unsupported" if plan.get("status") == "unsupported" else "blocked"
+                report["applications"][key] += 1
+                report["coverage_gaps"][plan.get("reason", "no_supported_submission_route")] += 1
+                continue
+            if not outbound or form_shadow or dry_run:
+                continue
+            limit = agent.MAX_EMAILS_PER_DAY
+            if rollout.get("live_since"):
+                since = datetime.fromisoformat(rollout["live_since"])
+                if (datetime.now(timezone.utc) - since).days < 7:
+                    limit = min(limit, 2)
+            else:
+                rollout["live_since"] = datetime.now(timezone.utc).isoformat()
+                limit = min(limit, 2)
+            if _daily_sends(store, agent, history) >= limit or report["applications"]["attempted"] + report["emails_attempted"] >= agent.MAX_EMAILS_PER_RUN:
+                report["safety_skips"] += 1
+                continue
+            fresh, _ = agent._structured_freshness(post)
+            if not fresh:
+                continue
+            intent = store.reserve_application(ident, plan["adapter_id"])
+            if not intent:
+                report["safety_skips"] += 1
+                continue
+            report["applications"]["attempted"] += 1
+            result = submit_application(plan, public_request)
+            if not store.finish_application(intent["id"], result):
+                outbound = False
+                report["status"] = "state_safety_stop"
+            kind = result.get("status", "ambiguous")
+            report["applications"][kind if kind in {"confirmed", "ambiguous", "blocked"} else "blocked"] += 1
+            forms += 1
+            if kind == "confirmed":
+                agent._record_history(history, analysis, post, "submitted")
+                if notify:
+                    agent.send_telegram("Application confirmed: " + html.escape(str(analysis.get("company", ""))) + " — " + html.escape(str(analysis.get("job_title", ""))))
+            continue
+        if not email_outbound or not outbound or not email_window():
+            report["coverage_gaps"]["email_deferred_outside_business_hours" if not email_window() else "outbound_disabled"] += 1
             continue
         if (agent._is_suppressed(recipient) or agent._recipient_in_cooldown(history, recipient)
-                or emails >= agent.MAX_EMAILS_PER_RUN
+                or report["emails_attempted"] + report["applications"]["attempted"] >= agent.MAX_EMAILS_PER_RUN
                 or _daily_sends(store, agent, history) >= agent.MAX_EMAILS_PER_DAY):
             report["safety_skips"] += 1
             continue
         written, _ = agent.compose_email(post, analysis)
         if not written:
+            continue
+        fresh, _ = agent._structured_freshness(post)
+        if not fresh:
             continue
         intent = store.reserve_send(ident, recipient)
         if not intent:
@@ -303,11 +411,15 @@ def run(agent, *, dry_run=False, notify=True):
     if any(x.get("status") == "error" for x in report.get("source_stats", {}).values()) and report["status"] == "healthy":
         report["status"] = "partial"
     verified_sources = any(x.get("status") == "ok" for x in report.get("source_stats", {}).values())
+    if store and cloud and os.getenv("GITHUB_EVENT_NAME") == "schedule" and not dry_run and safe_state and verified_sources and report["applications"].get("enabled_adapters"):
+        rollout["shadow_runs"] = min(3, rollout.get("shadow_runs", 0) + 1)
+    report["coverage_gaps"] = dict(report["coverage_gaps"])
     if shadow and store and safe_state and verified_sources and report["status"] not in {"state_safety_stop", "budget_limited"}:
         store.data["shadow_runs_completed"] = store.data.get("shadow_runs_completed", 0) + 1
     report["alerts_sent"] = alerts
     report["outreach"]["status"] = (
         "emails_accepted" if report["emails_accepted_by_smtp"] else
+        "forms_confirmed" if report["applications"]["confirmed"] else
         "validation_mode" if shadow else
         "smtp_failed" if report["outreach"]["smtp"] == "failed" else
         "state_safety_stop" if not safe_state else
@@ -328,6 +440,11 @@ def run(agent, *, dry_run=False, notify=True):
         store.data["last_run"]["at"] = datetime.now(timezone.utc).isoformat()
         store.data["last_run"]["outreach"] = report["outreach"]
         store.data["last_run"]["reply_monitor"] = report["reply_monitor"]
+        store.data["last_run"]["applications"] = report["applications"]
+        store.data["last_run"]["coverage_gaps"] = report["coverage_gaps"]
+        store.data["last_run"]["runtime_seconds"] = report["runtime_seconds"]
+        if cloud and store.data["budget"].get("mode") == "standard_public":
+            store.data["budget"]["used_minutes_estimate"] += round(report["runtime_seconds"] / 60, 2)
         outreach_log = store.data.setdefault("outreach_runs", [])
         outreach_log.append({"at": store.data["last_run"]["at"], **report["outreach"],
                              "eligible_email_leads": report["relevant_email_leads"],
@@ -338,15 +455,21 @@ def run(agent, *, dry_run=False, notify=True):
             report["status"] = "state_safety_stop"
     agent._write_run_report(report)
     if notify:
-        morning = datetime.now(IST).hour < 12
+        today = datetime.now(IST).date().isoformat()
+        morning = datetime.now(IST).hour >= 8 and (not store or store.data.get("reported_day") != today)
         important = report["status"] in {"state_safety_stop", "free_quota_pause", "budget_limited"}
-        if alerts or morning or important or not store:
+        if alerts or morning or important or not store or report["emails_accepted_by_smtp"] or report["applications"]["confirmed"]:
             agent.send_telegram("📋 <b>Job Scout — " + html.escape(report["status"]) + "</b>\n" +
                 f"New actionable jobs: {len(candidates)}; alerts: {alerts}\n" +
                 f"Application emails accepted: {report['emails_accepted_by_smtp']}\n" +
+                f"Confirmed portal applications: {report['applications']['confirmed']}\n" +
+                f"Unsupported/blocked routes: {report['applications']['unsupported'] + report['applications']['blocked']}\n" +
                 "Email status: " + html.escape(report["outreach"]["status"].replace("_", " ")) + "\n" +
                 ("Outreach is in validation mode; no emails sent.\n" if shadow else "") +
                 "Top exclusions: " + html.escape("; ".join(f"{k}: {v}" for k, v in reasons.most_common(3)) or "none"))
+            if store:
+                store.data["reported_day"] = today
+                store.save()
         if report["reply_monitor"]["new_human_replies"]:
             agent.send_telegram("💬 <b>Recruiter reply detected</b>\n" +
                 str(report["reply_monitor"]["new_human_replies"]) +

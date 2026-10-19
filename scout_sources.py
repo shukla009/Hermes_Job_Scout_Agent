@@ -56,6 +56,41 @@ def _employment_label(value):
     if isinstance(value,list): return '; '.join(filter(None,(_employment_label(v) for v in value)))
     return str(value or '')
 
+def _target_location(location):
+    return bool(re.search(r'delhi|\bncr\b|gurugram|gurgaon|noida|remote',location or '',re.I))
+
+def _not_expired(value,now):
+    try:
+        parsed=datetime.fromisoformat(str(value).replace('Z','+00:00')) if value else None
+        return not parsed or (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc))>=now
+    except ValueError:
+        return True # Unknown expiry is never turned into a fabricated date.
+
+def _workday_facets(nodes):
+    """Discover location identifiers from the public board, never hard-code tenant IDs."""
+    facets={}
+    for node in nodes:
+        if not isinstance(node,dict): continue
+        values=node.get('values') or []
+        if node.get('facetParameter')=='locations':
+            ids=[str(v['id']) for v in values if isinstance(v,dict) and v.get('id') and _target_location(v.get('descriptor',''))]
+            if ids: facets['locations']=ids[:40]
+        facets.update(_workday_facets(values))
+    return facets
+
+def _source_classification(status):
+    if status.get('status')=='error': return 'temporarily_failing'
+    if status.get('status') in ('link_only','watchlist_rotated'): return 'discovery_only'
+    if status.get('leads',0): return 'productive'
+    return 'verified_feed' if status.get('status')=='ok' else 'unverified'
+
+def _publication_time(value):
+    try:
+        parsed=datetime.fromisoformat(str(value).replace('Z','+00:00'))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except (ValueError,TypeError):
+        return None
+
 def _himalayas_location(job):
     restrictions=job.get('locationRestrictions') or []
     restrictions=[restrictions] if isinstance(restrictions,(str,dict)) else restrictions
@@ -267,6 +302,95 @@ def _fetch(e, get, now, cursor=0):
                 else:
                     content=get(url,timeout=20).text if safe_url(url) else ''
                     found,_=_jsonld(content,url,e,now); jobs.extend(found)
+    elif ats=='workday':
+        base=e.get('careers_url','').rstrip('/'); parsed=urlparse(base)
+        tenant=e.get('tenant',''); board=e.get('board','')
+        if (not safe_url(base) or not parsed.hostname.endswith('.myworkdayjobs.com')
+                or not re.fullmatch(r'[A-Za-z0-9_-]+',tenant) or not re.fullmatch(r'[A-Za-z0-9_-]+',board)):
+            raise ValueError('invalid_workday_board')
+        origin=f'https://{parsed.hostname}'; endpoint=f'{origin}/wday/cxs/{tenant}/{board}'
+        # This POST only searches the public vacancy index; it never submits an application.
+        data=get(endpoint+'/jobs',method='POST',json={'limit':20,'offset':0,'searchText':'','appliedFacets':{}},timeout=20).json()
+        if not isinstance(data,dict) or not isinstance(data.get('jobPostings'),list): raise ValueError('schema_changed')
+        facets=_workday_facets(data.get('facets') or [])
+        metrics['total_listings']=data.get('total',len(data['jobPostings'])); metrics['location_facets']=bool(facets)
+        candidates={}; metrics['search_queries']=0
+        for keyword in (e.get('search_keywords') or ['analyst','research','MIS'])[:4]:
+            if not isinstance(keyword,str) or not re.fullmatch(r'[A-Za-z0-9 -]{1,50}',keyword): continue
+            data=get(endpoint+'/jobs',method='POST',json={'limit':20,'offset':0,'searchText':keyword,'appliedFacets':facets},timeout=20).json()
+            if not isinstance(data,dict) or not isinstance(data.get('jobPostings'),list): raise ValueError('schema_changed')
+            raw+=len(data['jobPostings']); metrics['search_queries']+=1
+            incomplete=incomplete or int(data.get('total',len(data['jobPostings'])))>len(data['jobPostings'])
+            for item in data['jobPostings']:
+                if isinstance(item,dict): candidates.setdefault(item.get('externalPath',''),item)
+        for x in candidates.values():
+            title=x.get('title',''); location=x.get('locationsText',''); path=x.get('externalPath','')
+            if not suitable(title) or not _target_location(location): continue
+            if not isinstance(path,str) or not path.startswith('/job/') or '?' in path or '#' in path or '..' in path: continue
+            if metrics.get('detail_requests',0)>=min(8,int(e.get('detail_limit',8))):
+                metrics['detail_truncated']=True; break
+            metrics['detail_requests']=metrics.get('detail_requests',0)+1
+            try:
+                details=get(endpoint+path,timeout=20).json()
+                info=details.get('jobPostingInfo') or {}
+                if not info or info.get('canApply') is False or info.get('posted') is False or not _not_expired(info.get('endDate'),now): continue
+                url=info.get('externalUrl') or base+path
+                if urlparse(url).hostname!=parsed.hostname: continue
+                published=info.get('startDate') or '' # Never parse relative postedOn as an original timestamp.
+                item=post(e,info.get('title') or title,info.get('location') or location,info.get('jobDescription',''),
+                          url,info.get('jobReqId') or info.get('id'),published,employment=info.get('timeType',''))
+                if item:
+                    item.update(first_published=published,date_provenance='workday.startDate' if published else 'unknown',
+                                valid_through=info.get('endDate') or '',application_deadline=info.get('endDate') or '',
+                                submission_route='account_form',source_attribution='Official Workday employer board')
+                    jobs.append(item)
+            except Exception:
+                metrics['detail_errors']=metrics.get('detail_errors',0)+1
+    elif ats=='oracle':
+        base=e.get('careers_url','').rstrip('/'); parsed=urlparse(base); site=e.get('site','')
+        if not safe_url(base) or not parsed.hostname.endswith('.oraclecloud.com') or not re.fullmatch(r'[A-Za-z0-9_-]+',site):
+            raise ValueError('invalid_oracle_board')
+        origin=f'https://{parsed.hostname}'; api=origin+'/hcmRestApi/resources/latest/'
+        seen=set(); queries=e.get('search_keywords') or ['analyst','research','MIS']
+        metrics['search_queries']=0
+        for keyword in queries[:4]:
+            if not isinstance(keyword,str) or not re.fullmatch(r'[A-Za-z0-9 -]{1,50}',keyword): continue
+            data=get(api+'recruitingCEJobRequisitions',params={'onlyData':'true','expand':'requisitionList',
+                'finder':f'findReqs;siteNumber={site},limit=25,offset=0,sortBy=POSTING_DATES_DESC,keyword={keyword}'},timeout=20).json()
+            records=data.get('items') if isinstance(data,dict) else None
+            if not isinstance(records,list) or not records or not isinstance(records[0].get('requisitionList'),list): raise ValueError('schema_changed')
+            result=records[0]; listings=result['requisitionList']; raw+=len(listings); metrics['search_queries']+=1
+            incomplete=incomplete or int(result.get('TotalJobsCount',len(listings)))>len(listings)
+            for x in listings:
+                ident=str(x.get('Id') or ''); location=x.get('PrimaryLocation',''); title=x.get('Title','')
+                if not ident or ident in seen or not suitable(title) or not _target_location(location): continue
+                seen.add(ident)
+                if metrics.get('detail_requests',0)>=min(8,int(e.get('detail_limit',8))):
+                    metrics['detail_truncated']=True; continue
+                if not re.fullmatch(r'[A-Za-z0-9_-]+',ident): continue
+                metrics['detail_requests']=metrics.get('detail_requests',0)+1
+                try:
+                    detail=get(api+'recruitingCEJobRequisitionDetails',params={'onlyData':'true','finder':f'ById;Id={ident}'},timeout=20).json()
+                    entries=detail.get('items') if isinstance(detail,dict) else None
+                    if not isinstance(entries,list) or not entries or str(entries[0].get('Id'))!=ident:
+                        metrics['detail_errors']=metrics.get('detail_errors',0)+1; continue
+                    info=entries[0]; expiry=info.get('ExternalPostedEndDate') or ''
+                    if not _not_expired(expiry,now): continue
+                    # The detail's external publication timestamp is authoritative;
+                    # list PostedDate, modification dates and observation time are not.
+                    published=info.get('ExternalPostedStartDate') or ''
+                    description=' '.join(str(info.get(k) or '') for k in ('ShortDescriptionStr','ExternalDescriptionStr','ExternalResponsibilitiesStr','ExternalQualificationsStr'))
+                    if info.get('JobShift'): description+=' Job Shift: '+str(info['JobShift'])
+                    employment=' '.join(str(info.get(k) or '') for k in ('JobSchedule','ContractType','WorkerType'))
+                    url=f'{origin}/hcmUI/CandidateExperience/en/sites/{site}/job/{quote(ident,safe="")}'
+                    item=post(e,info.get('Title') or title,info.get('PrimaryLocation') or location,description,url,ident,published,employment=employment)
+                    if item:
+                        item.update(first_published=published,date_provenance='oracle.ExternalPostedStartDate' if published else 'unknown',
+                                    application_deadline=expiry,valid_through=expiry,submission_route='account_form',
+                                    source_attribution='Official Oracle Recruiting employer board')
+                        jobs.append(item)
+                except Exception:
+                    metrics['detail_errors']=metrics.get('detail_errors',0)+1
     elif ats=='himalayas':
         max_pages=max(1,min(2,int(e.get('max_pages',2))))
         page_cursor=''
@@ -328,7 +452,7 @@ def _fetch(e, get, now, cursor=0):
             for url in candidates[cursor:cursor+5]:
                 found,_=_jsonld(get(url,timeout=20).text,url,e,now); jobs.extend(found)
             incomplete=cursor+5<len(candidates); next_cursor=cursor+5 if incomplete else 0
-    status=dict(status='ok' if jobs or ats in ('greenhouse','lever','smartrecruiters','ashby','workable','himalayas','xml') else 'link_only',raw_listings=raw,leads=len(jobs),incomplete=incomplete)
+    status=dict(status='ok' if jobs or ats in ('greenhouse','lever','smartrecruiters','ashby','workable','workday','oracle','himalayas','xml') else 'link_only',raw_listings=raw,leads=len(jobs),incomplete=incomplete)
     status.update(metrics)
     return jobs,status,next_cursor
 
@@ -372,6 +496,15 @@ def discover_sources(registry, request_fn, prior_state=None, now=None, max_candi
             found=list(merged.values())[-50:]
             for x in found:
                 ident=x.get('source_id') or x['href']
+                previous=old_by_id.get(ident,{})
+                original=previous.get('first_published') or previous.get('posted_at') or previous.get('date_posted')
+                original_dt=_publication_time(original)
+                latest_dt=_publication_time(x.get('first_published') or x.get('posted_at') or x.get('date_posted'))
+                if original_dt and (not latest_dt or original_dt<latest_dt):
+                    # An employer may refresh a posting's date. A known vacancy
+                    # must not become a new 48-hour lead solely from that refresh.
+                    x.update(first_published=original,posted_at=original,date_posted=original,
+                             date_provenance=previous.get('date_provenance') or 'earliest_known_publication')
                 x.setdefault('first_seen_at',old_by_id.get(ident,{}).get('first_seen_at',now.isoformat()))
                 if ident in fresh_ids:
                     x['last_verified_at']=now.isoformat()
@@ -388,6 +521,8 @@ def discover_sources(registry, request_fn, prior_state=None, now=None, max_candi
     # map preserves registry order despite parallel I/O, so shortlists remain deterministic.
     with ThreadPoolExecutor(max_workers=min(6,max(1,len(registry)))) as pool:
         for key,found,status,entry in pool.map(fetch_entry,registry):
+            status['classification']=(entry.get('classification') if status.get('status')=='cached' else None) or _source_classification(status)
+            entry=dict(entry,classification=status['classification'])
             stats[key]=status
             if found:
                 offset=int(prior_state.get(key,{}).get('pick_cursor',0))%len(found)

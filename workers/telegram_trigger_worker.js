@@ -2,6 +2,25 @@
 const REPO = "shukla009/Hermes_Job_Scout_Agent";
 const ACTIONS = new Set(["applied", "notfit", "snooze", "reply", "interview", "rejected"]);
 const escapeHTML = value => String(value ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+async function stateKey(env) {
+  const secret = env.SCOUT_STATE_KEY || env.TELEGRAM_BOT_TOKEN;
+  if (!secret) throw new Error("State key unavailable");
+  const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("hermes-private-state-v1\0" + secret));
+  return crypto.subtle.importKey("raw", raw, {name: "AES-GCM"}, false, ["encrypt", "decrypt"]);
+}
+const from64 = value => Uint8Array.from(atob(value), c => c.charCodeAt(0));
+const to64 = bytes => { let text = ""; for (const byte of bytes) text += String.fromCharCode(byte); return btoa(text); };
+export async function decodeState(value, env, context) {
+  if (value?.format !== "hermes.aesgcm.v1") return value;
+  if (value.context !== context) throw new Error("Invalid state context");
+  const plain = await crypto.subtle.decrypt({name:"AES-GCM", iv:from64(value.nonce), additionalData:new TextEncoder().encode(context)}, await stateKey(env), from64(value.ciphertext));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+export async function encodeState(value, env, context) {
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({name:"AES-GCM", iv:nonce, additionalData:new TextEncoder().encode(context)}, await stateKey(env), new TextEncoder().encode(JSON.stringify(value)));
+  return {format:"hermes.aesgcm.v1", context, nonce:to64(nonce), ciphertext:to64(new Uint8Array(ciphertext))};
+}
 async function api(env, path, options = {}, state = false) {
   return fetch(`https://api.github.com/repos/${env.GITHUB_REPO || REPO}/${path}`, {...options,
     headers: {Authorization: `Bearer ${state ? (env.GITHUB_STATE_PAT || env.GITHUB_PAT) : env.GITHUB_PAT}`, Accept: "application/vnd.github+json", "Content-Type": "application/json", "User-Agent": "Hermes-Telegram", ...options.headers}, signal: AbortSignal.timeout(12000)});
@@ -16,7 +35,7 @@ async function stateFile(env) {
   if (!response.ok) throw new Error(`state_read_http_${response.status}`);
   const result = await response.json();
   const bytes = Uint8Array.from(atob(result.content.replace(/\s/g, "")), c => c.charCodeAt(0));
-  const value = JSON.parse(new TextDecoder().decode(bytes));
+  const value = await decodeState(JSON.parse(new TextDecoder().decode(bytes)), env, "state/scout.json");
   if (value.version !== 1 || !value.jobs || !value.sends) throw new Error("Invalid state");
   return value;
 }
@@ -49,14 +68,14 @@ async function queueCard(env, job) {
 export async function storeFeedback(env, updateId, event) {
   if (!Number.isSafeInteger(updateId) || updateId < 0) throw new Error("Invalid update ID");
   const path = `contents/state/feedback/${updateId}.json`;
-  const bytes = new TextEncoder().encode(JSON.stringify({...event, update_id: updateId}));
+  const bytes = new TextEncoder().encode(JSON.stringify(await encodeState({...event, update_id: updateId}, env, `state/feedback/${updateId}.json`)));
   const content = btoa(String.fromCharCode(...bytes));
   const response = await api(env, path, {method: "PUT", body: JSON.stringify({message: `Record Telegram outcome ${updateId}`, content, branch: "main"})}, true);
   if (response.ok) return;
   if (response.status === 409 || response.status === 422) {
     const existing = await api(env, `${path}?ref=main`, {}, true);
     if (existing.ok) {
-      const stored = JSON.parse(atob((await existing.json()).content.replace(/\s/g, "")));
+      const stored = await decodeState(JSON.parse(new TextDecoder().decode(from64((await existing.json()).content.replace(/\s/g, "")))), env, `state/feedback/${updateId}.json`);
       if (stored.update_id === updateId && stored.job_id === event.job_id && stored.action === event.action && stored.sender_id === event.sender_id) return;
     }
   }
@@ -119,13 +138,25 @@ export default {
             }
           }
         } else if (command === "/queue") {
+          if (env.HANDS_OFF_ONLY !== "false") {
+            const run = state.last_run || {};
+            const forms = run.applications || {};
+            await reply(env, env.TELEGRAM_CHAT_ID, `Hands-off application processing\nSMTP accepted in last run: ${run.emails_accepted_by_smtp || 0}\nConfirmed portal applications: ${forms.confirmed || 0}\nVerified form adapters enabled: ${forms.enabled_adapters || 0}\nUnsupported/blocked routes: ${(forms.unsupported || 0) + (forms.blocked || 0)}\n${escapeHTML(Object.keys(run.coverage_gaps || {}).slice(0,3).join(", ") || "No pending action required")}\nNo manual approval queue. Replies and interviews will be reported here.`);
+            const recent = jobs.filter(j => (j.emailed || j.submitted) && /^[a-f0-9]{24}$/.test(j.id)).sort((a,b) => String(b.applied_at || b.emailed_at || "").localeCompare(String(a.applied_at || a.emailed_at || ""))).slice(0,3);
+            for (const job of recent) {
+              const actions = [["Reply", "reply"], ["Interview", "interview"], ["Rejected", "rejected"]];
+              const buttons = await Promise.all(actions.map(async ([text, action]) => ({text, callback_data: await createCallback(action, job.id, env.TELEGRAM_BOT_TOKEN)})));
+              await telegram(env, "sendMessage", {chat_id:env.TELEGRAM_CHAT_ID, parse_mode:"HTML", text:`Record an outcome: ${escapeHTML(job.job_title || job.title || "Application")} — ${escapeHTML(job.company || "Employer")}`, reply_markup:{inline_keyboard:[buttons]}});
+            }
+            return new Response("OK");
+          }
           const cutoff = new Date(Date.now() - 21 * 86400000).toISOString();
           const pending = jobs.filter(j => ["core","stretch"].includes(j.tier) && String(j.last_seen || "") >= cutoff && !j.archived && !j.submitted && !j.outcome && (!j.snoozed_until || j.snoozed_until < new Date().toISOString())).sort((a,b) => (b.fit_score || b.score || 0) - (a.fit_score || a.score || 0)).slice(0,5);
           if (!pending.length) await reply(env, env.TELEGRAM_CHAT_ID, "No pending recommendations yet.");
           else for (const job of pending) await queueCard(env, job);
         } else if (command === "/status") {
           const run = state.last_run || {};
-          await reply(env, env.TELEGRAM_CHAT_ID, `Last run: ${escapeHTML(run.status || "No completed run")}\nAt: ${escapeHTML(run.at || "Unknown")}\nDiscovered: ${run.results_discovered || 0}\nActionable: ${run.relevant_apply_leads || 0}\nAlerts: ${run.alerts_sent || 0}\nSMTP accepted: ${run.emails_accepted_by_smtp || 0}\nBudget: ${state.budget?.paused ? "Paused" : "Within configured limits"}\nEstimated minutes: ${state.budget?.used_minutes_estimate || 0}/${state.budget?.monthly_ceiling || 1200}\nFeedback is reconciled on the next scout run.`);
+          await reply(env, env.TELEGRAM_CHAT_ID, `Last run: ${escapeHTML(run.status || "No completed run")}\nAt: ${escapeHTML(run.at || "Unknown")}\nDiscovered: ${run.results_discovered || 0}\nQualified: ${run.relevant_apply_leads || 0}\nSMTP accepted: ${run.emails_accepted_by_smtp || 0}\nPortal confirmed: ${run.applications?.confirmed || 0}\nVerified form adapters: ${run.applications?.enabled_adapters || 0}\nBudget: ${state.budget?.paused ? "Paused" : state.budget?.mode === "standard_public" ? "Free public standard runners" : "Within configured limits"}\nRuntime minutes estimate: ${state.budget?.used_minutes_estimate || 0}${state.budget?.mode === "standard_public" ? " (no private-minute ceiling)" : "/" + (state.budget?.monthly_ceiling || 1200)}\nFeedback is reconciled on the next scout run.`);
         } else {
           const cutoff = new Date(Date.now() - 7 * 86400000).toISOString();
           const count = key => jobs.filter(j => String(j[key] || "") >= cutoff).length;

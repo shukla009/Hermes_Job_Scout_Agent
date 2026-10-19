@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "note": "Only individually verified public form contracts may be enabled. A publicly readable job board is not permission or credentials for its application API. No route below is enabled; email submission remains operational.",
+  "adapters": [
+    {
+      "id": "neev-research-audit",
+      "company": "NEEV Research",
+      "enabled": false,
+      "audit_url": "https://www.neevresearch.com/careers/",
+      "checked_at": "2026-10-19",
+      "disabled_reason": "Wix dynamic form has no native action or named upload fields. Vacancies lack original publication timestamps; junior analyst degree requirement is specific. No confirmation contract verified."
+    },
+    {
+      "id": "knowledge-sourcing-intelligence-audit",
+      "company": "Knowledge Sourcing Intelligence",
+      "enabled": false,
+      "audit_url": "https://www.knowledge-sourcing.com/career",
+      "checked_at": "2026-10-19",
+      "disabled_reason": "React form has no native POST action; current listings lack original publication timestamps. Submission and confirmation contract unverified."
+    },
+    {
+      "id": "cmr-india-audit",
+      "company": "CyberMedia Research",
+      "enabled": false,
+      "audit_url": "https://cmrindia.com/apply-for-the-role/",
+      "checked_at": "2026-10-19",
+      "disabled_reason": "Senior research role, AJAX form without native action; CAPTCHA scripts present on page. Requires verified expected salary and experience. No confirmed public submission contract."
+    },
+    {
+      "id": "kamakhya-analytics-audit",
+      "company": "Kamakhya Analytics",
+      "enabled": false,
+      "audit_url": "https://www.kamakhyaanalytics.com/careers",
+      "checked_at": "2026-10-19",
+      "disabled_reason": "General talent application is JavaScript-only without native action, vacancy identity or original publication timestamp. No confirmation contract verified."
+    }
+  ]
+}
