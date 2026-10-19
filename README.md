@@ -43,6 +43,8 @@
 - Permanent full-time work. Explicit night, US and rotational shifts are rejected.
 - Salary maxima below ₹6.5 LPA are rejected. Undisclosed salary or shift is flagged, but allowed.
 - Salary is never included in application emails.
+- Emails highlight three role-relevant work achievements in bullet points, preserving
+  the resume's metrics and internship attribution, and include the LinkedIn profile link.
 - Prioritises research/market intelligence, MIS/reporting, junior BI/data analysis,
   data quality/operations and process/business analysis based on actual responsibilities.
 - Verified listed SQL knowledge can meet a knowledge requirement; it cannot establish

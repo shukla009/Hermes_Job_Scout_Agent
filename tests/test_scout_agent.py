@@ -414,6 +414,7 @@ class TestFollowUps:
             assert scout_agent.ACTIVE_REFERENCES == "<original@scout>"
             assert scout_agent.ACTIVE_MESSAGE_ID == "<follow@scout>"
             assert not attach_resume and "attached" not in body and subject == "Re: Application"
+            assert "LinkedIn: https://www.linkedin.com/in/shivank-shukla09" in body
             return True
         mocked = MagicMock(side_effect=send)
         monkeypatch.setattr(scout_agent, "send_email", mocked)

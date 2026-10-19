@@ -766,8 +766,12 @@ def _fallback_email(analysis):
     from scout_matching import proof_points, load_profile
     title = analysis.get("job_title") or "Analyst"
     company = analysis.get("company") or "your team"
-    points = analysis.get("evidence") or proof_points(analysis.get("family", "data"))
     profile = load_profile()
+    family = analysis.get("family", "data")
+    highlights = profile.get("email_experience_highlights", {})
+    # Candidate claims come only from the curated resume facts, never vacancy
+    # text or arbitrary analysis evidence. Keep matching evidence unchanged.
+    points = highlights.get(family) or highlights.get("data") or proof_points(family, profile)
     current = next((row for row in profile.get("experience", []) if row.get("kind") == "full_time" and not row.get("end")), None)
     current_background = (f"I currently work as {current['title']} at {current['employer']} (full-time since August 2026). "
                           if current else "My background combines research and analytical reporting. ")
@@ -779,11 +783,12 @@ def _fallback_email(analysis):
         f"Hello,\n\nI would like to apply for the {title} role at {company}. "
         + current_background + "I have completed both my BSc Data Analytics and BCA degrees.\n\n"
         + skill_line
-        + "\n".join("- " + str(point) for point in points[:2])
+        + "Experience highlights:\n"
+        + "\n".join("- " + str(point) for point in points[:3])
         + f"\n\nRelevant work: {CANDIDATE_PORTFOLIO}\n\n"
         + vacancy_line
         + "I have attached my resume for review. I would welcome an opportunity to discuss the role.\n\n"
-        + f"Regards,\n{CANDIDATE_NAME}\n{CANDIDATE_PHONE}\n{CANDIDATE_LINKEDIN}"
+        + f"Regards,\n{CANDIDATE_NAME}\n{CANDIDATE_PHONE}\nLinkedIn: {CANDIDATE_LINKEDIN}"
     )
     return {"email_subject": f"Application for {title} at {company} - {CANDIDATE_NAME}", "email_body": body}
 
@@ -870,7 +875,7 @@ def process_pending_follow_ups(max_sends=None):
             continue
         ACTIVE_MESSAGE_ID = intent["message_id"]
         ACTIVE_REFERENCES = original
-        body = f"Hello,\n\nI wanted to follow up on my application below. I remain interested and would welcome an opportunity to discuss the role.\n\nRegards,\n{CANDIDATE_NAME}"
+        body = f"Hello,\n\nI wanted to follow up on my application below. I remain interested and would welcome an opportunity to discuss the role.\n\nRegards,\n{CANDIDATE_NAME}\nLinkedIn: {CANDIDATE_LINKEDIN}"
         subject = record.get("subject", "")
         if not subject.lower().startswith("re:"):
             subject = "Re: " + subject
