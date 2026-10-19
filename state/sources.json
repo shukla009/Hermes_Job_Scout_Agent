@@ -1,11 +1,12 @@
 {
   "greenhouse:Razorpay": {
-    "last_poll": "2026-10-19T16:25:26.479110+00:00",
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "verified_feed"
   },
   "greenhouse:Groww": {
-    "last_poll": "2026-10-19T16:25:26.479110+00:00",
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
     "cursor": 0,
     "jobs": [
       {
@@ -30,19 +31,21 @@
         "first_published": "2026-02-16T12:43:45-05:00",
         "application_deadline": "",
         "first_seen_at": "2026-10-13T16:28:01.566861+00:00",
-        "last_verified_at": "2026-10-19T16:25:26.479110+00:00"
+        "last_verified_at": "2026-10-19T19:13:07.538607+00:00"
       }
     ],
+    "classification": "productive",
     "pick_cursor": 0
   },
   "lever:Meesho": {
-    "last_poll": "2026-10-19T16:25:26.479110+00:00",
-    "cursor": 0,
-    "jobs": []
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
+    "cursor": 25,
+    "jobs": [],
+    "classification": "verified_feed"
   },
   "lever:Paytm": {
-    "last_poll": "2026-10-19T16:25:26.479110+00:00",
-    "cursor": 75,
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
+    "cursor": 100,
     "jobs": [
       {
         "title": "Associate - User Growth (Market intelligence)",
@@ -90,7 +93,8 @@
         "needs_reverification": true
       }
     ],
-    "pick_cursor": 0
+    "classification": "verified_feed",
+    "pick_cursor": 1
   },
   "lever:Portcast": {
     "last_poll": "2026-10-19T13:41:50.771852+00:00",
@@ -141,7 +145,8 @@
         "last_verified_at": "2026-10-19T13:41:50.771852+00:00"
       }
     ],
-    "pick_cursor": 1
+    "pick_cursor": 0,
+    "classification": "productive"
   },
   "html:ProcDNA": {
     "last_poll": "2026-10-19T08:06:01.955677+00:00",
@@ -169,21 +174,24 @@
         "last_verified_at": "2026-10-19T08:06:01.955677+00:00"
       }
     ],
-    "pick_cursor": 0
+    "pick_cursor": 0,
+    "classification": "productive"
   },
   "smartrecruiters:NielsenIQ": {
-    "last_poll": "2026-10-19T16:25:26.479110+00:00",
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "verified_feed"
   },
   "smartrecruiters:Bosch": {
     "last_poll": "2026-10-19T13:41:50.771852+00:00",
     "cursor": 200,
-    "jobs": []
+    "jobs": [],
+    "classification": "unverified"
   },
   "lever:ION": {
-    "last_poll": "2026-10-19T16:25:26.479110+00:00",
-    "cursor": 75,
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
+    "cursor": 0,
     "jobs": [
       {
         "title": "AP Analyst - Noida",
@@ -229,9 +237,32 @@
         "first_seen_at": "2026-10-19T13:41:50.771852+00:00",
         "last_verified_at": "2026-10-19T13:41:50.771852+00:00",
         "needs_reverification": true
+      },
+      {
+        "title": "Technical Product Analyst, 2027 Leadership Development Program, ION Group, India",
+        "job_title": "Technical Product Analyst, 2027 Leadership Development Program, ION Group, India",
+        "company": "ION",
+        "location": "Noida; Mumbai; Pune",
+        "body": "Your Role As a Technical Product Analyst, you will work at the intersection of Product, Data, AI, and Business Operations to help build, improve, and scale ION products used by Tier 1 banks , Fortune 100 global corporations and other leading enterprises worldwide. You will transform data into insights, customer challenges into product opportunities, and ideas into measurable business outcomes. Working closely with Product Managers, Engineers, customers, and business stakeholders, you will contribute to product innovation, process improvement, and data-driven decision-making across the organization. This role offers a unique opportunity to combine analytical thinking, product understanding, customer engagement, and emerging technologies to shape the future of financial technology solutions. Your Role As a Technical Product Analyst, you will work at the intersection of Product, Data, AI, and Business Operations to help build, improve, and scale ION products used by Tier 1 banks , Fortune 100 global corporations and other leading enterprises worldwide. You will transform data into insights, customer challenges into product opportunities, and ideas into measurable business outcomes. Working closely with Product Managers, Engineers, customers, and business stakeholders, you will contribute to product innovation, process improvement, and data-driven decision-making across the organization. This role offers a unique opportunity to combine analytical thinking, product understanding, ",
+        "source_text": "Your Role As a Technical Product Analyst, you will work at the intersection of Product, Data, AI, and Business Operations to help build, improve, and scale ION products used by Tier 1 banks , Fortune 100 global corporations and other leading enterprises worldwide. You will transform data into insights, customer challenges into product opportunities, and ideas into measurable business outcomes. Working closely with Product Managers, Engineers, customers, and business stakeholders, you will contribute to product innovation, process improvement, and data-driven decision-making across the organization. This role offers a unique opportunity to combine analytical thinking, product understanding, customer engagement, and emerging technologies to shape the future of financial technology solutions. Your Role As a Technical Product Analyst, you will work at the intersection of Product, Data, AI, and Business Operations to help build, improve, and scale ION products used by Tier 1 banks , Fortune 100 global corporations and other leading enterprises worldwide. You will transform data into insights, customer challenges into product opportunities, and ideas into measurable business outcomes. Working closely with Product Managers, Engineers, customers, and business stakeholders, you will contribute to product innovation, process improvement, and data-driven decision-making across the organization. This role offers a unique opportunity to combine analytical thinking, product understanding, customer engagement, and emerging technologies to shape the future of financial technology solutions. Our Company: We’re a diverse group of visionary innovators who provide trading and workflow automation software, high-value analytics, and strategic consulting to corporations, central banks, financial institutions, and governments. Founded in 1999, we’ve achieved tremendous growth by bringing together some of the best and most successful financial technology companies in the world. Learn more at iongroup.com . Our Company: We’re a diverse group of visionary innovators who provide trading and workflow automation software, high-value analytics, and strategic consulting to corporations, central banks, financial institutions, and governments. Founded in 1999, we’ve achieved tremendous growth by bringing together some of the best and most successful financial technology companies in the world. Learn more at iongroup.com. Data & Insights: Analyze product, customer, and business data to identify trends, root causes, risks, and opportunities. Define, track, and measure key product and business metrics. Build dashboards, reports, and scalable analytics solutions that support data-driven decision making. Generate actionable insights and recommendations for Product, Engineering, and business teams. Support the development and maintenance of reliable data assets, pipelines, and reporting capabilities. Assist in building and validating predictive models to support business and product objectives. AI & Automation: Identify opportunities for AI-driven innovation, automation, and process optimization. Design and build analytical tools, automations, and workflow improvements that help teams turn data into action. Evaluate and leverage AI technologies, machine learning capabilities, and emerging tools to improve products and internal operations. Support the implementation, testing, monitoring, and continuous improvement of AI-powered solutions. Contribute to reducing operational complexity through scalable, technology-driven solutions. Product & Customer Impact: Partner with Product Managers and Engineers to define requirements, validate product ideas, and measure outcomes. Support product strategy, roadmap planning, and feature development through data-driven recommendations. Build a deep understanding of customer workflows, product usage patterns, and business requirements. Collaborate directly with customers and internal stakeholders to understand challenges, resolve issues, and support product adoption. Communicate insights and recommendations effectively to both technical and non-technical audiences. Own initiatives end-to-end, from problem identification and analysis through delivery and measurable business outcome. You will work closely with Product, Engineering, Data, AI, Client Services, and business teams — building fluency across multiple disciplines rather than progressing along a narrow, single-track path. You will learn: Product Management and End-to-End Product Delivery Data analytics, reporting, and visualization Data Engineering and modern data platforms AI, automation, and data-driven decision making Financial technology and enterprise software Customer-centric problem solving You will gain exposure to: Product Strategy and Roadmap Planning Customer and Market Insights Leadership Client interactions, and Stakeholder Management Real-world business challenges faced by global institutions You will develop expertise in: Product Analysis Data Analytics & Visualization AI &Automation Data Engineering Product Management Customer relationship",
+        "source_emails": [],
+        "href": "https://jobs.lever.co/ion/83539ab9-431f-43e3-9179-f891eeb16db9",
+        "application_url": "https://jobs.lever.co/ion/83539ab9-431f-43e3-9179-f891eeb16db9",
+        "employment_type": "Full-time",
+        "source_type": "direct_apply",
+        "page_fetched": true,
+        "active_listing": true,
+        "source_id": "83539ab9-431f-43e3-9179-f891eeb16db9",
+        "source_name": "lever:ION",
+        "posted_at": "2026-09-30T13:52:04.716000+00:00",
+        "updated_at": "",
+        "date_posted": "2026-09-30T13:52:04.716000+00:00",
+        "first_seen_at": "2026-10-19T19:13:07.538607+00:00",
+        "last_verified_at": "2026-10-19T19:13:07.538607+00:00"
       }
     ],
-    "pick_cursor": 0
+    "classification": "productive",
+    "pick_cursor": 2
   },
   "html:EXL": {
     "last_poll": "2026-10-19T16:25:26.479110+00:00",
@@ -241,7 +272,8 @@
   "html:American Express": {
     "last_poll": "2026-10-19T13:41:50.771852+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "unverified"
   },
   "html:Genpact": {
     "last_poll": "2026-10-18T13:12:32.585687+00:00",
@@ -251,99 +283,330 @@
   "html:Fidelity International": {
     "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "unverified"
   },
   "html:Kantar": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "discovery_only"
   },
   "html:Ipsos": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "discovery_only"
   },
   "html:EY": {
     "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "unverified"
   },
   "html:Moody's": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "discovery_only"
   },
   "html:Gartner": {
     "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
     "jobs": [],
-    "last_error": "AttributeError"
+    "last_error": "AttributeError",
+    "classification": "unverified"
   },
   "html:S&P Global": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "discovery_only"
   },
   "html:The Smart Cube": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
-    "cursor": 0,
-    "jobs": []
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
+    "cursor": 5,
+    "jobs": [],
+    "classification": "discovery_only"
   },
   "html:ZS": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "discovery_only"
   },
   "html:Aon": {
     "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "unverified"
   },
   "html:Cvent": {
     "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "unverified"
   },
   "html:Accenture": {
     "last_poll": "2026-10-19T13:41:50.771852+00:00",
     "cursor": 10,
-    "jobs": []
+    "jobs": [],
+    "classification": "unverified"
   },
   "html:Deloitte": {
     "last_poll": "2026-10-19T13:41:50.771852+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "unverified"
   },
   "html:WNS": {
     "last_poll": "2026-10-19T13:41:50.771852+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "unverified"
   },
   "html:Escalent": {
     "last_poll": "2026-10-19T08:06:01.955677+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "unverified"
   },
   "html:Evalueserve": {
     "last_poll": "2026-10-19T13:41:50.771852+00:00",
     "cursor": 0,
     "jobs": [],
-    "last_error": "HTTPError"
+    "last_error": "HTTPError",
+    "classification": "unverified"
   },
   "html:Dynata": {
     "last_poll": "2026-10-19T08:06:01.955677+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "unverified"
   },
   "html:Everest Group": {
     "last_poll": "2026-10-19T13:41:50.771852+00:00",
     "cursor": 5,
     "jobs": [],
-    "last_error": "HTTPError"
+    "last_error": "HTTPError",
+    "classification": "unverified"
   },
   "himalayas:Himalayas Remote": {
     "last_poll": "2026-10-19T13:41:50.771852+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "classification": "unverified"
+  },
+  "oracle:EXL": {
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
+    "cursor": 0,
+    "jobs": [
+      {
+        "title": "Associate - Business Analyst",
+        "job_title": "Associate - Business Analyst",
+        "company": "EXL",
+        "location": "Noida, Uttar Pradesh, India",
+        "body": "Associate Business Analysts support business analysis activities and assist in developing business requirements. Associate Business Analysts support business analysis activities and assist in developing business requirements. Responsibilities include gathering and documenting requirements, analyzing business processes, and supporting project teams. You will work with senior analysts to learn about business analysis best practices and develop your skills. Basic knowledge of business analysis and strong analytical skills are required. Assist in analyzing business processes, Support development of business requirements, Document analysis processes, Perform basic data analysis, Collaborate with senior analysts. Bachelor's/Master's in any stream 2-5 years",
+        "source_text": "Associate Business Analysts support business analysis activities and assist in developing business requirements. Associate Business Analysts support business analysis activities and assist in developing business requirements. Responsibilities include gathering and documenting requirements, analyzing business processes, and supporting project teams. You will work with senior analysts to learn about business analysis best practices and develop your skills. Basic knowledge of business analysis and strong analytical skills are required. Assist in analyzing business processes, Support development of business requirements, Document analysis processes, Perform basic data analysis, Collaborate with senior analysts. Bachelor's/Master's in any stream 2-5 years",
+        "source_emails": [],
+        "href": "https://fa-ewjt-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2/job/21648",
+        "application_url": "https://fa-ewjt-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2/job/21648",
+        "employment_type": "Full time  ",
+        "source_type": "direct_apply",
+        "page_fetched": true,
+        "active_listing": true,
+        "source_id": "21648",
+        "source_name": "oracle:EXL",
+        "posted_at": "2026-10-19T12:24:41+00:00",
+        "updated_at": "",
+        "date_posted": "2026-10-19T12:24:41+00:00",
+        "first_published": "2026-10-19T12:24:41+00:00",
+        "date_provenance": "oracle.ExternalPostedStartDate",
+        "application_deadline": "",
+        "valid_through": "",
+        "submission_route": "account_form",
+        "source_attribution": "Official Oracle Recruiting employer board",
+        "first_seen_at": "2026-10-19T19:13:07.538607+00:00",
+        "last_verified_at": "2026-10-19T19:13:07.538607+00:00"
+      },
+      {
+        "title": "Analyst",
+        "job_title": "Analyst",
+        "company": "EXL",
+        "location": "Gurugram, Haryana, India",
+        "body": "We are seeking an experienced Senior Claims Reporting Consultant / Specialist to join our Claims function on a contract basis. We have a mature claims reporting suite — 40+ Power BI reports in production for over a year — and now need a senior individual who can extend its analytical and insight capability. The successful candidate will bridge the business and technical sides of reporting: engaging senior stakeholders, drawing out true requirements, shaping an optimal solution, and delivering it hands-on in Power BI. This is a senior, consultative role rather than a build-only contractor position. Manage operational delivery and stakeholder relationships for assigned clients. Provide specialized consulting advice based on engagement requirements and support executive-level decision-making. Independently elicit requirements from the Claims business and translate business needs into strong reporting designs. Define a target-state insights capability — not simply replicating existing reports, but identifying missing insights, prioritising them with the business, and mapping the path to an optimal solution. Deliver hands-on in Power BI, from wireframing and prototyping through to finalised, production-grade reports (both enhancements and new builds). Act as the senior reporting lead and single credible partner for the Claims team, setting direction and driving work forward proactively. Power BI — hands-on, from wireframing through to finalised, production-grade reports (enhanceme",
+        "source_text": "We are seeking an experienced Senior Claims Reporting Consultant / Specialist to join our Claims function on a contract basis. We have a mature claims reporting suite — 40+ Power BI reports in production for over a year — and now need a senior individual who can extend its analytical and insight capability. The successful candidate will bridge the business and technical sides of reporting: engaging senior stakeholders, drawing out true requirements, shaping an optimal solution, and delivering it hands-on in Power BI. This is a senior, consultative role rather than a build-only contractor position. Manage operational delivery and stakeholder relationships for assigned clients. Provide specialized consulting advice based on engagement requirements and support executive-level decision-making. Independently elicit requirements from the Claims business and translate business needs into strong reporting designs. Define a target-state insights capability — not simply replicating existing reports, but identifying missing insights, prioritising them with the business, and mapping the path to an optimal solution. Deliver hands-on in Power BI, from wireframing and prototyping through to finalised, production-grade reports (both enhancements and new builds). Act as the senior reporting lead and single credible partner for the Claims team, setting direction and driving work forward proactively. Power BI — hands-on, from wireframing through to finalised, production-grade reports (enhancements and new builds). Data, analytics and reporting design — able to structure data and insights effectively. Data governance and quality awareness - ensuring outputs are trustworthy. Ability to build wireframes and prototypes quickly to validate requirements with the business. Stakeholder Mangement. Communication & Insights",
+        "source_emails": [],
+        "href": "https://fa-ewjt-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2/job/19818",
+        "application_url": "https://fa-ewjt-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2/job/19818",
+        "employment_type": "Full time  ",
+        "source_type": "direct_apply",
+        "page_fetched": true,
+        "active_listing": true,
+        "source_id": "19818",
+        "source_name": "oracle:EXL",
+        "posted_at": "2026-10-14T05:59:38+00:00",
+        "updated_at": "",
+        "date_posted": "2026-10-14T05:59:38+00:00",
+        "first_published": "2026-10-14T05:59:38+00:00",
+        "date_provenance": "oracle.ExternalPostedStartDate",
+        "application_deadline": "2026-10-31T05:59:00+00:00",
+        "valid_through": "2026-10-31T05:59:00+00:00",
+        "submission_route": "account_form",
+        "source_attribution": "Official Oracle Recruiting employer board",
+        "first_seen_at": "2026-10-19T19:13:07.538607+00:00",
+        "last_verified_at": "2026-10-19T19:13:07.538607+00:00"
+      },
+      {
+        "title": "QA Analyst",
+        "job_title": "QA Analyst",
+        "company": "EXL",
+        "location": "Noida, Uttar Pradesh, India",
+        "body": "We are seeking an experienced functional & Automation Test Engineer to join our TCOE team. The ideal candidate will have a strong background in automation testing, with a focus on Selenium, API testing. This role requires excellent ability to work collaboratively with cross-functional teams. Required Skills & Experience Technical Skills Extensive experience with Selenium for web automation using Java/Python. Proficient in Automation API testing using tools like Ready API, Postman, Playwright. Ability to set up automation frameworks from scratch. Experience with CI/CD testing. Proficiency with Jenkins. Knowledge of integrating automation tools with test management tools. Strong knowledge of Agile test methodology. Familiarity with test management tools like JIRA, DevOps etc. Strong understanding of the Software Development Life Cycle (SDLC) and Agile methodologies Soft Skills Strong communication and analytical skills. Ability to work with cross-functional teams. Self-driven, detail-oriented, and capable of working in fast-paced environments. Key Responsibilities: Develop, maintain, and execute automated test scripts using Selenium, Test Complete. Perform Automated API testing to ensure the reliability of web Applications. Integrate automation tools with test management tools. Nice to Have: Knowledge of Automation tools like Cypress, Test Robot Automation, ReadyAPI, Mendix. Experience with database testing preferably SQL. Knowledge of data migration testing. Understanding of E",
+        "source_text": "We are seeking an experienced functional & Automation Test Engineer to join our TCOE team. The ideal candidate will have a strong background in automation testing, with a focus on Selenium, API testing. This role requires excellent ability to work collaboratively with cross-functional teams. Required Skills & Experience Technical Skills Extensive experience with Selenium for web automation using Java/Python. Proficient in Automation API testing using tools like Ready API, Postman, Playwright. Ability to set up automation frameworks from scratch. Experience with CI/CD testing. Proficiency with Jenkins. Knowledge of integrating automation tools with test management tools. Strong knowledge of Agile test methodology. Familiarity with test management tools like JIRA, DevOps etc. Strong understanding of the Software Development Life Cycle (SDLC) and Agile methodologies Soft Skills Strong communication and analytical skills. Ability to work with cross-functional teams. Self-driven, detail-oriented, and capable of working in fast-paced environments. Key Responsibilities: Develop, maintain, and execute automated test scripts using Selenium, Test Complete. Perform Automated API testing to ensure the reliability of web Applications. Integrate automation tools with test management tools. Nice to Have: Knowledge of Automation tools like Cypress, Test Robot Automation, ReadyAPI, Mendix. Experience with database testing preferably SQL. Knowledge of data migration testing. Understanding of ETL processes and testing. Preferred domain experience in Insurance & healthcare. Certification in software testing (e.g., ISTQB). Preferred Qualifications Bachelor’s degree/MCA in Computer Science, Information Technology, or a related field. Proven track record of delivering high-quality automation testing solutions. Strong analytical and problem-solving skills. Ability to work independently and as part of a team. Ability to multitask and flexibility with timing.",
+        "source_emails": [],
+        "href": "https://fa-ewjt-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2/job/17368",
+        "application_url": "https://fa-ewjt-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2/job/17368",
+        "employment_type": "Full time  ",
+        "source_type": "direct_apply",
+        "page_fetched": true,
+        "active_listing": true,
+        "source_id": "17368",
+        "source_name": "oracle:EXL",
+        "posted_at": "2026-10-13T11:15:22+00:00",
+        "updated_at": "",
+        "date_posted": "2026-10-13T11:15:22+00:00",
+        "first_published": "2026-10-13T11:15:22+00:00",
+        "date_provenance": "oracle.ExternalPostedStartDate",
+        "application_deadline": "2026-10-30T11:15:00+00:00",
+        "valid_through": "2026-10-30T11:15:00+00:00",
+        "submission_route": "account_form",
+        "source_attribution": "Official Oracle Recruiting employer board",
+        "first_seen_at": "2026-10-19T19:13:07.538607+00:00",
+        "last_verified_at": "2026-10-19T19:13:07.538607+00:00"
+      }
+    ],
+    "classification": "productive",
+    "pick_cursor": 2
+  },
+  "workday:Genpact": {
+    "last_poll": "2026-10-19T19:13:07.538607+00:00",
+    "cursor": 0,
+    "jobs": [
+      {
+        "title": "Analyst - Enterprise Risk Advisory 5A",
+        "job_title": "Analyst - Enterprise Risk Advisory 5A",
+        "company": "Genpact",
+        "location": "1415-G-ENTERPRISE RISK CONSULTING: FF, 22B, Gurgaon",
+        "body": "Analyst - ERC Ready to turn bold ideas into real-world impact? At Genpact, we don’t just adapt to change, we lead it. AI and digital innovation are transforming the way businesses work, and we’re at the forefront of it. Genpact’s AI Gigafactory , our industry-first accelerator, exemplifies how we scale advanced technology solutions to help global enterprises work smarter, grow faster, and transform at scale. Whether tackling complex challenges through large-scale models or agentic AI , our breakthrough solutions tackle companies’ most complex challenges. If you thrive in a fast-moving, innovation-driven environment, love building and deploying cutting-edge AI solutions, and want to push the boundaries of what’s possible, this is your moment. Genpact (NYSE: G) is an agentic and advanced technology solutions company. We leverage process intelligence and artificial intelligence to deliver measurable outcomes. With a strong partner ecosystem and decades of client trust, we provide innovative solutions that transform how businesses run. Powered by a team with an active learning mindset and client centricity at its core, we deliver lasting value for the world’s leading enterprises. Get to know us at genpact.com and on LinkedIn , YouTube , X , and Facebook . Job Description Responsibilities Assist in data collection and basic risk analysis. Support preparation of reports and documentation. Collaborate with team members on project tasks. Conduct research on risk-related topics. Ensur",
+        "source_text": "Analyst - ERC Ready to turn bold ideas into real-world impact? At Genpact, we don’t just adapt to change, we lead it. AI and digital innovation are transforming the way businesses work, and we’re at the forefront of it. Genpact’s AI Gigafactory , our industry-first accelerator, exemplifies how we scale advanced technology solutions to help global enterprises work smarter, grow faster, and transform at scale. Whether tackling complex challenges through large-scale models or agentic AI , our breakthrough solutions tackle companies’ most complex challenges. If you thrive in a fast-moving, innovation-driven environment, love building and deploying cutting-edge AI solutions, and want to push the boundaries of what’s possible, this is your moment. Genpact (NYSE: G) is an agentic and advanced technology solutions company. We leverage process intelligence and artificial intelligence to deliver measurable outcomes. With a strong partner ecosystem and decades of client trust, we provide innovative solutions that transform how businesses run. Powered by a team with an active learning mindset and client centricity at its core, we deliver lasting value for the world’s leading enterprises. Get to know us at genpact.com and on LinkedIn , YouTube , X , and Facebook . Job Description Responsibilities Assist in data collection and basic risk analysis. Support preparation of reports and documentation. Collaborate with team members on project tasks. Conduct research on risk-related topics. Ensure consistency in data inputs and outputs. Qualifications Bachelors - Economics, Bachelors - Finance, Bachelors - Statistics, Masters - Business Administration, Masters - Risk Management Certifications Certified Fraud Examiner (CFE) - ACFEACFE, CISA - ISACA – Information Systems Audit and Control AssociationISACA – Information Systems Audit and Control Association, ITIL 4 Foundation Certificate in IT Service Management - SkillsoftSkillsoft, Microsoft Certified: Azure Security Engineer Associate - MicrosoftMicrosoft Required Skills Data Literacy, Executive Presence, Information Security, Risk Management, Storytelling Language English Language Proficiency - Proficient - C2 Additional Job Location - Job Type Regular Master Skill List - Enterprise Risk Advisory Remote Type - Hybrid Work Shift - Day Job (India) Why join Genpact? • Lead AI-powered transformation – Drive innovation and solve real-world business challenges that matter • Make an impact – Help global enterprises solve business challenges that matter • Accelerate your career – Gain hands-on experience, mentorship, and world-class learning opportunities to stay ahead • Work with the best – Join 140,000+ bold thinkers and problem-solvers who push boundaries every day • Thrive in a values-driven culture – Our courage, curiosity, and incisiveness - built on a foundation of integrity and inclusion - allow your ideas to fuel progress Come join the 140,000+ coders, tech shapers, and growth makers at Genpact and take your career in the only direction that matters: Up. Let’s build tomorrow together. Genpact is an Equal Opportunity Employer and considers applicants for all positions without regard to race, color, religion or belief, sex, age, national origin, citizenship status, marital status, military/veteran status, genetic information, sexual orientation, gender identity, physical or mental disability or any other characteristic protected by applicable laws. Genpact is committed to creating a dynamic work environment that values respect and integrity, customer focus, and innovation. Furthermore, please do note that Genpact does not charge fees to process job applications and applicants are not required to pay to participate in our hiring process in any other way. Examples of such scams include purchasing a 'starter kit,' paying to apply, or purchasing equipment or training.",
+        "source_emails": [],
+        "href": "https://genpact.wd108.myworkdayjobs.com/External_Careers/job/1415-G-ENTERPRISE-RISK-CONSULTING-FF-22B-Gurgaon/Analyst---Enterprise-Risk-Advisory-5A_JR10032193",
+        "application_url": "https://genpact.wd108.myworkdayjobs.com/External_Careers/job/1415-G-ENTERPRISE-RISK-CONSULTING-FF-22B-Gurgaon/Analyst---Enterprise-Risk-Advisory-5A_JR10032193",
+        "employment_type": "Full time",
+        "source_type": "direct_apply",
+        "page_fetched": true,
+        "active_listing": true,
+        "source_id": "JR10032193",
+        "source_name": "workday:Genpact",
+        "posted_at": "2026-10-19",
+        "updated_at": "",
+        "date_posted": "2026-10-19",
+        "first_published": "2026-10-19",
+        "date_provenance": "workday.startDate",
+        "valid_through": "2026-12-31",
+        "application_deadline": "2026-12-31",
+        "submission_route": "account_form",
+        "source_attribution": "Official Workday employer board",
+        "first_seen_at": "2026-10-19T19:13:07.538607+00:00",
+        "last_verified_at": "2026-10-19T19:13:07.538607+00:00"
+      },
+      {
+        "title": "Analyst - Process Analytics - FCRM 5B",
+        "job_title": "Analyst - Process Analytics - FCRM 5B",
+        "company": "Genpact",
+        "location": "1401-G-India: INFOSPACE IT PARK, TOWER -4, JHARSA, Gurgaon",
+        "body": "Analyst - Process Analytics - FCRM Ready to turn bold ideas into real-world impact? At Genpact, we don’t just adapt to change, we lead it. AI and digital innovation are transforming the way businesses work, and we’re at the forefront of it. Genpact’s AI Gigafactory , our industry-first accelerator, exemplifies how we scale advanced technology solutions to help global enterprises work smarter, grow faster, and transform at scale. Whether tackling complex challenges through large-scale models or agentic AI , our breakthrough solutions tackle companies’ most complex challenges. If you thrive in a fast-moving, innovation-driven environment, love building and deploying cutting-edge AI solutions, and want to push the boundaries of what’s possible, this is your moment. Genpact (NYSE: G) is an agentic and advanced technology solutions company. We leverage process intelligence and artificial intelligence to deliver measurable outcomes. With a strong partner ecosystem and decades of client trust, we provide innovative solutions that transform how businesses run. Powered by a team with an active learning mindset and client centricity at its core, we deliver lasting value for the world’s leading enterprises. Get to know us at genpact.com and on LinkedIn , YouTube , X , and Facebook . Job Description Responsibilities: 1. Monitor and analyze financial transactions for signs of fraud; 2. Conduct investigations into suspicious activities and collaborate with relevant departments for resoluti",
+        "source_text": "Analyst - Process Analytics - FCRM Ready to turn bold ideas into real-world impact? At Genpact, we don’t just adapt to change, we lead it. AI and digital innovation are transforming the way businesses work, and we’re at the forefront of it. Genpact’s AI Gigafactory , our industry-first accelerator, exemplifies how we scale advanced technology solutions to help global enterprises work smarter, grow faster, and transform at scale. Whether tackling complex challenges through large-scale models or agentic AI , our breakthrough solutions tackle companies’ most complex challenges. If you thrive in a fast-moving, innovation-driven environment, love building and deploying cutting-edge AI solutions, and want to push the boundaries of what’s possible, this is your moment. Genpact (NYSE: G) is an agentic and advanced technology solutions company. We leverage process intelligence and artificial intelligence to deliver measurable outcomes. With a strong partner ecosystem and decades of client trust, we provide innovative solutions that transform how businesses run. Powered by a team with an active learning mindset and client centricity at its core, we deliver lasting value for the world’s leading enterprises. Get to know us at genpact.com and on LinkedIn , YouTube , X , and Facebook . Job Description Responsibilities: 1. Monitor and analyze financial transactions for signs of fraud; 2. Conduct investigations into suspicious activities and collaborate with relevant departments for resolution; 3. Develop and implement fraud prevention strategies and tools to mitigate risks; 4. Generate reports on fraud trends, patterns, and recommended actions for management review; 5. Stay up-to-date on current fraud trends, technologies, and regulatory requirements to ensure compliance and enhance fraud prevention measures. Qualifications Bachelors - Business Analytics, Bachelors - Computer Science, Bachelors - Statistics, Masters - Data Science Certifications Certified Anti-Money Laundering Specialist (CAMS) - Professional School of Indian Banking (PSIB)Professional School of Indian Banking (PSIB), Certified Fraud Examiner (CFE) - ACFEACFE, Certified Risk Professional (CRP) - UdemyUdemy Required Skills Microsoft Excel Language English (Required) Language Proficiency - Advanced - C1 Additional Job Location - Job Type Regular Master Skill List - Process Analytics - FCRM Remote Type - Office Work Shift - Flex Time (India) Why join Genpact? • Lead AI-powered transformation – Drive innovation and solve real-world business challenges that matter • Make an impact – Help global enterprises solve business challenges that matter • Accelerate your career – Gain hands-on experience, mentorship, and world-class learning opportunities to stay ahead • Work with the best – Join 140,000+ bold thinkers and problem-solvers who push boundaries every day • Thrive in a values-driven culture – Our courage, curiosity, and incisiveness - built on a foundation of integrity and inclusion - allow your ideas to fuel progress Come join the 140,000+ coders, tech shapers, and growth makers at Genpact and take your career in the only direction that matters: Up. Let’s build tomorrow together. Genpact is an Equal Opportunity Employer and considers applicants for all positions without regard to race, color, religion or belief, sex, age, national origin, citizenship status, marital status, military/veteran status, genetic information, sexual orientation, gender identity, physical or mental disability or any other characteristic protected by applicable laws. Genpact is committed to creating a dynamic work environment that values respect and integrity, customer focus, and innovation. Furthermore, please do note that Genpact does not charge fees to process job applications and applicants are not required to pay to participate in our hiring process in any other way. Examples of such scams include purchasing a 'starter kit,' paying to apply, or purchasing equipment or training.",
+        "source_emails": [],
+        "href": "https://genpact.wd108.myworkdayjobs.com/External_Careers/job/1401-G-India-INFOSPACE-IT-PARK-TOWER--4-JHARSA-Gurgaon/Analyst---Process-Analytics---FCRM-5B_JR10031735",
+        "application_url": "https://genpact.wd108.myworkdayjobs.com/External_Careers/job/1401-G-India-INFOSPACE-IT-PARK-TOWER--4-JHARSA-Gurgaon/Analyst---Process-Analytics---FCRM-5B_JR10031735",
+        "employment_type": "Full time",
+        "source_type": "direct_apply",
+        "page_fetched": true,
+        "active_listing": true,
+        "source_id": "JR10031735",
+        "source_name": "workday:Genpact",
+        "posted_at": "2026-10-16",
+        "updated_at": "",
+        "date_posted": "2026-10-16",
+        "first_published": "2026-10-16",
+        "date_provenance": "workday.startDate",
+        "valid_through": "2026-12-15",
+        "application_deadline": "2026-12-15",
+        "submission_route": "account_form",
+        "source_attribution": "Official Workday employer board",
+        "first_seen_at": "2026-10-19T19:13:07.538607+00:00",
+        "last_verified_at": "2026-10-19T19:13:07.538607+00:00"
+      },
+      {
+        "title": "Solution Analyst - Data and Analytics 4B",
+        "job_title": "Solution Analyst - Data and Analytics 4B",
+        "company": "Genpact",
+        "location": "1401-G-India: INFOSPACE IT PARK, TOWER -4, JHARSA, Gurgaon",
+        "body": "Solution Analyst - Data and Analytics Ready to turn bold ideas into real-world impact? At Genpact, we don’t just adapt to change, we lead it. AI and digital innovation are transforming the way businesses work, and we’re at the forefront of it. Genpact’s AI Gigafactory , our industry-first accelerator, exemplifies how we scale advanced technology solutions to help global enterprises work smarter, grow faster, and transform at scale. Whether tackling complex challenges through large-scale models or agentic AI , our breakthrough solutions tackle companies’ most complex challenges. If you thrive in a fast-moving, innovation-driven environment, love building and deploying cutting-edge AI solutions, and want to push the boundaries of what’s possible, this is your moment. Genpact (NYSE: G) is an agentic and advanced technology solutions company. We leverage process intelligence and artificial intelligence to deliver measurable outcomes. With a strong partner ecosystem and decades of client trust, we provide innovative solutions that transform how businesses run. Powered by a team with an active learning mindset and client centricity at its core, we deliver lasting value for the world’s leading enterprises. Get to know us at genpact.com and on LinkedIn , YouTube , X , and Facebook . Job Description Responsibilities: Support the design and implementation of business intelligence solutions that meet organizational reporting and analytics needs. Work with stakeholders to gather and docu",
+        "source_text": "Solution Analyst - Data and Analytics Ready to turn bold ideas into real-world impact? At Genpact, we don’t just adapt to change, we lead it. AI and digital innovation are transforming the way businesses work, and we’re at the forefront of it. Genpact’s AI Gigafactory , our industry-first accelerator, exemplifies how we scale advanced technology solutions to help global enterprises work smarter, grow faster, and transform at scale. Whether tackling complex challenges through large-scale models or agentic AI , our breakthrough solutions tackle companies’ most complex challenges. If you thrive in a fast-moving, innovation-driven environment, love building and deploying cutting-edge AI solutions, and want to push the boundaries of what’s possible, this is your moment. Genpact (NYSE: G) is an agentic and advanced technology solutions company. We leverage process intelligence and artificial intelligence to deliver measurable outcomes. With a strong partner ecosystem and decades of client trust, we provide innovative solutions that transform how businesses run. Powered by a team with an active learning mindset and client centricity at its core, we deliver lasting value for the world’s leading enterprises. Get to know us at genpact.com and on LinkedIn , YouTube , X , and Facebook . Job Description Responsibilities: Support the design and implementation of business intelligence solutions that meet organizational reporting and analytics needs. Work with stakeholders to gather and document business requirements for BI and data-related initiatives. Assist in evaluating BI tools and technologies to support solution development. Help build and maintain data models and architecture under guidance from senior architects. Contribute to the development and execution of ETL processes for data integration. Monitor and improve the performance of BI solutions through testing and tuning. Provide day-to-day technical support to BI developers and users. Follow data governance and security guidelines to ensure compliance and data integrity. Stay updated on BI trends and tools to support continuous improvement Qualifications Bachelors - Business Analytics, Bachelors - Computer Science, Bachelors - Statistics, Masters - Data Science Certifications AWS Certified Data Analytics - Specialty - Amazon Web Services (AWS)Amazon Web Services (AWS), Certified Data Management Professional - RiversandRiversand, Microsoft Certified: Azure Data Scientist Associate - MicrosoftMicrosoft Required Skills Business Intelligence (BI), Commercial Credit Underwriting, Commercial Mortgage Lending, Cost Reduction Solutions, Critical Thinking, Database Management, Data Management, Finance Data Strategy, IBM Cognos Analytics, IBM Planning Analytics, IBM TM1, Inclusion, Microsoft Power Business Intelligence (PBI), MicroStrategy, Negotiation, Oracle Business Intelligence Enterprise Edition, Sales, SAP Business Intelligence (SAP BI), Solution Architecture, Strategic Planning, User Experience (UX) Language English (Required) Language Proficiency - Advanced - C1 Additional Job Location - Job Type Regular Master Skill List - Data and Analytics - Solutioning Remote Type - Office Work Shift - Flex Time (India) Why join Genpact? • Lead AI-powered transformation – Drive innovation and solve real-world business challenges that matter • Make an impact – Help global enterprises solve business challenges that matter • Accelerate your career – Gain hands-on experience, mentorship, and world-class learning opportunities to stay ahead • Work with the best – Join 140,000+ bold thinkers and problem-solvers who push boundaries every day • Thrive in a values-driven culture – Our courage, curiosity, and incisiveness - built on a foundation of integrity and inclusion - allow your ideas to fuel progress Come join the 140,000+ coders, tech shapers, and growth makers at Genpact and take your career in the only direction that matters: Up. Let’s build tomorrow together. Genpact is an Equal Opportunity Employer and considers applicants for all positions without regard to race, color, religion or belief, sex, age, national origin, citizenship status, marital status, military/veteran status, genetic information, sexual orientation, gender identity, physical or mental disability or any other characteristic protected by applicable laws. Genpact is committed to creating a dynamic work environment that values respect and integrity, customer focus, and innovation. Furthermore, please do note that Genpact does not charge fees to process job applications and applicants are not required to pay to participate in our hiring process in any other way. Examples of such scams include purchasing a 'starter kit,' paying to apply, or purchasing equipment or training.",
+        "source_emails": [],
+        "href": "https://genpact.wd108.myworkdayjobs.com/External_Careers/job/1401-G-India-INFOSPACE-IT-PARK-TOWER--4-JHARSA-Gurgaon/Solution-Analyst---Data-and-Analytics-4B_JR10031656-1",
+        "application_url": "https://genpact.wd108.myworkdayjobs.com/External_Careers/job/1401-G-India-INFOSPACE-IT-PARK-TOWER--4-JHARSA-Gurgaon/Solution-Analyst---Data-and-Analytics-4B_JR10031656-1",
+        "employment_type": "Full time",
+        "source_type": "direct_apply",
+        "page_fetched": true,
+        "active_listing": true,
+        "source_id": "JR10031656",
+        "source_name": "workday:Genpact",
+        "posted_at": "2026-10-15",
+        "updated_at": "",
+        "date_posted": "2026-10-15",
+        "first_published": "2026-10-15",
+        "date_provenance": "workday.startDate",
+        "valid_through": "2026-11-26",
+        "application_deadline": "2026-11-26",
+        "submission_route": "account_form",
+        "source_attribution": "Official Workday employer board",
+        "first_seen_at": "2026-10-19T19:13:07.538607+00:00",
+        "last_verified_at": "2026-10-19T19:13:07.538607+00:00"
+      },
+      {
+        "title": "Data Analyst 5B",
+        "job_title": "Data Analyst 5B",
+        "company": "Genpact",
+        "location": "1401-G-India: Pegasus 2, Plot A 8A, Noida, UP",
+        "body": "Data Analyst Ready to turn bold ideas into real-world impact? At Genpact, we don’t just adapt to change, we lead it. AI and digital innovation are transforming the way businesses work, and we’re at the forefront of it. Genpact’s AI Gigafactory , our industry-first accelerator, exemplifies how we scale advanced technology solutions to help global enterprises work smarter, grow faster, and transform at scale. Whether tackling complex challenges through large-scale models or agentic AI , our breakthrough solutions tackle companies’ most complex challenges. If you thrive in a fast-moving, innovation-driven environment, love building and deploying cutting-edge AI solutions, and want to push the boundaries of what’s possible, this is your moment. Genpact (NYSE: G) is an agentic and advanced technology solutions company. We leverage process intelligence and artificial intelligence to deliver measurable outcomes. With a strong partner ecosystem and decades of client trust, we provide innovative solutions that transform how businesses run. Powered by a team with an active learning mindset and client centricity at its core, we deliver lasting value for the world’s leading enterprises. Get to know us at genpact.com and on LinkedIn , YouTube , X , and Facebook . Job Description LMS administration work General · Regular daily operation and configuration of LMS. · Knowledge of current technology as it applies to LMS software and systems. · Adhere to policy and procedures to ensure security",
+        "source_text": "Data Analyst Ready to turn bold ideas into real-world impact? At Genpact, we don’t just adapt to change, we lead it. AI and digital innovation are transforming the way businesses work, and we’re at the forefront of it. Genpact’s AI Gigafactory , our industry-first accelerator, exemplifies how we scale advanced technology solutions to help global enterprises work smarter, grow faster, and transform at scale. Whether tackling complex challenges through large-scale models or agentic AI , our breakthrough solutions tackle companies’ most complex challenges. If you thrive in a fast-moving, innovation-driven environment, love building and deploying cutting-edge AI solutions, and want to push the boundaries of what’s possible, this is your moment. Genpact (NYSE: G) is an agentic and advanced technology solutions company. We leverage process intelligence and artificial intelligence to deliver measurable outcomes. With a strong partner ecosystem and decades of client trust, we provide innovative solutions that transform how businesses run. Powered by a team with an active learning mindset and client centricity at its core, we deliver lasting value for the world’s leading enterprises. Get to know us at genpact.com and on LinkedIn , YouTube , X , and Facebook . Job Description LMS administration work General · Regular daily operation and configuration of LMS. · Knowledge of current technology as it applies to LMS software and systems. · Adhere to policy and procedures to ensure security and integrity of the LMS. · Collaborate with the client on training needs and opportunities for the expansion of talent development within the organization. · Manage common mailbox and daily queries of stakeholders · Identify and triage cases to relevant cross functional teams. Respond to L0 questions that can be answered with common response User and Course Management: · Create login credentials and manage permissions. · Manages course enrollment including progress tracking. · Create and manage Learning Objects · Generate assignment, completion, and any other reports · Create and manage training audiences · Troubleshoot common issues related to the LMS · Ensure the LMS is kept updated with courses and materials and archive outdated content. Incident Management · Address access related issues, completion related issues, content related issues, User Interface related issues, troubleshoot and escalate issues that require helpdesk support of the LMS vendor System Upgrades Conduct regular system audits and perform software upgrades to maintain functionality and performance Support and manage migration of content and data from legacy systems Build, configure, test oracle functionalities and work with HRIS team to move it to production Training and Documentation Develop SOPs, user guides, manuals, and conduct training sessions Testing · Testing regular courses / LOs against the pre-defined checklist for functionalities, completion recording, reporting records and scores to user profile. Test case documentation Experience · 3-4 years Qualification · Bachelor’s degree in any field · Minimum of 3 years’ experience as an LMS administrator or in similar position Skill Set Required · Excellent knowledge of LMS and LMS technologies, especially Successfactors · Minimum of 3 years’ experience as an LMS administrator or in similar position · Technical skills including troubleshooting, and understanding of directory, file structures, and systems · Ability to troubleshoot and resolve technical issues · Ability to work independently · Ability to communicate clearly with the client and manage client and stakeholder expectations and requirements Qualifications Bachelors - Business Analytics, Bachelors - Computer Science, Bachelors - Statistics, Masters - Data Science Certifications Certified Data Management Professional - RiversandRiversand, Databricks Certified Associate Developer for Apache Spark 3.0 - Databricks AcademyDatabricks Academy, Databricks Certified Associate Developer for Apache Spark - Databricks AcademyDatabricks Academy, IBM Certified Solution Developer - WebSphere IIS DataStage Enterprise Edition v7.5 - IBMIBM, Oracle Database 12c Administrator Certified Associate - OracleOracle Required Skills Accounts Payable Process, Accounts Payable Process, Accounts Receivable (AR), Aerospace Manufacturing, Agile Methodology, Automotive Manufacturing, Banking Capital Markets, Claims Management, Client Relations, Collaboration Tools, Commercial Excellence, Consumer Electronics, Consumer Packaged Goods (CPG), Design Thinking, Digital Business Strategy, Electronic Hardware, Entertainment Journalism, Executive Presence, Healthcare Payors, Inclusion, Industrial Manufacturing Processes, Insurance, Intelligent Automation (IA), Internet Businesses, Life Science {+ 10 more} Language English Language Proficiency - Proficient - C2 Additional Job Location - Job Type Regular Master Skill List - Data Engineering Remote Type - Office Work Shift - Variable (India) Why join Genpact? • Lead AI-powered transformation – Drive innovation and solve real-world business challenges that matter • Make an impact – Help global enterprises solve business challenges that matter • Accelerate your career – Gain hands-on experience, mentorship, and world-class learning opportunities to stay ahead • Work with the best – Join 140,000+ bold thinkers and problem-solvers who push boundaries every day • Thrive in a values-driven culture – Our courage, curiosity, and incisiveness - built on a foundation of integrity and inclusion - allow your ideas to fuel progress Come join the 140,000+ coders, tech shapers, and growth makers at Genpact and take your career in the only direction that matters: Up. Let’s build tomorrow together. Genpact is an Equal Opportunity Employer and considers applicants for all positions without regard to race, color, religion or belief, sex, age, national origin, citizenship status, marital status, military/veteran status, genetic information, sexual orientation, gender identity, physical or mental disability or any other characteristic protected by applicable laws. Genpact is committed to creating a dynamic work environment that values respect and integrity, customer focus, and innovation. Furthermore, please do note that Genpact does not charge fees to process job applications and applicants are not required to pay to participate in our hiring process in any other way. Examples of such scams include purchasing a 'starter kit,' paying to apply, or purchasing equipment or training.",
+        "source_emails": [],
+        "href": "https://genpact.wd108.myworkdayjobs.com/External_Careers/job/1401-G-India-Pegasus-2-Plot-A-8A-Noida-UP/Data-Analyst-5B_JR10023266",
+        "application_url": "https://genpact.wd108.myworkdayjobs.com/External_Careers/job/1401-G-India-Pegasus-2-Plot-A-8A-Noida-UP/Data-Analyst-5B_JR10023266",
+        "employment_type": "Full time",
+        "source_type": "direct_apply",
+        "page_fetched": true,
+        "active_listing": true,
+        "source_id": "JR10023266",
+        "source_name": "workday:Genpact",
+        "posted_at": "2026-10-15",
+        "updated_at": "",
+        "date_posted": "2026-10-15",
+        "first_published": "2026-10-15",
+        "date_provenance": "workday.startDate",
+        "valid_through": "2026-11-15",
+        "application_deadline": "2026-11-15",
+        "submission_route": "account_form",
+        "source_attribution": "Official Workday employer board",
+        "first_seen_at": "2026-10-19T19:13:07.538607+00:00",
+        "last_verified_at": "2026-10-19T19:13:07.538607+00:00"
+      }
+    ],
+    "classification": "productive",
+    "pick_cursor": 1
   }
 }

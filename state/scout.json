@@ -539,6 +539,78 @@
       "last_seen": "2026-10-14T14:29:03.804672+00:00",
       "alerted": true,
       "alerted_at": "2026-10-14T14:29:10.650255+00:00"
+    },
+    "109e718d514cf991498980a5": {
+      "id": "109e718d514cf991498980a5",
+      "first_seen": "2026-10-19T19:13:19.123029+00:00",
+      "submitted": false,
+      "emailed": false,
+      "job_title": "Associate - Business Analyst",
+      "company": "EXL",
+      "location": "Noida, Uttar Pradesh, India",
+      "application_url": "https://fa-ewjt-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2/job/21648",
+      "fit_score": 80,
+      "warnings": [
+        "Mandatory requirement unverified: basic knowledge of business analysis and strong analytical skills are required, basic knowledge of business analysis and strong analytical skills are required",
+        "Shift undisclosed",
+        "Salary undisclosed",
+        "Experience stretch; internships are not full-time employment"
+      ],
+      "family": "process",
+      "tier": "stretch",
+      "reason": "Relevant evidence-backed match; original posting age is 6.8 hours; Review required: Mandatory requirement evidence is unverified, Mandatory experience requirement exceeds evidenced tenure",
+      "evidence": [
+        "Performed gap assessments and workflow mapping.",
+        "Reduced research turnaround by 20%."
+      ],
+      "source_id": "21648",
+      "source_name": "oracle:EXL",
+      "requirements": {
+        "mandatory": {
+          "met": [],
+          "unmet": [
+            "Minimum 2 years experience"
+          ],
+          "unknown": [
+            "basic knowledge of business analysis and strong analytical skills are required",
+            "basic knowledge of business analysis and strong analytical skills are required"
+          ]
+        },
+        "preferred": {
+          "met": [],
+          "unmet": [],
+          "unknown": []
+        }
+      },
+      "review_required": true,
+      "review_reasons": [
+        "Mandatory requirement evidence is unverified",
+        "Mandatory experience requirement exceeds evidenced tenure"
+      ],
+      "risk_assessment": {
+        "level": "low",
+        "flags": [],
+        "official_corroboration": true,
+        "requires_review": false,
+        "resume_autosend_allowed": true,
+        "note": "Risk signals are deterministic review cues, not a fraud probability or accusation."
+      },
+      "risk_flags": [],
+      "score_breakdown": {
+        "responsibility_alignment": 30,
+        "role_family_evidence": 20,
+        "evidenced_skills": 0,
+        "experience_fit": 10,
+        "location_fit": 10,
+        "freshness": 10,
+        "preferred_requirement_penalty": 0
+      },
+      "score_kind": "deterministic_fit_points_not_probability",
+      "date_posted": "2026-10-19T12:24:41+00:00",
+      "vacancy_reference": "21648",
+      "url": "https://fa-ewjt-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2/job/21648",
+      "apply_url": "https://fa-ewjt-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2/job/21648",
+      "last_seen": "2026-10-19T19:13:19.123029+00:00"
     }
   },
   "sends": {},
@@ -787,5 +859,10 @@
       "attempted": 0,
       "smtp_accepted": 0
     }
-  ]
+  ],
+  "alert_hint_queue": [],
+  "mailbox_alerts": {
+    "uidvalidity": "13",
+    "last_uid": 0
+  }
 }
