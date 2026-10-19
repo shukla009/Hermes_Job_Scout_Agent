@@ -211,6 +211,9 @@ class TestAnalyzePostVerbose:
         scout_agent.client.chat.completions.create.return_value = _mock_llm_response(payload)
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST)
         assert verdict == "ok" and parsed["recruiter_email"] == "hr@realco.io"
+        assert parsed["score_kind"] == "deterministic_fit_points_not_probability"
+        assert "mandatory" in parsed["requirements"]
+        assert "risk_assessment" in parsed
         scout_agent.client.chat.completions.create.assert_not_called()
 
     def test_irrelevant(self, monkeypatch):
@@ -355,6 +358,26 @@ class TestSendEmail:
 # Follow-up scheduling (dead-code regression: must be wired)
 # ---------------------------------------------------------------
 class TestFollowUps:
+    def test_durable_bounce_state_removes_followup_without_mailbox_or_send(self, monkeypatch):
+        record = {"next_send": 0, "message_id": "<original@scout>",
+                  "email": "hr@example.com", "job_id": "job"}
+        saved = []
+        monkeypatch.setattr(scout_agent, "load_follow_up", lambda: [record])
+        monkeypatch.setattr(scout_agent, "save_follow_up", lambda value: saved.append(value))
+        monkeypatch.setattr(scout_agent, "SEND_EMAILS", True)
+        store = MagicMock()
+        store.data = {"jobs": {"job": {"delivery_status": "bounced"}}}
+        monkeypatch.setattr(scout_agent, "ACTIVE_STORE", store)
+        check = MagicMock()
+        send = MagicMock()
+        monkeypatch.setattr(scout_agent, "_mailbox_status", check)
+        monkeypatch.setattr(scout_agent, "send_email", send)
+        result = scout_agent.process_pending_follow_ups()
+        assert result["pending"] == 0 and saved == [[]]
+        check.assert_not_called()
+        send.assert_not_called()
+        store.reserve_send.assert_not_called()
+
     def test_due_first_unavailable_defers(self, monkeypatch):
         records = [{"next_send":4102444800,"message_id":"<future@scout>"}, {"next_send":0,"message_id":"<due@scout>","email":"hr@example.com","job_id":"job"}]
         monkeypatch.setattr(scout_agent, "load_follow_up", lambda: records)

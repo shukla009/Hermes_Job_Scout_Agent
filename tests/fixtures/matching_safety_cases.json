@@ -1,0 +1,184 @@
+[
+  {
+    "name": "mandatory_missing_sas_rejects",
+    "changes": {
+      "description": "Full-time day shift. Research and competitive analysis. 0-2 years experience. SAS is mandatory."
+    },
+    "expected": {
+      "eligible": false,
+      "email_safe": false,
+      "reason_contains": "Mandatory requirement not evidenced",
+      "mandatory_unmet": ["SAS"]
+    }
+  },
+  {
+    "name": "mandatory_list_section_carries_to_bullets",
+    "changes": {
+      "description": "Full-time day shift. Research and competitive analysis. 0-2 years experience.\nRequired skills:\n- SAS\n- Excel\nResponsibilities:\n- Prepare research reports"
+    },
+    "expected": {
+      "eligible": false,
+      "email_safe": false,
+      "reason_contains": "Mandatory requirement not evidenced",
+      "mandatory_unmet": ["SAS"]
+    }
+  },
+  {
+    "name": "preferred_list_section_only_reduces_score",
+    "changes": {
+      "description": "Full-time day shift. Research and competitive analysis. 0-2 years experience.\nPreferred skills:\n* SAS\n* Excel\nResponsibilities:\n- Prepare research reports"
+    },
+    "expected": {
+      "eligible": true,
+      "email_safe": true,
+      "preferred_unmet": ["SAS"],
+      "preferred_penalty": -2
+    }
+  },
+  {
+    "name": "listed_only_mandatory_skill_forces_review",
+    "changes": {
+      "description": "Full-time day shift. Research and competitive analysis. 0-2 years experience. SQL is required."
+    },
+    "expected": {
+      "eligible": true,
+      "email_safe": false,
+      "mandatory_unknown_contains": "SQL",
+      "review_required": true
+    }
+  },
+  {
+    "name": "mandatory_domain_gap_rejects",
+    "changes": {
+      "description": "Full-time day shift. Research and competitive analysis. 0-2 years experience. Banking domain experience is mandatory."
+    },
+    "expected": {
+      "eligible": false,
+      "email_safe": false,
+      "reason_contains": "Mandatory requirement not evidenced",
+      "mandatory_unmet": ["Banking domain"]
+    }
+  },
+  {
+    "name": "evidenced_healthcare_domain_can_pass",
+    "changes": {
+      "description": "Full-time day shift. Research and competitive analysis. 0-2 years experience. Healthcare domain experience is mandatory."
+    },
+    "expected": {
+      "eligible": true,
+      "email_safe": true,
+      "mandatory_met_contains": "Healthcare domain"
+    }
+  },
+  {
+    "name": "mandatory_experience_gap_is_stretch_review",
+    "changes": {
+      "description": "Full-time day shift. Research and competitive analysis. Minimum 1 year of professional experience."
+    },
+    "expected": {
+      "eligible": true,
+      "email_safe": false,
+      "mandatory_unmet_contains": "Minimum 1 years experience",
+      "review_required": true
+    }
+  },
+  {
+    "name": "unparsed_mandatory_technical_requirement_is_visible",
+    "changes": {
+      "description": "Full-time day shift. Research and competitive analysis. 0-2 years experience. Proficiency in the proprietary CRM is required."
+    },
+    "expected": {
+      "eligible": true,
+      "email_safe": false,
+      "mandatory_unknown_contains": "proprietary crm",
+      "review_required": true
+    }
+  },
+  {
+    "name": "preferred_gap_only_reduces_points",
+    "changes": {
+      "description": "Full-time day shift. Research and competitive analysis. 0-2 years experience. SAS preferred."
+    },
+    "expected": {
+      "eligible": true,
+      "email_safe": true,
+      "preferred_unmet": ["SAS"],
+      "preferred_penalty": -2
+    }
+  },
+  {
+    "name": "candidate_fee_request_is_critical",
+    "changes": {
+      "description": "Full-time day shift. Research and competitive analysis. 0-2 years experience. Pay a registration fee before interview."
+    },
+    "expected": {
+      "eligible": true,
+      "email_safe": false,
+      "risk_level": "critical",
+      "risk_codes": ["fee_or_deposit_request"]
+    }
+  },
+  {
+    "name": "shortened_application_link_needs_corroboration",
+    "changes": {
+      "application_url": "https://bit.ly/example-role"
+    },
+    "expected": {
+      "eligible": true,
+      "email_safe": false,
+      "risk_level": "high",
+      "risk_codes": ["shortened_application_url"]
+    }
+  },
+  {
+    "name": "explicit_corroboration_can_clear_noncritical_link_risk",
+    "changes": {
+      "application_url": "https://bit.ly/example-role",
+      "official_corroborated": true
+    },
+    "expected": {
+      "eligible": true,
+      "email_safe": true,
+      "risk_level": "high",
+      "risk_codes": ["shortened_application_url"],
+      "official_corroboration": true
+    }
+  },
+  {
+    "name": "free_mail_is_review_signal_not_fraud_label",
+    "changes": {
+      "source_emails": ["recruiter@gmail.com"]
+    },
+    "expected": {
+      "eligible": true,
+      "email_safe": false,
+      "risk_level": "review",
+      "risk_codes": ["free_mail_contact"]
+    }
+  },
+  {
+    "name": "lookalike_domain_is_high_risk",
+    "changes": {
+      "application_url": "https://accentur-careers.com/jobs/analyst",
+      "official_url": "https://www.accenture.com/careers"
+    },
+    "expected": {
+      "eligible": true,
+      "email_safe": false,
+      "risk_level": "high",
+      "risk_codes": ["lookalike_application_domain"]
+    }
+  },
+  {
+    "name": "protective_no_fee_notice_is_not_a_risk",
+    "changes": {
+      "description": "Full-time day shift. Research and competitive analysis. 0-2 years experience. We do not charge any application fee."
+    },
+    "expected": {
+      "eligible": true,
+      "email_safe": true,
+      "risk_level": "low",
+      "risk_codes": []
+    }
+  }
+]

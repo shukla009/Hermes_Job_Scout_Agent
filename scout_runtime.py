@@ -63,8 +63,28 @@ def _weekly(agent, store, notify):
     if not notify or store.data.get("reported_week") == week:
         return
     metrics = store.weekly_metrics()
-    if agent.send_telegram("📊 <b>Job Scout — last 7 days</b>\n" + "\n".join(
-            f"{html.escape(k.replace('_', ' ').title())}: {v}" for k, v in metrics.items())):
+    cohorts = store.conversion_cohorts(30)
+    def strongest(rows):
+        usable = [(name, counts) for name, counts in rows.items() if name != "unknown"] or list(rows.items())
+        return max(usable, key=lambda row: (
+            row[1]["interviews"], row[1]["replies"], row[1]["submitted"],
+            row[1]["emailed"], row[1]["alerted"], row[1]["discovered"], row[0]
+        ), default=None)
+    additions = []
+    for label, rows in (("Top 30-day source", cohorts["sources"]), ("Top 30-day role family", cohorts["families"])):
+        row = strongest(rows)
+        if row:
+            name, counts = row
+            additions.append(
+                f"{label}: {html.escape(name)} — found {counts['discovered']}, "
+                f"applied {counts['submitted']}, replies {counts['replies']}, interviews {counts['interviews']}"
+            )
+    message = "📊 <b>Job Scout — last 7 days</b>\n" + "\n".join(
+        f"{html.escape(k.replace('_', ' ').title())}: {v}" for k, v in metrics.items()
+    )
+    if additions:
+        message += "\n\n" + "\n".join(additions)
+    if agent.send_telegram(message):
         store.data["reported_week"] = week
         store.save()
 
@@ -88,6 +108,9 @@ def run(agent, *, dry_run=False, notify=True):
               "queries_successful": 0, "source_stats": {}, "rejection_reasons": {},
               "dry_run": dry_run, "follow_ups": {"sent": 0, "failed": 0, "pending": 0}}
     report["outreach"] = {"smtp": "not_checked", "status": "discovery_pending"}
+    report["reply_monitor"] = {"status": "not_checked", "checked": 0,
+                               "new_human_replies": 0, "auto_replies": 0,
+                               "out_of_office": 0, "bounces": 0, "ambiguous": 0}
     writer = GitHubWriter(token=token, repo=os.getenv("GITHUB_REPOSITORY", "")) if cloud and not dry_run else None
     budget = RuntimeBudget(max_requests=120, deadline_seconds=420)
     agent.ACTIVE_BUDGET = budget
@@ -133,6 +156,12 @@ def run(agent, *, dry_run=False, notify=True):
     if store and cloud and not dry_run:
         completed = store.data.get("shadow_runs_completed", 0)
         shadow = completed < int(os.getenv("SCOUT_SHADOW_RUNS", "3"))
+    if store and safe_state and not dry_run:
+        from scout_mail import monitor_replies
+        report["reply_monitor"] = monitor_replies(agent, store, max_messages=100)
+        if report["reply_monitor"]["status"] == "state_error":
+            safe_state = False
+            report["status"] = "state_safety_stop"
     outbound = safe_state and agent.SEND_EMAILS and not dry_run and not shadow
     if outbound and not reconcile_pending(agent, store):
         outbound = False
@@ -199,6 +228,11 @@ def run(agent, *, dry_run=False, notify=True):
             candidates.append((analysis, enriched, verdict))
             continue
         record = store.upsert_job(analysis, enriched)
+        contact_evidence = enriched.get("recruitment_contact_evidence")
+        if contact_evidence:
+            # Preserve the exact bounded public-page excerpt that authorised
+            # outreach.  This is audit evidence, not a guessed contact source.
+            record["recruitment_contact_evidence"] = contact_evidence[:3]
         analysis["job_id"] = record["id"]
         if record.get("submitted") or record.get("emailed") or record.get("outcome"):
             report["duplicates"] += 1
@@ -293,6 +327,7 @@ def run(agent, *, dry_run=False, notify=True):
         store.data["last_run"] = {k: report[k] for k in ("status", "results_discovered", "relevant_apply_leads", "alerts_sent", "emails_accepted_by_smtp", "shadow_run")}
         store.data["last_run"]["at"] = datetime.now(timezone.utc).isoformat()
         store.data["last_run"]["outreach"] = report["outreach"]
+        store.data["last_run"]["reply_monitor"] = report["reply_monitor"]
         outreach_log = store.data.setdefault("outreach_runs", [])
         outreach_log.append({"at": store.data["last_run"]["at"], **report["outreach"],
                              "eligible_email_leads": report["relevant_email_leads"],
@@ -312,6 +347,10 @@ def run(agent, *, dry_run=False, notify=True):
                 "Email status: " + html.escape(report["outreach"]["status"].replace("_", " ")) + "\n" +
                 ("Outreach is in validation mode; no emails sent.\n" if shadow else "") +
                 "Top exclusions: " + html.escape("; ".join(f"{k}: {v}" for k, v in reasons.most_common(3)) or "none"))
+        if report["reply_monitor"]["new_human_replies"]:
+            agent.send_telegram("💬 <b>Recruiter reply detected</b>\n" +
+                str(report["reply_monitor"]["new_human_replies"]) +
+                " exact-thread human reply(s) found. Check your Gmail inbox; no automatic reply was sent.")
         if store:
             _weekly(agent, store, notify)
     return report

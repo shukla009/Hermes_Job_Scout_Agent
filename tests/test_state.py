@@ -81,10 +81,15 @@ def test_callback_signature_size_and_validation():
 
 def test_provided_id_application_url_and_metadata(tmp_path):
     state = store(tmp_path)
-    record = state.upsert_job({"job_id": "b" * 24, "application_url": "https://c/apply", "family": "research", "source_text": "private raw content"})
+    record = state.upsert_job({"job_id": "b" * 24, "application_url": "https://c/apply", "family": "research",
+                               "requirements": {"mandatory": {"unknown": ["CRM"]}},
+                               "risk_flags": [{"code": "free_mail_contact", "severity": "review"}],
+                               "source_text": "private raw content"})
     assert record["id"] == "b" * 24
     assert record["apply_url"] == "https://c/apply"
     assert record["family"] == "research"
+    assert record["requirements"]["mandatory"]["unknown"] == ["CRM"]
+    assert record["risk_flags"][0]["code"] == "free_mail_contact"
     assert "source_text" not in record
 
 
@@ -109,3 +114,30 @@ def test_initial_accepted_populates_recipient(tmp_path):
     intent = state.reserve_send(ident, "HR@example.org")
     assert state.finish_send(intent["id"], "accepted")
     assert state.data["jobs"][ident]["email"] == "hr@example.org"
+
+
+def test_durable_bounce_suppression_blocks_future_jobs(tmp_path):
+    state = store(tmp_path)
+    first = state.upsert_job({"url": "https://c/1"})["id"]
+    second = state.upsert_job({"url": "https://c/2"})["id"]
+    state.data.setdefault("suppressed_recipients", {})["hr@example.org"] = {
+        "reason": "bounce", "detected_at": "2026-10-18T00:00:00+00:00"
+    }
+    assert state.reserve_send(first, "hr@example.org") is None
+    assert state.reserve_send(second, "HR@EXAMPLE.ORG") is None
+
+
+def test_conversion_cohorts_are_counts_grouped_by_source_and_family(tmp_path):
+    state = store(tmp_path)
+    first = state.upsert_job({"url": "https://c/1", "source_id": "job-1", "source_name": "greenhouse:Acme", "family": "research"})
+    second = state.upsert_job({"url": "https://c/2", "source_id": "job-2", "source_name": "greenhouse:Acme", "family": "data"})
+    first.update(alerted=True, emailed=True, outcome="reply")
+    second.update(submitted=True, outcome="interview")
+
+    cohorts = state.conversion_cohorts()
+    assert cohorts["sources"]["greenhouse:Acme"] == {
+        "discovered": 2, "alerted": 1, "emailed": 1, "submitted": 1,
+        "replies": 1, "interviews": 1, "rejected": 0,
+    }
+    assert cohorts["families"]["research"]["replies"] == 1
+    assert cohorts["families"]["data"]["interviews"] == 1

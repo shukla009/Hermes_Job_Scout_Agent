@@ -120,7 +120,7 @@ class StateStore:
         if record.get("archived"):
             record["last_seen"] = now
             return record
-        for key in ("job_title", "title", "company", "location", "application_url", "apply_url", "url", "score", "fit_score", "fit_reason", "stretch", "email", "warnings", "family", "tier", "reason", "evidence", "source_id"):
+        for key in ("job_title", "title", "company", "location", "application_url", "apply_url", "url", "score", "fit_score", "fit_reason", "stretch", "email", "warnings", "family", "tier", "reason", "evidence", "source_id", "source_name", "requirements", "review_required", "review_reasons", "risk_assessment", "risk_flags", "score_breakdown", "score_kind"):
             if key in analysis:
                 record[key] = analysis[key]
         if post:
@@ -155,6 +155,36 @@ class StateStore:
                 "emailed": sum(j.get("emailed_at", "") >= cutoff for j in jobs),
                 "replies": sum(j.get("outcome") == "reply" and j.get("outcome_at", "") >= cutoff for j in jobs),
                 "interviews": sum(j.get("outcome") == "interview" and j.get("outcome_at", "") >= cutoff for j in jobs)}
+
+    def conversion_cohorts(self, days=30):
+        """Return explainable source/family funnel counts for recently found jobs.
+
+        This intentionally reports counts, not misleading conversion probabilities.
+        A job belongs to the cohort selected by its first-seen timestamp; later
+        outcomes remain attached to that job so the funnel can mature over time.
+        """
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        stages = ("discovered", "alerted", "emailed", "submitted", "replies", "interviews", "rejected")
+
+        def empty():
+            return {stage: 0 for stage in stages}
+
+        cohorts = {"sources": {}, "families": {}}
+        for job in self.data["jobs"].values():
+            if job.get("first_seen", "") < cutoff:
+                continue
+            source = str(job.get("source_name") or "unknown")[:80]
+            family = str(job.get("family") or "unknown")[:80]
+            for bucket, key in (("sources", source), ("families", family)):
+                counts = cohorts[bucket].setdefault(key, empty())
+                counts["discovered"] += 1
+                counts["alerted"] += int(bool(job.get("alerted")))
+                counts["emailed"] += int(bool(job.get("emailed")))
+                counts["submitted"] += int(bool(job.get("submitted")))
+                counts["replies"] += int(job.get("outcome") == "reply")
+                counts["interviews"] += int(job.get("outcome") == "interview")
+                counts["rejected"] += int(job.get("outcome") in ("rejected", "notfit"))
+        return cohorts
 
     def can_alert(self, ident, stretch=False):
         record = self.data["jobs"].get(ident, {})
@@ -212,6 +242,8 @@ class StateStore:
         recipient = recipient.strip().lower()
         intent_id = hashlib.sha256(f"{ident}|{recipient}|{step}".encode()).hexdigest()[:32]
         record = self.data["jobs"].get(ident, {})
+        if recipient in self.data.get("suppressed_recipients", {}):
+            return None
         if not record or record.get("outcome") in ("notfit", "rejected", "reply", "interview") or record.get("submitted"):
             return None
         if intent_id in self.data["sends"] or (step == "initial" and self.known_emailed(ident)):

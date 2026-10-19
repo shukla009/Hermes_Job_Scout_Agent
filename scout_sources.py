@@ -11,6 +11,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 ROLE = re.compile(r"analyst|research|intelligence|insights|reporting|\bmis\b|business intelligence|data (?:quality|operations)|power bi", re.I)
 SENIOR = re.compile(r"\b(?:senior|sr|manager|director|principal|head|internship)\b", re.I)
+POLL_SECONDS = {'high': 0, 'medium': 86400, 'low': 86400}
+MAX_WATCHLIST_POLLS_PER_RUN = 6
 
 def safe_url(url):
     try:
@@ -35,6 +37,47 @@ def text(value):
 def suitable(title):
     return bool(ROLE.search(title or '')) and not SENIOR.search(title or '')
 
+def _is_watchlist(entry):
+    """True only for known generic pages that do not expose vacancy records."""
+    return entry.get('source_mode')=='watchlist'
+
+def _iso_timestamp(value):
+    if isinstance(value,(int,float)):
+        # The public feeds used here publish Unix seconds. Tolerate milliseconds
+        # without passing a non-ISO value into the strict freshness gate.
+        seconds=value/1000 if value>100000000000 else value
+        try: return datetime.fromtimestamp(seconds,timezone.utc).isoformat()
+        except (ValueError,OverflowError,OSError): return ''
+    return str(value or '')
+
+def _employment_label(value):
+    if isinstance(value,dict):
+        return str(value.get('name') or value.get('label') or value.get('value') or '')
+    if isinstance(value,list): return '; '.join(filter(None,(_employment_label(v) for v in value)))
+    return str(value or '')
+
+def _himalayas_location(job):
+    restrictions=job.get('locationRestrictions') or []
+    restrictions=[restrictions] if isinstance(restrictions,(str,dict)) else restrictions
+    names=[]
+    for value in restrictions:
+        if isinstance(value,dict): value=value.get('name') or value.get('country') or value.get('region') or ''
+        if value: names.append(str(value).strip())
+    allowed=r'\b(?:india|worldwide|anywhere|global|asia|apac|south asia)\b'
+    if names and not any(re.search(allowed,name,re.I) for name in names): return ''
+    offsets=job.get('timezoneRestrictions') or []
+    offsets=[offsets] if isinstance(offsets,(int,float,str)) else offsets
+    numeric=[]
+    for offset in offsets:
+        try: numeric.append(float(offset))
+        except (TypeError,ValueError): pass
+    # IST is UTC+05:30. An explicit incompatible timezone restriction would
+    # turn a nominally remote role into a night-shift or unusable vacancy.
+    if numeric and not any(4.5<=offset<=6.5 for offset in numeric): return ''
+    if not names: return 'Remote; Worldwide'
+    if any(re.search(r'\bindia\b',name,re.I) for name in names): return 'Remote; India'
+    return 'Remote; '+', '.join(names[:5])
+
 def post(e, title, location, description, url, identity, posted='', updated='', employment=''):
     if not safe_url(url) or not identity or not title:
         return None
@@ -44,7 +87,8 @@ def post(e, title, location, description, url, identity, posted='', updated='', 
     return dict(title=title, job_title=title, company=e['name'], location=location,
                 body=content[:1500], source_text=content, source_emails=re.findall(r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}', content),
                 href=url, application_url=url, employment_type=employment, source_type='direct_apply',
-                page_fetched=True, active_listing=True, source_id=str(identity), posted_at=posted,
+                page_fetched=True, active_listing=True, source_id=str(identity),
+                source_name=e.get('source_name') or f"{e.get('ats', 'html')}:{e['name']}", posted_at=posted,
                 updated_at=updated, date_posted=posted)
 
 class Page(HTMLParser):
@@ -130,7 +174,7 @@ def _jsonld(content, base, e, now):
     return jobs,page.links
 
 def _fetch(e, get, now, cursor=0):
-    jobs=[]; raw=0; incomplete=False; next_cursor=0
+    jobs=[]; raw=0; incomplete=False; next_cursor=0; metrics={}
     ats=e.get('ats','html'); slug=quote(e.get('slug',''),safe='')
     def add(*args,**kwargs):
         item=post(e,*args,**kwargs)
@@ -140,7 +184,39 @@ def _fetch(e, get, now, cursor=0):
         if not isinstance(data,dict) or not isinstance(data.get('jobs'),list): raise ValueError('schema_changed')
         raw=len(data['jobs'])
         for x in data['jobs']:
-            if suitable(x.get('title')): add(x['title'],(x.get('location') or {}).get('name',''),x.get('content',''),x.get('absolute_url',''),x.get('id'),updated=x.get('updated_at',''))
+            if not suitable(x.get('title')): continue
+            location=(x.get('location') or {}).get('name','')
+            candidate=post(e,x['title'],location,x.get('content',''),x.get('absolute_url',''),x.get('id'),
+                           x.get('first_published',''),x.get('updated_at',''),_employment_label(x.get('employment')))
+            if not candidate: continue
+            detail=x
+            if not x.get('first_published'):
+                if metrics.get('detail_requests',0)>=int(e.get('detail_limit',8)):
+                    metrics['detail_truncated']=True
+                else:
+                    metrics['detail_requests']=metrics.get('detail_requests',0)+1
+                    try:
+                        fetched=get(f'https://boards-api.greenhouse.io/v1/boards/{slug}/jobs/{quote(str(x.get("id","")),safe="")}',timeout=20).json()
+                        if isinstance(fetched,dict) and str(fetched.get('id'))==str(x.get('id')): detail=fetched
+                        else: metrics['detail_errors']=metrics.get('detail_errors',0)+1
+                    except Exception:
+                        # A detail failure leaves the job date unknown, so the
+                        # downstream policy permits review but never auto-email.
+                        metrics['detail_errors']=metrics.get('detail_errors',0)+1
+            published=detail.get('first_published') or x.get('first_published') or ''
+            deadline=detail.get('application_deadline') or x.get('application_deadline') or ''
+            if detail is not x:
+                enriched=post(e,detail.get('title') or x['title'],(detail.get('location') or {}).get('name',location),
+                              detail.get('content') or x.get('content',''),detail.get('absolute_url') or x.get('absolute_url',''),
+                              detail.get('id') or x.get('id'),published,detail.get('updated_at') or x.get('updated_at',''),
+                              _employment_label(detail.get('employment') or x.get('employment')))
+                if enriched: candidate=enriched
+            candidate['first_published']=published
+            candidate['posted_at']=published
+            candidate['date_posted']=published
+            candidate['application_deadline']=deadline
+            if deadline: candidate['valid_through']=deadline
+            jobs.append(candidate)
     elif ats=='lever':
         # Descriptions on large employer boards exceed the public response-size
         # cap at 100 jobs. Smaller pages preserve that safety cap and advance
@@ -191,6 +267,46 @@ def _fetch(e, get, now, cursor=0):
                 else:
                     content=get(url,timeout=20).text if safe_url(url) else ''
                     found,_=_jsonld(content,url,e,now); jobs.extend(found)
+    elif ats=='himalayas':
+        max_pages=max(1,min(2,int(e.get('max_pages',2))))
+        page_cursor=''
+        for page_number in range(max_pages):
+            params={'limit':20}
+            if page_cursor: params['cursor']=page_cursor
+            data=get('https://himalayas.app/jobs/api',params=params,timeout=20).json()
+            if not isinstance(data,dict) or not isinstance(data.get('jobs'),list): raise ValueError('schema_changed')
+            raw+=len(data['jobs']); metrics['pages']=page_number+1
+            for x in data['jobs']:
+                title=x.get('title',''); employment=_employment_label(x.get('employmentType'))
+                if not suitable(title) or not re.search(r'\bfull[ -]?time\b',employment,re.I): continue
+                if re.search(r'\b(?:contract|temporary|freelance|intern(?:ship)?)\b',employment,re.I): continue
+                location=_himalayas_location(x)
+                application=x.get('applicationLink','')
+                if not location or not safe_url(application): continue
+                published=_iso_timestamp(x.get('pubDate'))
+                expiry=_iso_timestamp(x.get('expiryDate'))
+                try:
+                    expires=datetime.fromisoformat(expiry.replace('Z','+00:00')) if expiry else None
+                    if expires and (expires if expires.tzinfo else expires.replace(tzinfo=timezone.utc))<now: continue
+                except ValueError: pass
+                dynamic=dict(e,name=str(x.get('companyName') or 'Unknown employer'),
+                             source_name=f"{e.get('ats', 'himalayas')}:{e['name']}")
+                item=post(dynamic,title,location,x.get('description') or x.get('excerpt',''),application,
+                          x.get('guid') or application,published,employment=employment)
+                if not item: continue
+                item.update(discovery_source='Himalayas',source_attribution='Himalayas public API',
+                            source_listing_url=x.get('guid') if safe_url(x.get('guid','')) else application,
+                            first_published=published,application_deadline=expiry,valid_through=expiry,
+                            timezone_restrictions=x.get('timezoneRestrictions') or [],
+                            salary_metadata={'min':x.get('minSalary'),'max':x.get('maxSalary'),
+                                             'currency':x.get('currency'),'period':x.get('salaryPeriod')})
+                jobs.append(item)
+            page_cursor=str(data.get('nextCursor') or '')
+            if not page_cursor or not data['jobs']: break
+        # Always restart from the newest page at the next poll. This prevents
+        # a backlog cursor from hiding new jobs inside the 48-hour window.
+        incomplete=bool(page_cursor)
+        next_cursor=0
     else:
         base=e.get('careers_url','')
         if not safe_url(base): raise ValueError('unsafe_source_url')
@@ -212,7 +328,9 @@ def _fetch(e, get, now, cursor=0):
             for url in candidates[cursor:cursor+5]:
                 found,_=_jsonld(get(url,timeout=20).text,url,e,now); jobs.extend(found)
             incomplete=cursor+5<len(candidates); next_cursor=cursor+5 if incomplete else 0
-    return jobs,dict(status='ok' if jobs or ats in ('greenhouse','lever','smartrecruiters','ashby','workable','xml') else 'link_only',raw_listings=raw,leads=len(jobs),incomplete=incomplete),next_cursor
+    status=dict(status='ok' if jobs or ats in ('greenhouse','lever','smartrecruiters','ashby','workable','himalayas','xml') else 'link_only',raw_listings=raw,leads=len(jobs),incomplete=incomplete)
+    status.update(metrics)
+    return jobs,status,next_cursor
 
 def discover_sources(registry, request_fn, prior_state=None, now=None, max_candidates=80):
     """Return jobs, per-source diagnostics and JSON-serializable polling/cursor state.
@@ -223,11 +341,23 @@ def discover_sources(registry, request_fn, prior_state=None, now=None, max_candi
     now=now or datetime.now(timezone.utc)
     if now.tzinfo is None: now=now.replace(tzinfo=timezone.utc)
     prior_state=prior_state or {}; state=dict(prior_state); stats={}; groups=[]
+    def poll_age(key,period):
+        try: return (now-datetime.fromisoformat(prior_state.get(key,{}).get('last_poll',''))).total_seconds()
+        except (ValueError,TypeError): return period
+    watchlist_due=[]
+    for e in registry:
+        if e.get('polling_tier','medium')!='low' or not _is_watchlist(e): continue
+        key=f'{e.get("ats","html")}:{e["name"]}'
+        if poll_age(key,POLL_SECONDS['low'])>=POLL_SECONDS['low']:
+            watchlist_due.append((prior_state.get(key,{}).get('last_poll',''),key))
+    watchlist_allowed={key for _,key in sorted(watchlist_due)[:MAX_WATCHLIST_POLLS_PER_RUN]}
     def fetch_entry(e):
         key=f'{e.get("ats","html")}:{e["name"]}'; old=prior_state.get(key,{})
-        period={'high':0,'medium':86400,'low':604800}.get(e.get('polling_tier','medium'),86400)
-        try: age=(now-datetime.fromisoformat(old.get('last_poll',''))).total_seconds()
-        except (ValueError,TypeError): age=period
+        tier=e.get('polling_tier','medium'); period=POLL_SECONDS.get(tier,POLL_SECONDS['medium'])
+        age=poll_age(key,period)
+        if _is_watchlist(e) and age>=period and key not in watchlist_allowed:
+            cached=[dict(job,needs_reverification=True) for job in old.get('jobs',[])]
+            return key,cached,{'status':'watchlist_rotated','leads':len(cached)},old
         if age<period:
             cached=[dict(job, needs_reverification=True) for job in old.get('jobs',[])]
             return key,cached,{'status':'cached','leads':len(cached)},old
@@ -250,7 +380,11 @@ def discover_sources(registry, request_fn, prior_state=None, now=None, max_candi
                     x['needs_reverification']=True
             return key,found,status,{'last_poll':now.isoformat(),'cursor':cursor,'jobs':found}
         except Exception as exc:
-            return key,[],{'status':'error','leads':0,'error':type(exc).__name__},old
+            # Persist an attempt timestamp even on failure. Otherwise an
+            # unavailable low-value page is retried on every scheduled run.
+            failed=dict(old,last_poll=now.isoformat(),last_error=type(exc).__name__)
+            cached=[dict(job,needs_reverification=True) for job in old.get('jobs',[])]
+            return key,cached,{'status':'error','leads':len(cached),'error':type(exc).__name__},failed
     # map preserves registry order despite parallel I/O, so shortlists remain deterministic.
     with ThreadPoolExecutor(max_workers=min(6,max(1,len(registry)))) as pool:
         for key,found,status,entry in pool.map(fetch_entry,registry):

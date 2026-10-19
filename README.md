@@ -9,6 +9,8 @@ an application or an interview: those outcomes are tracked separately.
 - Scheduled runs: approximately **08:17, 14:37 and 20:23 IST**. GitHub schedules can be delayed.
 - Read public official job listings and opted-in alerts, within request/time limits.
 - Match duties, mandatory requirements and résumé evidence—not title keywords alone.
+- Separate mandatory and preferred requirements: unsupported mandatory skills can reject a job,
+  uncertain requirements are labelled for review, and preferred gaps only reduce fit points.
 - Reject field-sales/acquisition work even when its title contains “market intelligence”.
 - Include dashboard, data-validation, research-executive and business-process title variants.
 - New-job alerts require freshness evidence within 48 hours. Older dated jobs are rejected;
@@ -38,13 +40,18 @@ is the attachment, not an instruction source.
 
 ## Where jobs come from
 
-- A 30-employer registry prioritises NCR research, consulting, analytics-services and GCC employers.
+- A 31-source registry prioritises NCR research, consulting, analytics-services and GCC employers.
 - Public Greenhouse, Lever, SmartRecruiters, Ashby and Workable interfaces are supported when employers actually use them.
+- Greenhouse detail records are checked only for shortlisted jobs whose list response lacks an
+  original publication date; this preserves the strict 48-hour rule without excessive requests.
+- Himalayas' public remote-jobs API is polled in a small cached window. Only permanent full-time
+  roles open to India/worldwide/APAC and compatible with IST continue to matching.
 - Official career-page structured data and readable listing links supplement those feeds.
 - Oracle/Workday career pages are monitored through their public pages; no private or reverse-engineered login API is used.
 - Registry membership **does not mean every employer is currently readable or has a suitable vacancy**.
 - JavaScript-only, blocked or changed pages are reported as unreadable/link-only; they do not produce invented jobs.
-- Source outcomes and cursors are recorded so polling can be rotated without allowing one large board to dominate.
+- Productive public feeds are checked often enough for the 48-hour window. Low-yield generic
+  pages rotate in bounded six-source batches and failed pages cool down instead of being hammered.
 - Optional job-alert ingestion uses only a dedicated Gmail label, `HermesJobAlerts`, not unrelated inbox messages.
 - Paid-model and paid-search integrations are **off by default**. Public discovery and deterministic matching do not depend on them.
 - Naukri remains excluded. No authenticated job-board scraping, CAPTCHA solving, proxies or guessed recruiter addresses.
@@ -84,6 +91,12 @@ Scheduled discovery and outgoing Telegram alerts do not depend on that Worker to
 - Candidate, placeholder, no-reply, suppressed and recently contacted addresses are rejected.
 - A durable pending-send record is saved before SMTP. Uncertain sends are not blindly resent.
 - Replies, bounces and confirmed outcomes stop inappropriate follow-ups.
+- One bounded read-only inbox scan classifies exact-thread human replies, out-of-office messages,
+  auto-acknowledgements, bounces and ambiguous senders. Only an exact sender-and-thread human
+  reply changes the recorded outcome; the agent never replies automatically.
+- Payment/deposit, paid-equipment or training, credential requests, shortened/lookalike links,
+  free-mail contacts and unidentified agencies are surfaced as review signals. Critical risks
+  always block automatic résumé sending; free-mail alone is never labelled as fraud.
 - Mailbox or persistence errors stop unsafe outreach while discovery may continue.
 - The agent generates only truthful role-specific proof points from the candidate profile.
 
@@ -92,13 +105,16 @@ Scheduled discovery and outgoing Telegram alerts do not depend on that Worker to
 - Standard GitHub-hosted Ubuntu runners; no always-on personal device.
 - Existing Gmail, Telegram and Cloudflare Free services; no new database or paid hosting.
 - Bounded HTTP requests, concurrency, retries and runtime; no automatic paid fallback.
+- Full regression tests run on code pushes and pull requests. Scheduled scouting uses a fast
+  compile/import integrity check, avoiding repeated test-minute spend on unchanged code.
 - Quota exhaustion reduces coverage or pauses execution instead of upgrading a service.
 - GitHub's Actions budget was verified at **$0 with stop usage enabled on 11 October 2026**. Included usage is shared across the account; other workflows may exhaust it.
 - Keep that billing stop enabled and do not upgrade Cloudflare or optional APIs automatically.
 
 Free operation cannot guarantee a daily supply of matching jobs or interviews.
 Measure relevance, confirmed submissions, replies and interview invitations—not
-just discovered counts or green workflow badges.
+just discovered counts or green workflow badges. The weekly Telegram report now includes
+30-day source and role-family funnel counts so low-yield coverage can be tuned using outcomes.
 
 ## Development checks
 

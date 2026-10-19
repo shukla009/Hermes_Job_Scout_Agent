@@ -36,8 +36,12 @@ jobs:
         run: |
           python -m pip install -r requirements.txt
 
-      - name: Run Tests
-        run: python -m pytest tests -q
+      # Push/PR CI runs the complete Python and Worker regression suites.
+      # Scheduled runs only need a fast integrity check, preserving free minutes.
+      - name: Verify Runtime Imports
+        run: |
+          python -m compileall -q scout_agent.py scout_mail.py scout_matching.py scout_persistence.py scout_runtime.py scout_sources.py scout_state.py
+          python -c "import scout_agent, scout_mail, scout_matching, scout_persistence, scout_runtime, scout_sources, scout_state"
 
       - name: Run Job Scout Agent
         env:

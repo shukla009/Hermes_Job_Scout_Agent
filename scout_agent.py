@@ -739,17 +739,29 @@ def analyze_post_verbose(post, max_retries=3):
         checked["email_safe"] = False
         contacts = []
     source_emails = [x for x in contacts if _valid_recruiter_email(x)]
+    review_suffix = (
+        "; Review required: " + ", ".join(checked.get("review_reasons", [])[:2])
+        if checked.get("review_required") else ""
+    )
     result = {
         "is_relevant": True, "job_title": post.get("job_title") or post.get("title", ""),
         "company": post.get("company", ""), "location": post.get("location", ""),
         "application_url": post.get("application_url") or post.get("href", ""),
         "recruiter_email": source_emails[0] if source_emails else None,
-        "reason": checked["reason"] + "; " + freshness_reason,
+        "reason": checked["reason"] + "; " + freshness_reason + review_suffix,
         "fit_score": checked["score"], "family": checked["family"],
         "tier": checked["tier"], "warnings": checked["warnings"],
         "evidence": checked["evidence"], "email_safe": checked["email_safe"],
         "source_id": post.get("source_id", ""),
+        "source_name": post.get("source_name", ""),
         "matched_skills": checked["matched_skills"],
+        "requirements": checked.get("requirements", {}),
+        "review_required": checked.get("review_required", False),
+        "review_reasons": checked.get("review_reasons", []),
+        "risk_assessment": checked.get("risk_assessment", {}),
+        "risk_flags": checked.get("risk_flags", []),
+        "score_breakdown": checked.get("score_breakdown", {}),
+        "score_kind": checked.get("score_kind", "deterministic_fit_points_not_probability"),
     }
     result["job_id"] = _job_fingerprint({"href": result["application_url"], "job_title": result["job_title"], "company": result["company"]})
     return result, "ok" if result["recruiter_email"] else "apply"
@@ -826,7 +838,8 @@ def process_pending_follow_ups(max_sends=None):
             updated.append(record)
             continue
         job = ACTIVE_STORE.data.get("jobs", {}).get(record.get("job_id", ""), {}) if hasattr(ACTIVE_STORE, "data") else {}
-        if job.get("outcome") in {"notfit", "rejected", "reply", "interview"} or job.get("submitted"):
+        if (job.get("outcome") in {"notfit", "rejected", "reply", "interview"}
+                or job.get("submitted") or job.get("delivery_status") == "bounced"):
             continue
         checked += 1
         mailbox_status = _mailbox_status(record)
