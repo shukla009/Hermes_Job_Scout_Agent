@@ -554,7 +554,7 @@ class TestReliabilityFallbacks:
         monkeypatch.setattr(scout_agent, "client", None)
         written, status = scout_agent.compose_email({}, {"job_title": "Data Analyst", "company": "Acme"})
         assert status == "fallback"
-        assert "attached my resume" in written["email_body"]
+        assert "My resume is attached" in written["email_body"]
         assert "6.5" not in written["email_body"]
 
     def test_recipient_cooldown(self):

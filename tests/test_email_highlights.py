@@ -18,14 +18,14 @@ def test_three_work_bullets_preserve_resume_metrics_and_linkedin(family, metrics
     })
     body = written["email_body"]
     bullets = [line[2:] for line in body.splitlines() if line.startswith("- ")]
-    assert bullets == load_profile()["email_experience_highlights"][family]
+    assert bullets == [point.removeprefix("ProSca:").strip() for point in load_profile()["email_experience_highlights"][family]]
     assert len(bullets) == 3 and "Experience highlights:\n- " in body
     for metric in metrics:
         assert metric in " ".join(bullets)
     assert "LinkedIn: https://www.linkedin.com/in/shivank-shukla09" in body
     assert "https://careers.example/jobs/1" in body
-    assert "full-time since August 2026" in body
-    assert "attached my resume" in body
+    assert "BSc Data Analytics graduate" in body
+    assert "My resume is attached" in body
     assert "lpa" not in body.lower()
 
 
@@ -42,7 +42,9 @@ def test_untrusted_analysis_cannot_replace_resume_highlights():
 def test_highlights_use_prosca_only_without_reattributing_internship_metrics(family):
     written, _ = scout_agent.compose_email({}, {"family": family})
     bullets = [line for line in written["email_body"].splitlines() if line.startswith("- ")]
-    assert len(bullets) == 3 and all(line.startswith("- ProSca:") for line in bullets)
+    trusted = {point.removeprefix("ProSca:").strip() for rows in load_profile()["email_experience_highlights"].values() for point in rows}
+    assert len(bullets) == 3 and all(line[2:] in trusted for line in bullets)
+    assert "ProSca:" not in written["email_body"]
     for excluded in ("UptoSkills", "IBM", "Vodafone", "internship:", "1,000+", "10,000+", "40%", "30%", "MAPE", "98.1%"):
         assert excluded not in written["email_body"]
 

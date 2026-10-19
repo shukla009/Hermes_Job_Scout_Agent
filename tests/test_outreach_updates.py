@@ -13,12 +13,12 @@ def test_distant_hiring_header_does_not_authorise_footer():
 
 
 def test_email_reflects_current_profile_and_real_vacancy():
-    result, _ = scout_agent.compose_email({}, {'job_title':'Research Analyst', 'company':'Example',
+    result, _ = scout_agent.compose_email({'page_fetched':True, 'description':'Conduct market research. Required skills: Excel and SQL.'}, {'job_title':'Research Analyst', 'company':'Example',
         'family':'research','matched_skills':['Excel','SQL'],
         'application_url':'https://example.com/jobs/123'})
     body = result['email_body']
-    assert 'full-time since August 2026' in body
-    assert 'completed both' in body
+    assert 'BSc Data Analytics graduate' in body
+    assert 'currently working in research and strategy at ProSca' in body
     assert 'https://example.com/jobs/123' in body
-    assert 'Relevant skills for this opening: Excel.' in body
-    assert 'SQL' not in body and 'LPA' not in body and 'immediate join' not in body.lower()
+    assert 'Relevant skills: Research, Excel, SQL (knowledge).' in body
+    assert 'LPA' not in body and 'immediate join' not in body.lower()

@@ -46,6 +46,12 @@
 - Emails highlight three role-relevant ProSca achievements in bullet points,
   preserving the resume's metrics, and include the LinkedIn profile link.
   Other internships remain available for job matching, not email highlight bullets.
+- The free email composer uses a fetched job description to identify supported
+  responsibilities and select up to four resume-listed skills. Knowledge-only
+  skills are labelled; no ProSca use of those tools is implied. Unverified or
+  unsupported descriptions receive no invented alignment sentence.
+- Emails end with Portfolio, LinkedIn, Email and Phone together, then
+  "Best regards, Shivank Shukla". Follow-ups use the same contact footer.
 - Prioritises research/market intelligence, MIS/reporting, junior BI/data analysis,
   data quality/operations and process/business analysis based on actual responsibilities.
 - Verified listed SQL knowledge can meet a knowledge requirement; it cannot establish
