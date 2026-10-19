@@ -586,10 +586,12 @@
       "39150300807:1",
       "39220323029:1",
       "39262290624:1",
-      "39285268351:1"
+      "39285268351:1",
+      "39309062208:1"
     ],
     "paused": false,
-    "monthly_ceiling": 1200
+    "monthly_ceiling": null,
+    "mode": "standard_public"
   },
   "shadow_runs_completed": 3,
   "last_run": {
