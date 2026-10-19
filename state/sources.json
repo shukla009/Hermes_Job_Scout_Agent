@@ -1,11 +1,11 @@
 {
   "greenhouse:Razorpay": {
-    "last_poll": "2026-10-19T13:41:50.771852+00:00",
+    "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
     "jobs": []
   },
   "greenhouse:Groww": {
-    "last_poll": "2026-10-19T13:41:50.771852+00:00",
+    "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
     "jobs": [
       {
@@ -30,19 +30,19 @@
         "first_published": "2026-02-16T12:43:45-05:00",
         "application_deadline": "",
         "first_seen_at": "2026-10-13T16:28:01.566861+00:00",
-        "last_verified_at": "2026-10-19T13:41:50.771852+00:00"
+        "last_verified_at": "2026-10-19T16:25:26.479110+00:00"
       }
     ],
     "pick_cursor": 0
   },
   "lever:Meesho": {
-    "last_poll": "2026-10-19T13:41:50.771852+00:00",
-    "cursor": 50,
+    "last_poll": "2026-10-19T16:25:26.479110+00:00",
+    "cursor": 0,
     "jobs": []
   },
   "lever:Paytm": {
-    "last_poll": "2026-10-19T13:41:50.771852+00:00",
-    "cursor": 50,
+    "last_poll": "2026-10-19T16:25:26.479110+00:00",
+    "cursor": 75,
     "jobs": [
       {
         "title": "Associate - User Growth (Market intelligence)",
@@ -86,10 +86,11 @@
         "updated_at": "",
         "date_posted": "2025-08-08T12:04:26.714000+00:00",
         "first_seen_at": "2026-10-19T13:41:50.771852+00:00",
-        "last_verified_at": "2026-10-19T13:41:50.771852+00:00"
+        "last_verified_at": "2026-10-19T13:41:50.771852+00:00",
+        "needs_reverification": true
       }
     ],
-    "pick_cursor": 1
+    "pick_cursor": 0
   },
   "lever:Portcast": {
     "last_poll": "2026-10-19T13:41:50.771852+00:00",
@@ -140,7 +141,7 @@
         "last_verified_at": "2026-10-19T13:41:50.771852+00:00"
       }
     ],
-    "pick_cursor": 0
+    "pick_cursor": 1
   },
   "html:ProcDNA": {
     "last_poll": "2026-10-19T08:06:01.955677+00:00",
@@ -171,7 +172,7 @@
     "pick_cursor": 0
   },
   "smartrecruiters:NielsenIQ": {
-    "last_poll": "2026-10-19T13:41:50.771852+00:00",
+    "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
     "jobs": []
   },
@@ -181,8 +182,8 @@
     "jobs": []
   },
   "lever:ION": {
-    "last_poll": "2026-10-19T13:41:50.771852+00:00",
-    "cursor": 50,
+    "last_poll": "2026-10-19T16:25:26.479110+00:00",
+    "cursor": 75,
     "jobs": [
       {
         "title": "AP Analyst - Noida",
@@ -226,13 +227,14 @@
         "updated_at": "",
         "date_posted": "2026-09-29T05:20:05.207000+00:00",
         "first_seen_at": "2026-10-19T13:41:50.771852+00:00",
-        "last_verified_at": "2026-10-19T13:41:50.771852+00:00"
+        "last_verified_at": "2026-10-19T13:41:50.771852+00:00",
+        "needs_reverification": true
       }
     ],
-    "pick_cursor": 1
+    "pick_cursor": 0
   },
   "html:EXL": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
+    "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
     "jobs": []
   },
@@ -247,7 +249,7 @@
     "jobs": []
   },
   "html:Fidelity International": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
+    "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
     "jobs": []
   },
@@ -262,7 +264,7 @@
     "jobs": []
   },
   "html:EY": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
+    "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
     "jobs": []
   },
@@ -272,9 +274,10 @@
     "jobs": []
   },
   "html:Gartner": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
+    "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
-    "jobs": []
+    "jobs": [],
+    "last_error": "AttributeError"
   },
   "html:S&P Global": {
     "last_poll": "2026-10-18T13:12:32.585687+00:00",
@@ -292,12 +295,12 @@
     "jobs": []
   },
   "html:Aon": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
+    "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
     "jobs": []
   },
   "html:Cvent": {
-    "last_poll": "2026-10-18T13:12:32.585687+00:00",
+    "last_poll": "2026-10-19T16:25:26.479110+00:00",
     "cursor": 0,
     "jobs": []
   },
