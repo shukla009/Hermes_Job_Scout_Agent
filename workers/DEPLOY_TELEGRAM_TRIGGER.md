@@ -3,11 +3,11 @@
 ## Queue upgrade: required configuration
 
 The JavaScript Worker now supports `/run`, `/queue`, `/status`, `/stats`, and signed
-recommendation buttons. Outcomes are immutable private GitHub files; buttons do
+outcome buttons. Outcomes are immutable encrypted GitHub files when encryption is enabled; buttons do
 not start Actions runs or require a database. Deploy the updated JavaScript source
 to the existing Worker; a repository push alone does not deploy Cloudflare.
 
-- Add secret `GITHUB_STATE_PAT`: a fine-grained token restricted to this private
+- Add secret `GITHUB_STATE_PAT`: a fine-grained token restricted to this
   repository, **Contents read/write** only. `GITHUB_PAT` retains **Actions write**
   for dispatch. Existing tokens may be used temporarily if they have both rights.
 - Set `TELEGRAM_USER_ID` to the authorised sender ID. For a private chat, omission
@@ -17,8 +17,10 @@ to the existing Worker; a repository push alone does not deploy Cloudflare.
   alone. Never paste bot tokens into chat or store them in tracked files.
 - Callbacks expire after seven days, bind to a registered job, and authenticate
   HMAC signatures with the bot token. Failed GitHub writes are not acknowledged.
-- Saved outcomes appear in statistics on the next scheduled scout run. `/queue`
-  does not imply an application was sent; the **Applied** action confirms one.
+- Saved outcomes appear in statistics on the next scheduled scout run. In the
+  default hands-off mode, `/queue` shows recent automated applications and
+  Reply/Interview/Rejected buttons, not a manual approval queue. An SMTP
+  acceptance is not proof of delivery or a recruiter reply.
 - Validate with `node tests/worker_test.mjs` before deployment and check `/status`
   after the first successful scout state migration.
 - Retain the Cloudflare Free plan and stopped paid upgrades. No new paid services
@@ -27,7 +29,8 @@ to the existing Worker; a repository push alone does not deploy Cloudflare.
 
 ## 1. Prerequisites
 - Cloudflare account (free at dash.cloudflare.com)
-- GitHub PAT with `workflow` scope (fine-grained token)
+- Fine-grained GitHub token restricted to this repository: Actions write for
+  `/run`, and Contents read/write for state and outcomes (separate tokens preferred).
 
 ## 2. Create Cloudflare Worker
 1. Go to **Cloudflare Dashboard** → **Workers & Pages** → **Create application** → **Create Worker**
@@ -50,7 +53,17 @@ In Worker settings → **Variables and Secrets** → **Add variable** (mark as *
 | `GITHUB_WORKFLOW_FILE` | `job_scout.yml` | No |
 
 ## 4. Deploy Worker
-Click **Save and Deploy**. Note your Worker URL:
+Click **Save and Deploy** in the existing Worker. If the editor does not load,
+use Cloudflare's official Wrangler CLI after authorizing its requested scopes:
+
+```powershell
+npx --yes wrangler login --scopes account:read user:read workers_scripts:write
+npx --yes wrangler deploy workers/telegram_trigger_worker.js --name telegram-job-scout-trigger --keep-vars --compatibility-date 2026-10-13 --no-autoconfig
+```
+
+`--keep-vars` preserves the existing dashboard variables; deployments preserve
+secrets. This updates the existing Worker, not a new Worker or paid plan.
+Confirm the account and Worker name before deploying. Note your Worker URL:
 `https://telegram-job-scout-trigger.YOUR_SUBDOMAIN.workers.dev`
 
 ## 5. Set Telegram Webhook
@@ -59,7 +72,7 @@ Run this ONE command in your terminal (replace YOUR_WORKER_URL):
 ```bash
 curl -X POST "https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook" \
      -H "Content-Type: application/json" \
-     -d '{"url": "https://telegram-job-scout-trigger.YOUR_SUBDOMAIN.workers.dev", "secret_token": "YOUR_WEBHOOK_SECRET", "allowed_updates": ["message"]}'
+     -d '{"url": "https://telegram-job-scout-trigger.YOUR_SUBDOMAIN.workers.dev", "secret_token": "YOUR_WEBHOOK_SECRET", "allowed_updates": ["message", "callback_query"]}'
 ```
 
 Expected response: `{"ok":true,"result":true,"description":"Webhook was set"}`
@@ -88,5 +101,6 @@ curl "https://api.telegram.org/botYOUR_BOT_TOKEN/getWebhookInfo"
 
 ## Troubleshooting
 - **No reply?** Check Worker logs in Cloudflare Dashboard → Workers → your worker → Logs
-- **403 from GitHub?** Ensure PAT has `workflow` scope and repo access
+- **403 from GitHub?** Check repository access and the relevant fine-grained
+  Actions or Contents permission; do not grant access to unrelated repositories.
 - **Webhook not working?** Verify Worker URL is HTTPS and accessible
