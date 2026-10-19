@@ -8,8 +8,8 @@ from scout_matching import load_profile
 @pytest.mark.parametrize("family,metrics", [
     ("research", ("12+", "5+", "20%")),
     ("process", ("20%", "12+")),
-    ("reporting", ("15+", "30%", "10,000+", "30 Karnataka districts")),
-    ("data", ("1,000+", "40%", "15+", "30%", "10,000+", "30 Karnataka districts")),
+    ("reporting", ("12+", "5+", "20%")),
+    ("data", ("20%", "12+")),
 ])
 def test_three_work_bullets_preserve_resume_metrics_and_linkedin(family, metrics):
     written, _ = scout_agent.compose_email({}, {
@@ -35,19 +35,19 @@ def test_untrusted_analysis_cannot_replace_resume_highlights():
         "evidence": ["Managed 500 people and improved revenue by 999%."],
     })
     assert "999%" not in written["email_body"]
-    assert "1,000+ institutions" in written["email_body"]
+    assert "20%" in written["email_body"]
 
 
-@pytest.mark.parametrize("family", ["data", "reporting"])
-def test_internship_metrics_are_not_presented_as_current_job_achievements(family):
+@pytest.mark.parametrize("family", ["research", "process", "data", "reporting", "unknown"])
+def test_highlights_use_prosca_only_without_reattributing_internship_metrics(family):
     written, _ = scout_agent.compose_email({}, {"family": family})
     bullets = [line for line in written["email_body"].splitlines() if line.startswith("- ")]
-    assert all("internship:" in line for line in bullets)
-    assert "MAPE" not in written["email_body"]
-    assert "98.1%" not in written["email_body"]
+    assert len(bullets) == 3 and all(line.startswith("- ProSca:") for line in bullets)
+    for excluded in ("UptoSkills", "IBM", "Vodafone", "internship:", "1,000+", "10,000+", "40%", "30%", "MAPE", "98.1%"):
+        assert excluded not in written["email_body"]
 
 
 def test_unknown_family_uses_verified_work_highlights_not_project_metrics():
     written, _ = scout_agent.compose_email({}, {"family": "unknown"})
-    assert "40%" in written["email_body"]
+    assert "20%" in written["email_body"]
     assert "MAPE" not in written["email_body"]
