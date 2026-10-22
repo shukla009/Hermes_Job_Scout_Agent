@@ -74,7 +74,7 @@ def reserve_execution(data, *, mode, identity, scheduled, now):
         status, reason = "private_cadence_skip", "Three scheduled runs already reserved for this IST day"
     elif private and scheduled and now < next_due:
         status, reason = "private_cadence_skip", "Waiting for the five-hour minimum scheduled-run interval"
-    charge = FULL_RUN_MINUTES if status == "admitted" else SKIP_MINUTES
+    charge = (FULL_RUN_MINUTES if status == "admitted" else SKIP_MINUTES) if private else 0
     if identity in runs:
         charge = 0
     if private and used + charge > PRIVATE_MONTHLY_MINUTES:

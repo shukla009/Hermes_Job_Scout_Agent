@@ -101,9 +101,9 @@
 - Credentials and the optional verified application-answer bank belong in secrets.
 - No private email bodies, answer payloads or form tokens are persisted in reports.
 - Encryption does not erase plaintext in old Git history. Key rotation needs migration with the old key.
-- The repository remains private and uses standard Ubuntu runners from the owner's
-  included GitHub Actions allowance. Private/unknown visibility activates a conservative
-  1,200-minute monthly estimate, three scheduled-run daily limit and five-hour interval.
+- The repository is public by the owner's choice and uses free standard Ubuntu
+  runners. If visibility later becomes private or cannot be verified, a conservative
+  1,200-minute monthly estimate, three scheduled-run daily limit and five-hour interval apply.
 - Full private runs reserve ten minutes before any work; skipped setup reserves one
   minute. These are estimates for this workflow, not an account-wide billing meter:
   CI and other repositories also consume allowance. Keep paid overages stopped.

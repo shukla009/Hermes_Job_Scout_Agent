@@ -87,7 +87,9 @@ def test_private_monthly_budget_stops_before_work(used, scheduled):
 def test_public_runs_do_not_get_private_cadence_or_private_allowance():
     data = {}
     for idx in range(5):
-        assert reserve(data, str(idx), at(22, 9, idx), mode="standard_public")["status"] == "admitted"
+        result = reserve(data, str(idx), at(22, 9, idx), mode="standard_public")
+        assert result["status"] == "admitted"
+        assert result["reserved_minutes"] == 0
     assert data["budget"]["monthly_ceiling"] is None
 
 

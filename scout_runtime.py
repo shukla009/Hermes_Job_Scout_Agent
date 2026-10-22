@@ -541,7 +541,8 @@ def run(agent, *, dry_run=False, notify=True):
         important = report["status"] in {"state_safety_stop", "free_quota_pause", "budget_limited"}
         if alerts or morning or important or not store or report["emails_accepted_by_smtp"] or report["applications"]["confirmed"]:
             agent.send_telegram("📋 <b>Job Scout — " + html.escape(report["status"]) + "</b>\n" +
-                f"New actionable jobs: {len(candidates)}; alerts: {alerts}\n" +
+                f"Potential matches: {len(candidates)}; alerts: {alerts}\n" +
+                f"Verified recruitment-email leads: {report['relevant_email_leads']}\n" +
                 f"Application emails accepted: {report['emails_accepted_by_smtp']}\n" +
                 f"Confirmed portal applications: {report['applications']['confirmed']}\n" +
                 f"Unsupported/blocked routes: {report['applications']['unsupported'] + report['applications']['blocked']}\n" +
