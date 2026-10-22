@@ -302,3 +302,11 @@ def test_existing_submission_is_not_reopened_by_new_contact_metadata(tmp_path):
     new = reloaded.upsert_job(dict(analysis, contact_route="official_careers_inbox", email_safe=True))
     assert new["submitted"] and new["application_route"] == "user_reported"
     assert reloaded.reserve_send(new["id"], "careers@fixture.org") is None
+
+
+def test_eligibility_hold_diagnostics_are_specific_and_never_copy_job_text():
+    from scout_actions import eligibility_holds
+    labels = eligibility_holds({"requirements":{"mandatory":{"unknown":["Minimum experience not stated", "PRIVATE-JOB-TEXT"],"unmet":[]}},
+                               "warnings":["Full-time employment not confirmed"]})
+    assert labels == ["minimum_experience_not_stated_for_nonjunior_scope", "mandatory_requirement_unverified", "full_time_unconfirmed"]
+    assert "PRIVATE" not in str(labels)

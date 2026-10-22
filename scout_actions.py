@@ -56,6 +56,29 @@ def funnel_counts(store, *, discovered, fresh, suitable, reachable, emails, form
             "interviews_total": sum(j.get("outcome") == "interview" for j in jobs)}
 
 
+def eligibility_holds(analysis, post=None):
+    """Fixed diagnostic labels only: no vacancy text or contact values in logs."""
+    mandatory = analysis.get("requirements", {}).get("mandatory", {})
+    unknown = mandatory.get("unknown", [])
+    warnings = analysis.get("warnings", [])
+    labels = []
+    if "Minimum experience not stated" in unknown:
+        labels.append("minimum_experience_not_stated_for_nonjunior_scope")
+    if any(value != "Minimum experience not stated" for value in unknown):
+        labels.append("mandatory_requirement_unverified")
+    if mandatory.get("unmet"):
+        labels.append("mandatory_requirement_not_met")
+    if "Full-time employment not confirmed" in warnings:
+        labels.append("full_time_unconfirmed")
+    if "Location unconfirmed" in warnings or "Remote country eligibility unconfirmed" in warnings:
+        labels.append("location_or_remote_eligibility_unconfirmed")
+    if analysis.get("risk_assessment", {}).get("requires_review"):
+        labels.append("recruitment_safety_review")
+    if (post or {}).get("reverification_failed"):
+        labels.append("vacancy_reverification_failed")
+    return labels or ["other_eligibility_hold"]
+
+
 def review_reach(data, now=None):
     """Once per 14-day period; counts, not promised response probabilities."""
     now = now or datetime.now(timezone.utc)

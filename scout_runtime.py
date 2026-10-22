@@ -314,7 +314,7 @@ def run(agent, *, dry_run=False, notify=True):
         report["status"] = "partial"
     aliases = _history_aliases(agent, history)
     from scout_contacts import ContactDiscovery, rollout_state, can_send_new_contact, contact_is_current, complete_contact_shadow
-    from scout_actions import reserve_manual_card, funnel_counts, review_reach
+    from scout_actions import reserve_manual_card, funnel_counts, review_reach, eligibility_holds
     contacts = ContactDiscovery(agent._request_with_retries, store.data.setdefault("employer_contacts", {}))
     contact_rollout = rollout_state(store.data, contacts.revision)
     contact_shadow_this_run = contact_rollout.get("shadow_runs", 0) < 3
@@ -396,6 +396,7 @@ def run(agent, *, dry_run=False, notify=True):
     except (ValueError, TypeError):
         answers = None
     report["coverage_gaps"] = Counter()
+    report["eligibility_holds"] = Counter()
     report["contact_discovery"] = {**contacts.stats, "http_requests": contacts.fetches,
                                     "shadow_runs_completed": contact_rollout.get("shadow_runs", 0),
                                     "validation_mode": contact_shadow_this_run}
@@ -419,6 +420,7 @@ def run(agent, *, dry_run=False, notify=True):
         recipient = analysis.get("recruiter_email")
         if not analysis.get("email_safe", False) or post.get("reverification_failed"):
             report["coverage_gaps"]["unverified_fit_or_requirements"] += 1
+            report["eligibility_holds"].update(eligibility_holds(analysis, post))
             continue
         if not recipient:
             def public_request(method, url, **kwargs):
@@ -544,6 +546,7 @@ def run(agent, *, dry_run=False, notify=True):
     if store and cloud and os.getenv("GITHUB_EVENT_NAME") == "schedule" and not dry_run and safe_state and verified_sources and report["applications"].get("enabled_adapters"):
         rollout["shadow_runs"] = min(3, rollout.get("shadow_runs", 0) + 1)
     report["coverage_gaps"] = dict(report["coverage_gaps"])
+    report["eligibility_holds"] = dict(report["eligibility_holds"])
     if shadow and store and safe_state and verified_sources and report["status"] not in {"state_safety_stop", "budget_limited"}:
         store.data["shadow_runs_completed"] = store.data.get("shadow_runs_completed", 0) + 1
     report["alerts_sent"] = alerts
@@ -574,7 +577,7 @@ def run(agent, *, dry_run=False, notify=True):
         store.data["last_run"]["coverage_gaps"] = report["coverage_gaps"]
         store.data["last_run"]["runtime_seconds"] = report["runtime_seconds"]
         store.data["last_run"]["discovery_health"] = report["discovery_health"]
-        for key in ("funnel", "contact_discovery", "manual_actions"):
+        for key in ("funnel", "contact_discovery", "manual_actions", "eligibility_holds"):
             store.data["last_run"][key] = report[key]
         store.data["last_attempt"] = {"at": store.data["last_run"]["at"], "status": report["status"],
                                       "reason": "Discovery run completed", "next_due_at": report.get("next_due_at"),
@@ -602,6 +605,7 @@ def run(agent, *, dry_run=False, notify=True):
                 f"Fresh: {verified_fresh}; suitable: {report['funnel']['suitable']}; reachable: {reachable}\n" +
                 f"Optional phone actions: {report['manual_actions']['sent']} (not approvals)\n" +
                 f"Careers-inbox shadow: {contact_rollout.get('shadow_runs', 0)}/3 scheduled runs\n" +
+                "Fit holds: " + html.escape("; ".join(f"{k.replace('_', ' ')}: {v}" for k, v in report["eligibility_holds"].items()) or "none") + "\n" +
                 f"Application emails accepted: {report['emails_accepted_by_smtp']}\n" +
                 f"Confirmed portal applications: {report['applications']['confirmed']}\n" +
                 f"Unsupported/blocked routes: {report['applications']['unsupported'] + report['applications']['blocked']}\n" +
