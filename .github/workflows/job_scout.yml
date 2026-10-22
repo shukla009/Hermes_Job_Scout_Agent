@@ -2,8 +2,13 @@ name: Autonomous Job Scout Agent
 
 on:
   schedule:
-    - cron: '47 */2 * * *' # Every two hours; initial emails obey weekday IST hours.
+    - cron: '17 3,9,15 * * *' # 08:47, 14:47, 20:47 IST; delayed starts are accepted.
   workflow_dispatch:          # Allows manual trigger anytime from GitHub web/mobile UI
+    inputs:
+      verify_schedule:
+        description: Apply scheduled-run cadence checks to this manual validation run
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -38,8 +43,8 @@ jobs:
       # Scheduled runs only need a fast integrity check, preserving free minutes.
       - name: Verify Runtime Imports
         run: |
-          python -m compileall -q scout_agent.py scout_mail.py scout_matching.py scout_persistence.py scout_runtime.py scout_sources.py scout_state.py scout_storage.py scout_discovery.py scout_applications.py scout_personalization.py
-          python -c "import scout_agent, scout_mail, scout_matching, scout_persistence, scout_runtime, scout_sources, scout_state, scout_storage, scout_discovery, scout_applications, scout_personalization"
+          python -m compileall -q scout_agent.py scout_mail.py scout_matching.py scout_persistence.py scout_runtime.py scout_sources.py scout_state.py scout_storage.py scout_discovery.py scout_applications.py scout_personalization.py scout_schedule.py
+          python -c "import scout_agent, scout_mail, scout_matching, scout_persistence, scout_runtime, scout_sources, scout_state, scout_storage, scout_discovery, scout_applications, scout_personalization, scout_schedule"
 
       - name: Run Job Scout Agent
         env:
@@ -53,6 +58,7 @@ jobs:
           SCOUT_APPLICATION_ANSWERS: ${{ secrets.SCOUT_APPLICATION_ANSWERS }}
           SCOUT_ALERT_SENDER_DOMAINS: ${{ vars.SCOUT_ALERT_SENDER_DOMAINS || '' }}
           SCOUT_SHADOW_RUNS: "3"
+          SCOUT_VERIFY_SCHEDULE: ${{ inputs.verify_schedule || 'false' }}
           NVIDIA_API_KEY: ""
           SERPAPI_KEY: ""
           GMAIL_SENDER_EMAIL: ${{ secrets.GMAIL_SENDER_EMAIL }}

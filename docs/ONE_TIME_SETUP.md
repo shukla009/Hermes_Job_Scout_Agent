@@ -54,6 +54,12 @@ Salary is never included in recruitment emails. The existing PDF is unchanged.
   migrate state with the old key; changing it first makes state unreadable.
 - Encryption protects new versions; it does not remove plaintext already present
   in older Git commits. No history rewrite is performed automatically.
-- A public repository uses free standard Ubuntu runners. Visibility is checked
-  every run; private/unknown visibility restores the conservative quota guard and
-  three-times-daily scheduled cadence. No paid runner or service is selected.
+- The repository can stay private. Standard runners consume the owner's included
+  private-repository allowance; keep paid overages stopped. The scout's internal
+  1,200-minute estimate is not account-wide accounting for CI or other repositories.
+- Three daily triggers target 08:47, 14:47 and 20:47 IST. Private scheduled work
+  is admitted by persisted reservations (three per IST day, five-hour interval),
+  not exact runner start hours. Every skip emits its reason and next eligible time.
+- `/run` remains a normal manual run within budget and outreach safety limits.
+  The optional GitHub dispatch input `verify_schedule=true` makes a manual test
+  obey scheduled cadence too; it never bypasses quota or application controls.

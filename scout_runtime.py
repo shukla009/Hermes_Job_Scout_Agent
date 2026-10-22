@@ -82,6 +82,37 @@ def repository_mode(writer):
         return "private_allowance"
 
 
+_ALERT_FAILURE_CATEGORIES = frozenset({
+    "excluded_platform", "unsafe_url", "http_access_denied", "http_rate_limited",
+    "http_not_found", "http_server_error", "http_client_error", "timeout", "tls_error",
+    "connection_error", "request_budget_exhausted", "response_too_large", "redirect_limit",
+    "unexpected_error", "job_board_only", "no_structured_vacancy", "missing_original_date",
+    "invalid_original_date",
+})
+
+
+def discovery_health(source_stats):
+    """Bounded fixed labels only; source exceptions and tracker URLs stay out."""
+    rows = [row for row in source_stats.values() if isinstance(row, dict)]
+    failing = sum(row.get("status") in {"error", "partial", "unavailable"}
+                  or (isinstance(row.get("errors"), int) and row["errors"] > 0)
+                  for row in rows)
+    categories = Counter()
+    alert = source_stats.get("gmail_alert_label", {})
+    raw = alert.get("failure_categories", {}) if isinstance(alert, dict) else {}
+    if isinstance(raw, dict):
+        for label, count in raw.items():
+            if isinstance(count, int) and not isinstance(count, bool) and count > 0:
+                categories[label if label in _ALERT_FAILURE_CATEGORIES else "unexpected_error"] += count
+    return {"failing_sources": failing, "alert_failure_categories": dict(categories)}
+
+
+def _discovery_summary(health):
+    top = sorted(health["alert_failure_categories"].items(), key=lambda row: (-row[1], row[0]))[:4]
+    return (f"Failing discovery sources: {health['failing_sources']}\n" +
+            "Alert link diagnostics: " + ("; ".join(f"{label}: {count}" for label, count in top) or "none"))
+
+
 def _followups_today(store):
     today = datetime.now(IST).date()
     count = 0
@@ -127,6 +158,51 @@ def _weekly(agent, store, notify):
         store.save()
 
 
+def _finish_early(agent, report, started, *, store=None, notify=False):
+    """Every admission/safety stop is visible; never overwrite the real run."""
+    agent.OUTBOUND_READY = False
+    report["runtime_seconds"] = round(time.monotonic() - started, 2)
+    report["outreach"]["status"] = "not_started"
+    attempt = {"at": datetime.now(timezone.utc).isoformat(),
+               "status": report["status"], "reason": report.get("reason", ""),
+               "next_due_at": report.get("next_due_at"),
+               "identity": report.get("identity", ""),
+               "trigger": report.get("trigger", "local"),
+               "scheduled": report.get("scheduled", False),
+               "schedule_validation": report.get("schedule_validation", False)}
+    persisted = False
+    if store:
+        store.data["last_attempt"] = attempt
+        try:
+            persisted = store.save()
+        except (OSError, RuntimeError):
+            persisted = False
+        if not persisted:
+            report.update(status="state_safety_stop", reason="Admission/skip state could not be durably saved; no discovery or outreach performed")
+    agent._write_run_report(report)
+    if notify:
+        today = datetime.now(IST).date().isoformat()
+        marker = today + ":" + report["status"]
+        previous = store.data.get("reported_skip") if store else None
+        # A persistence failure cannot safely suppress its own notification.
+        if not persisted or previous != marker:
+            message = ("Job Scout — " + html.escape(report["status"]) + "\n" +
+                       html.escape(report.get("reason", "")) + "\nNo discovery or application emails attempted.")
+            if report.get("next_due_at"):
+                try:
+                    due = datetime.fromisoformat(str(report["next_due_at"]).replace("Z", "+00:00")).astimezone(IST)
+                    message += "\nNext eligible time: " + due.strftime("%d %b %Y, %H:%M IST") + " (GitHub may start later)"
+                except (ValueError, TypeError):
+                    message += "\nNext eligible time unavailable; check /status."
+            if agent.send_telegram(message) and persisted:
+                store.data["reported_skip"] = marker
+                try:
+                    store.save()
+                except (OSError, RuntimeError):
+                    pass
+    return report
+
+
 def run(agent, *, dry_run=False, notify=True):
     from scout_persistence import RuntimeBudget, GitHubWriter, BudgetExhausted
     started = time.monotonic()
@@ -134,10 +210,6 @@ def run(agent, *, dry_run=False, notify=True):
     cloud = os.getenv("GITHUB_ACTIONS", "").lower() == "true"
     token = os.getenv("GITHUB_TOKEN", "")
     verified = os.getenv("ZERO_COST_VERIFIED", "false").lower() == "true"
-    if cloud and not verified:
-        raise RuntimeError("Zero-spend deployment verification is required")
-    if cloud and not token:
-        raise RuntimeError("Durable GitHub persistence is required")
     report = {"status": "healthy", "results_discovered": 0, "pages_fetched": 0,
               "relevant_apply_leads": 0, "relevant_email_leads": 0,
               "emails_attempted": 0, "emails_accepted_by_smtp": 0,
@@ -149,6 +221,15 @@ def run(agent, *, dry_run=False, notify=True):
     report["reply_monitor"] = {"status": "not_checked", "checked": 0,
                                "new_human_replies": 0, "auto_replies": 0,
                                "out_of_office": 0, "bounces": 0, "ambiguous": 0}
+    agent.OUTBOUND_READY = False
+    trigger = os.getenv("GITHUB_EVENT_NAME", "local")
+    validation = cloud and os.getenv("SCOUT_VERIFY_SCHEDULE", "false").lower() == "true"
+    scheduled = cloud and (trigger == "schedule" or validation)
+    identity = os.getenv("GITHUB_RUN_ID", "") + ":" + os.getenv("GITHUB_RUN_ATTEMPT", "1")
+    report.update(trigger=trigger, scheduled=scheduled, schedule_validation=validation, identity=identity)
+    if cloud and (not verified or not token):
+        report.update(status="state_safety_stop", reason=("Zero-spend deployment verification is required" if not verified else "Durable GitHub persistence is required"))
+        return _finish_early(agent, report, started, notify=notify)
     writer = GitHubWriter(token=token, repo=os.getenv("GITHUB_REPOSITORY", "")) if cloud and not dry_run else None
     budget = RuntimeBudget(max_requests=120, deadline_seconds=420)
     agent.ACTIVE_BUDGET = budget
@@ -165,37 +246,29 @@ def run(agent, *, dry_run=False, notify=True):
                            followups_path=agent.FOLLOW_UP_FILE,
                            suppressions_path=agent.SUPPRESSION_FILE)
         store.ingest_feedback()
-        month = datetime.now(timezone.utc).strftime("%Y-%m")
-        account_budget = store.data.setdefault("budget", {})
-        if account_budget.get("month") != month:
-            account_budget.update(month=month, used_minutes_estimate=0, runs=[], paused=False)
         mode = repository_mode(writer) if writer else "local"
-        account_budget["mode"] = mode
-        account_budget["monthly_ceiling"] = None if mode == "standard_public" else 1200
-        identity = os.getenv("GITHUB_RUN_ID", "") + ":" + os.getenv("GITHUB_RUN_ATTEMPT", "1")
-        if cloud and mode == "private_allowance" and os.getenv("GITHUB_EVENT_NAME") == "schedule" and datetime.now(IST).hour not in {8, 14, 20}:
-            report["status"] = "private_cadence_skip"
-            return report
-        if cloud and identity not in account_budget["runs"]:
-            if mode != "standard_public" and account_budget["used_minutes_estimate"] + 10 > 1200:
-                first_pause = not account_budget.get("paused")
-                account_budget["paused"] = True
-                store.save()
-                report["status"] = "free_quota_pause"
-                agent._write_run_report(report)
-                if notify and first_pause:
-                    agent.send_telegram("⏸️ Job Scout paused at its free-usage ceiling. No application emails sent; no paid fallback enabled.")
-                return report
-            account_budget["runs"] = (account_budget["runs"] + [identity])[-1500:]
-            if mode != "standard_public":
-                account_budget["used_minutes_estimate"] += 10
-        account_budget["paused"] = False
+        from scout_schedule import reserve_execution
+        if cloud and not dry_run:
+            decision = reserve_execution(store.data, mode=mode, identity=identity,
+                                         scheduled=scheduled, now=datetime.now(timezone.utc))
+            report["admission"] = decision
+            report["next_due_at"] = decision["next_due_at"]
+            if decision["status"] != "admitted":
+                report.update(status=decision["status"], reason=decision["reason"])
+                return _finish_early(agent, report, started, store=store, notify=notify)
+        else:
+            store.data.setdefault("budget", {}).update(mode=mode)
+        store.data["last_attempt"] = {"at": datetime.now(timezone.utc).isoformat(), "status": "admitted",
+                                      "reason": "Execution admitted; work has not completed", "next_due_at": report.get("next_due_at"),
+                                      "identity": identity, "trigger": trigger, "scheduled": scheduled,
+                                      "schedule_validation": validation}
         if not store.save():
-            safe_state = False
-        agent.ACTIVE_STORE = store if safe_state else None
-    except StateCorruptError:
-        safe_state = False
-        report["status"] = "state_safety_stop"
+            report.update(status="state_safety_stop", reason="Admission reservation could not be durably saved; no work started")
+            return _finish_early(agent, report, started, notify=notify)
+        agent.ACTIVE_STORE = store
+    except (StateCorruptError, ValueError, TypeError, OSError, RuntimeError):
+        report.update(status="state_safety_stop", reason="Persistent state or admission ledger is unreadable; no work started")
+        return _finish_early(agent, report, started, notify=notify)
     shadow = False
     if store and cloud and not dry_run:
         completed = store.data.get("shadow_runs_completed", 0)
@@ -236,6 +309,9 @@ def run(agent, *, dry_run=False, notify=True):
         report["status"] = "partial"
         report["query_errors"].append(type(exc).__name__)
     report["results_discovered"] = len(posts)
+    report["discovery_health"] = discovery_health(report.get("source_stats", {}))
+    if report["discovery_health"]["failing_sources"] and report["status"] == "healthy":
+        report["status"] = "partial"
     aliases = _history_aliases(agent, history)
     candidates = []
     reasons = Counter()
@@ -443,6 +519,11 @@ def run(agent, *, dry_run=False, notify=True):
         store.data["last_run"]["applications"] = report["applications"]
         store.data["last_run"]["coverage_gaps"] = report["coverage_gaps"]
         store.data["last_run"]["runtime_seconds"] = report["runtime_seconds"]
+        store.data["last_run"]["discovery_health"] = report["discovery_health"]
+        store.data["last_attempt"] = {"at": store.data["last_run"]["at"], "status": report["status"],
+                                      "reason": "Discovery run completed", "next_due_at": report.get("next_due_at"),
+                                      "identity": identity, "trigger": trigger, "scheduled": scheduled,
+                                      "schedule_validation": validation}
         if cloud and store.data["budget"].get("mode") == "standard_public":
             store.data["budget"]["used_minutes_estimate"] += round(report["runtime_seconds"] / 60, 2)
         outreach_log = store.data.setdefault("outreach_runs", [])
@@ -465,6 +546,7 @@ def run(agent, *, dry_run=False, notify=True):
                 f"Confirmed portal applications: {report['applications']['confirmed']}\n" +
                 f"Unsupported/blocked routes: {report['applications']['unsupported'] + report['applications']['blocked']}\n" +
                 "Email status: " + html.escape(report["outreach"]["status"].replace("_", " ")) + "\n" +
+                html.escape(_discovery_summary(report["discovery_health"])) + "\n" +
                 ("Outreach is in validation mode; no emails sent.\n" if shadow else "") +
                 "Top exclusions: " + html.escape("; ".join(f"{k}: {v}" for k, v in reasons.most_common(3)) or "none"))
             if store:

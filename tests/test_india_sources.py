@@ -67,6 +67,76 @@ def test_workday_rejects_off_tenant_urls_closed_jobs_and_untrusted_paths():
     assert jobs==[] and not any('/job/..' in url for url in calls)
 
 
+def test_workday_second_page_preserves_original_dates_and_reports_uncertain_total():
+    entry={'name':'A','ats':'workday','tenant':'a','board':'External','polling_tier':'high',
+           'careers_url':'https://a.wd1.myworkdayjobs.com/External'}
+    calls=[]
+    def get(url,**kwargs):
+        if url.endswith('/jobs'):
+            payload=kwargs['json']; keyword=payload['searchText']; offset=payload['offset']
+            if not keyword: return Response({'total':100,'jobPostings':[]})
+            calls.append((keyword,offset))
+            cards=[{'title':'Customer Care Specialist','locationsText':'Noida',
+                    'externalPath':f'/job/Noida/non-target-{offset+i}'} for i in range(20)]
+            cards[0]={'title':'Research Analyst' if offset==0 else 'Analyst - Business Data Services',
+                      'locationsText':'Noida','externalPath':f'/job/Noida/analyst-{offset}',
+                      'postedOn':'Posted Today'}
+            return Response({'total':100 if offset==0 else 0,'jobPostings':cards})
+        return Response({'jobPostingInfo':{'id':url.rsplit('/',1)[-1],'title':'Research Analyst',
+                         'location':'Noida','startDate':'2026-10-18','timeType':'Full time',
+                         'jobDescription':'Research and reporting.'}})
+    jobs,stats,state=s.discover_sources([entry],get,now=NOW)
+    assert len(jobs)==2 and all(job['date_posted']=='2026-10-18' for job in jobs)
+    assert calls==[(word,offset) for offset in (0,20) for word in ('analyst','research','MIS')]
+    status=stats['workday:A']
+    assert status['search_queries']==6 and status['detail_requests']==2
+    assert status['incomplete'] and status['search_truncated']
+    assert state['workday:A']['cursor']==0 # bounded newest-page scan, not a fictitious full pagination cycle
+    assert len(state['workday:A']['jobs'])==2
+
+
+def test_workday_extra_page_budget_and_existing_detail_cap_are_independent():
+    entry={'name':'A','ats':'workday','tenant':'a','board':'External','polling_tier':'high',
+           'careers_url':'https://a.wd1.myworkdayjobs.com/External',
+           'search_keywords':['analyst','research','MIS','reporting']}
+    calls=[]
+    def get(url,**kwargs):
+        if url.endswith('/jobs'):
+            payload=kwargs['json']; keyword=payload['searchText']; offset=payload['offset']
+            if not keyword: return Response({'total':100,'jobPostings':[]})
+            calls.append((keyword,offset))
+            return Response({'total':100,'jobPostings':[
+                {'title':'Research Analyst','locationsText':'Noida',
+                 'externalPath':f'/job/Noida/{keyword}-{offset+i}'} for i in range(20)]})
+        return Response({'jobPostingInfo':{'id':url.rsplit('/',1)[-1],'title':'Research Analyst',
+                         'location':'Noida','startDate':'2026-10-18','timeType':'Full time'}})
+    jobs,stats,_=s.discover_sources([entry],get,now=NOW)
+    assert len(calls)==6 and calls[:4]==[(word,0) for word in entry['search_keywords']]
+    assert len(jobs)==8 and stats['workday:A']['detail_requests']==8
+    assert stats['workday:A']['detail_truncated'] and stats['workday:A']['incomplete']
+
+
+def test_workday_partial_second_page_is_complete_and_cache_does_not_refetch():
+    entry={'name':'A','ats':'workday','tenant':'a','board':'External','polling_tier':'medium',
+           'careers_url':'https://a.wd1.myworkdayjobs.com/External','search_keywords':['analyst']}
+    def get(url,**kwargs):
+        if url.endswith('/jobs'):
+            payload=kwargs['json']
+            if not payload['searchText']: return Response({'total':21,'jobPostings':[]})
+            if payload['offset']==0:
+                return Response({'total':21,'jobPostings':[{'title':'Customer Care Specialist'}]*20})
+            return Response({'total':0,'jobPostings':[{'title':'Research Analyst','locationsText':'Noida',
+                                                     'externalPath':'/job/Noida/21'}]})
+        return Response({'jobPostingInfo':{'id':'21','title':'Research Analyst','location':'Noida',
+                                          'startDate':'2026-10-18','timeType':'Full time'}})
+    jobs,stats,state=s.discover_sources([entry],get,now=NOW)
+    assert len(jobs)==1 and not stats['workday:A']['incomplete']
+    def no_request(*args,**kwargs): raise AssertionError('cache unexpectedly refetched')
+    cached,cached_stats,cached_state=s.discover_sources([entry],no_request,state,now=NOW)
+    assert cached_stats['workday:A']['status']=='cached' and cached[0]['needs_reverification']
+    assert cached_state['workday:A']['cursor']==0
+
+
 def test_oracle_uses_precise_detail_date_and_all_external_requirement_sections():
     calls=[]
     entry={'name':'EXL','ats':'oracle','site':'CX_2','polling_tier':'high',

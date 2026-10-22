@@ -7,12 +7,18 @@
 
 ## What the scout does
 
-- Checks public sources every two hours. GitHub schedules may be delayed.
+- Scheduled triggers are **08:47, 14:47 and 20:47 IST**. GitHub may start them later.
+- For a private repository, at most three scheduled searches run per IST day,
+  separated by at least five hours. Delayed starts no longer need an exact clock hour.
+- Every attempted run emits a `RUN_REPORT`. A skipped attempt has its own reason
+  and next eligible time; it does not overwrite the last real search results.
 - Fetches real vacancy details from working employer feeds, then checks your fit.
 - Accepts only verified original publication dates within **48 hours**. An unknown date,
   refreshed listing, future closing date or new alert cannot make an old job new.
 - Reads authenticated job alerts only from the dedicated Gmail label `HermesJobAlerts`.
-- Resolves bounded tracking links and verifies public vacancy evidence. Failed links have a small retry queue.
+- Resolves explicit public employer destinations and verifies vacancy evidence.
+  Only transient failures are retried, with a small bounded queue. Access-denied,
+  unsafe and permanently unavailable links are classified without exposing URL tokens.
 - Rejects unsuitable roles, unsupported mandatory requirements, closed jobs and risky offers.
 - Sends a personalised email with the existing `Shivank_Shukla_Data_Analyst.pdf` only when
   the vacancy provides a verified recruitment address and permits email applications.
@@ -64,7 +70,8 @@
 
 - The registry contains 31 sources, not a promise of 31 productive employers.
 - Public Greenhouse, Lever, SmartRecruiters, Ashby and Workable connectors where supported.
-- **Genpact Workday:** public search and vacancy details, including NCR location filtering.
+- **Genpact Workday:** public search and vacancy details, including NCR location filtering
+  and two bounded result pages per keyword. This is not an exhaustive scan of all jobs.
 - **EXL Oracle Recruiting:** public search and details, including original posting dates.
 - Workday/Oracle listing access does not provide employer credentials for application APIs.
 - Himalayas' free feed supplies a bounded slice of full-time India-compatible remote jobs.
@@ -80,21 +87,28 @@
 
 - `/run`: start the scout while your device is off.
 - `/queue`: show hands-off processing status and outcome buttons for already-sent applications.
-- `/status`: show the last run, SMTP acceptance, portal confirmation and form readiness.
+- `/status`: show the latest attempt/skip separately from the last real search,
+  SMTP acceptance, portal confirmation and form readiness.
 - `/stats`: show recorded applications, replies and interviews separately.
 - Reply/Interview/Rejected buttons record outcomes; they are not application approvals.
 - Routine unchanged zero-result runs stay quiet apart from the daily summary; important failures remain visible.
 
 ## Privacy and ₹0 operation
 
-- Sensitive state can be encrypted with AES-256-GCM before it reaches the public repo.
+- Sensitive state can be encrypted with AES-256-GCM before it reaches GitHub storage.
 - Deploy the compatible Worker first, then enable `SCOUT_ENCRYPT_STATE`; a repository
   push does not deploy Cloudflare automatically.
 - Credentials and the optional verified application-answer bank belong in secrets.
 - No private email bodies, answer payloads or form tokens are persisted in reports.
 - Encryption does not erase plaintext in old Git history. Key rotation needs migration with the old key.
-- Standard Ubuntu runners are free for this public repo. Private/unknown visibility activates
-  a conservative 1,200-minute guard and three scheduled runs daily; no paid fallback is selected.
+- The repository remains private and uses standard Ubuntu runners from the owner's
+  included GitHub Actions allowance. Private/unknown visibility activates a conservative
+  1,200-minute monthly estimate, three scheduled-run daily limit and five-hour interval.
+- Full private runs reserve ten minutes before any work; skipped setup reserves one
+  minute. These are estimates for this workflow, not an account-wide billing meter:
+  CI and other repositories also consume allowance. Keep paid overages stopped.
+- No paid runner, model, search service or fallback is selected. If the allowance is
+  unavailable, the scout must pause rather than purchase more capacity.
 - Runs are bounded to 120 HTTP requests, six minutes of discovery and a ten-minute workflow timeout.
 - Regression tests run on code pushes; scheduled runs use a lightweight import/compile check.
 - Source yield, confirmed submissions, human replies and interviews matter more than raw job counts.

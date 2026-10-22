@@ -315,14 +315,31 @@ def _fetch(e, get, now, cursor=0):
         facets=_workday_facets(data.get('facets') or [])
         metrics['total_listings']=data.get('total',len(data['jobPostings'])); metrics['location_facets']=bool(facets)
         candidates={}; metrics['search_queries']=0
-        for keyword in (e.get('search_keywords') or ['analyst','research','MIS'])[:4]:
-            if not isinstance(keyword,str) or not re.fullmatch(r'[A-Za-z0-9 -]{1,50}',keyword): continue
-            data=get(endpoint+'/jobs',method='POST',json={'limit':20,'offset':0,'searchText':keyword,'appliedFacets':facets},timeout=20).json()
-            if not isinstance(data,dict) or not isinstance(data.get('jobPostings'),list): raise ValueError('schema_changed')
-            raw+=len(data['jobPostings']); metrics['search_queries']+=1
-            incomplete=incomplete or int(data.get('total',len(data['jobPostings'])))>len(data['jobPostings'])
-            for item in data['jobPostings']:
-                if isinstance(item,dict): candidates.setdefault(item.get('externalPath',''),item)
+        queries=list(dict.fromkeys(keyword for keyword in (e.get('search_keywords') or ['analyst','research','MIS'])[:4]
+                    if isinstance(keyword,str) and re.fullmatch(r'[A-Za-z0-9 -]{1,50}',keyword)))
+        pending=[]; totals={}
+        # The first page can be crowded by non-target titles that mention the
+        # keyword in their description. Read one additional page, but always
+        # search every first page before spending the bounded six-query budget.
+        for offset in (0,20):
+            for keyword in (queries if offset==0 else list(pending)):
+                if metrics['search_queries']>=6:
+                    incomplete=True; break
+                data=get(endpoint+'/jobs',method='POST',json={'limit':20,'offset':offset,'searchText':keyword,'appliedFacets':facets},timeout=20).json()
+                if not isinstance(data,dict) or not isinstance(data.get('jobPostings'),list): raise ValueError('schema_changed')
+                listings=data['jobPostings']; raw+=len(listings); metrics['search_queries']+=1
+                # Some tenants report total=0 on page two despite returning a
+                # full page. A full page therefore never proves completeness.
+                totals[keyword]=max(totals.get(keyword,0),int(data.get('total',len(listings))))
+                more=offset+len(listings)<totals[keyword] or len(listings)>=20
+                if offset==0 and more: pending.append(keyword)
+                elif offset:
+                    pending.remove(keyword)
+                    incomplete=incomplete or more
+                for item in listings:
+                    if isinstance(item,dict): candidates.setdefault(item.get('externalPath',''),item)
+        incomplete=incomplete or bool(pending)
+        metrics['search_truncated']=incomplete
         for x in candidates.values():
             title=x.get('title',''); location=x.get('locationsText',''); path=x.get('externalPath','')
             if not suitable(title) or not _target_location(location): continue

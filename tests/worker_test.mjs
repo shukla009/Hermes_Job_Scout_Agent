@@ -64,6 +64,24 @@ assert.equal((await worker.fetch(request({message:{chat:{id:10},from:{id:10},tex
 const automaticQueue = JSON.parse(calls.find(c=>c.url.includes('/sendMessage')).options.body);
 assert.match(automaticQueue.text,/No manual approval queue/);
 assert.equal(automaticQueue.reply_markup,undefined);
+// A cadence skip is distinct from the last search, not a fresh zero-result run.
+calls=[];
+globalThis.fetch=async(url,options)=>{
+  calls.push({url,options});
+  if(url.includes('contents/state/scout.json'))return new Response(JSON.stringify({content:Buffer.from(JSON.stringify({version:1,jobs:{},sends:{},budget:{mode:'private_allowance'},
+    last_attempt:{at:'2026-10-22T12:30:00Z',status:'private_cadence_skip',reason:'Minimum interval < 5h',next_due_at:'2026-10-22T15:30:00Z'},
+    last_run:{at:'2026-10-22T10:30:00Z',status:'partial',results_discovered:16,discovery_health:{failing_sources:3,alert_failure_categories:{http_access_denied:6}}}})).toString('base64')}));
+  return new Response(JSON.stringify({ok:true}));
+};
+assert.equal((await worker.fetch(request({message:{chat:{id:10},from:{id:10},text:'/status'}}),env)).status,200);
+const attemptStatus=JSON.parse(calls.find(c=>c.url.includes('/sendMessage')).options.body).text;
+assert.match(attemptStatus,/Latest attempt: private_cadence_skip/);
+assert.match(attemptStatus,/Last scout execution: partial/);
+assert.match(attemptStatus,/Discovered: 16/);
+assert.match(attemptStatus,/Next eligible scheduled run: 22 Oct 2026, 21:00 IST/);
+assert.match(attemptStatus,/Minimum interval &lt; 5h/);
+assert.match(attemptStatus,/Failing discovery sources: 3/);
+assert.match(attemptStatus,/http access denied: 6/);
 // Telegram retries must not dispatch twice, even if the first reply is lost.
 calls=[];
 let reservedEvent;

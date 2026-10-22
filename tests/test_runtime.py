@@ -46,3 +46,24 @@ def test_unknown_visibility_keeps_conservative_free_guard():
         raise OSError('not available')
     assert repository_mode(SimpleNamespace(_call=fail)) == 'private_allowance'
     assert repository_mode(SimpleNamespace(_call=lambda *args:{'private':False})) == 'standard_public'
+
+
+def test_discovery_diagnostics_count_partial_resolver_failures_without_urls():
+    from scout_runtime import discovery_health, _discovery_summary
+    stats = {'healthy': {'status': 'ok'}, 'bad': {'status': 'error'},
+             'gmail_alert_label': {'status': 'ok', 'errors': 2,
+                                  'failure_categories': {'timeout': 1, 'http_access_denied': 1,
+                                                         'https://tracker.example/private?token=secret': 3}}}
+    health = discovery_health(stats)
+    assert health['failing_sources'] == 2
+    assert health['alert_failure_categories'] == {'timeout': 1, 'http_access_denied': 1, 'unexpected_error': 3}
+    summary = _discovery_summary(health)
+    assert 'http_access_denied: 1' in summary
+    assert 'tracker' not in summary and 'secret' not in summary
+
+
+def test_expected_alert_exclusions_are_diagnostics_not_source_outages():
+    from scout_runtime import discovery_health
+    health = discovery_health({'gmail_alert_label': {'status': 'ok', 'errors': 0,
+                                                    'failure_categories': {'excluded_platform': 3}}})
+    assert health == {'failing_sources': 0, 'alert_failure_categories': {'excluded_platform': 3}}

@@ -2,6 +2,10 @@
 const REPO = "shukla009/Hermes_Job_Scout_Agent";
 const ACTIONS = new Set(["applied", "notfit", "snooze", "reply", "interview", "rejected"]);
 const escapeHTML = value => String(value ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const timeIST = value => {
+  const stamp = Date.parse(String(value ?? ""));
+  return Number.isFinite(stamp) ? new Intl.DateTimeFormat("en-GB", {timeZone:"Asia/Kolkata", dateStyle:"medium", timeStyle:"short"}).format(stamp) + " IST" : "Unknown";
+};
 async function stateKey(env) {
   const secret = env.SCOUT_STATE_KEY || env.TELEGRAM_BOT_TOKEN;
   if (!secret) throw new Error("State key unavailable");
@@ -156,7 +160,11 @@ export default {
           else for (const job of pending) await queueCard(env, job);
         } else if (command === "/status") {
           const run = state.last_run || {};
-          await reply(env, env.TELEGRAM_CHAT_ID, `Last run: ${escapeHTML(run.status || "No completed run")}\nAt: ${escapeHTML(run.at || "Unknown")}\nDiscovered: ${run.results_discovered || 0}\nQualified: ${run.relevant_apply_leads || 0}\nSMTP accepted: ${run.emails_accepted_by_smtp || 0}\nPortal confirmed: ${run.applications?.confirmed || 0}\nVerified form adapters: ${run.applications?.enabled_adapters || 0}\nBudget: ${state.budget?.paused ? "Paused" : state.budget?.mode === "standard_public" ? "Free public standard runners" : "Within configured limits"}\nRuntime minutes estimate: ${state.budget?.used_minutes_estimate || 0}${state.budget?.mode === "standard_public" ? " (no private-minute ceiling)" : "/" + (state.budget?.monthly_ceiling || 1200)}\nFeedback is reconciled on the next scout run.`);
+          const attempt = state.last_attempt || {};
+          const attemptText = attempt.at ? `Latest attempt: ${escapeHTML(attempt.status || "Unknown")}\nAttempt at: ${escapeHTML(timeIST(attempt.at))}\n${attempt.reason ? "Reason: " + escapeHTML(attempt.reason) + "\n" : ""}${attempt.next_due_at ? "Next eligible scheduled run: " + escapeHTML(timeIST(attempt.next_due_at)) + " (GitHub may start later)\n" : ""}` : "";
+          const health = run.discovery_health || {};
+          const healthText = `Failing discovery sources: ${Number(health.failing_sources) || 0}\nAlert-link failures: ${escapeHTML(Object.entries(health.alert_failure_categories || {}).slice(0,4).map(([name,count])=>`${name.replaceAll("_"," ")}: ${count}`).join("; ") || "none recorded")}\n`;
+          await reply(env, env.TELEGRAM_CHAT_ID, `${attemptText}Last scout execution: ${escapeHTML(run.status || "No completed run")}\nAt: ${escapeHTML(timeIST(run.at))}\nDiscovered: ${run.results_discovered || 0}\nQualified: ${run.relevant_apply_leads || 0}\nSMTP accepted: ${run.emails_accepted_by_smtp || 0}\nPortal confirmed: ${run.applications?.confirmed || 0}\nVerified form adapters: ${run.applications?.enabled_adapters || 0}\n${healthText}Budget: ${state.budget?.paused ? "Paused" : state.budget?.mode === "standard_public" ? "Free public standard runners" : "Within configured limits"}\nRuntime minutes estimate: ${state.budget?.used_minutes_estimate || 0}${state.budget?.mode === "standard_public" ? " (no private-minute ceiling)" : "/" + (state.budget?.monthly_ceiling || 1200)}\nFeedback is reconciled on the next scout run.`);
         } else {
           const cutoff = new Date(Date.now() - 7 * 86400000).toISOString();
           const count = key => jobs.filter(j => String(j[key] || "") >= cutoff).length;
