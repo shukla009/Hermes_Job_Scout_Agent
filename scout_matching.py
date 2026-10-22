@@ -426,7 +426,7 @@ def evaluate_job(post, profile=None, now=None):
     title = str(post.get("job_title") or post.get("title") or "").lower()
     text = "\n".join(str(post.get(k) or "") for k in ("description", "source_text", "body", "snippet", "requirements")).lower()
     location = str(post.get("location") or post.get("job_location") or "").lower()
-    family = next((name for name, pattern in (("research", r"research|market intelligence|competitive intelligence|market insights|consumer insights|research executive"), ("reporting", r"\bmis\b|reporting|power bi|\bbi\b|business intelligence|dashboard analyst|tableau analyst|data visuali[sz]ation"), ("process", r"business analyst|business process analyst|process analyst|operations (?:analyst|insights)|business operations analyst|process improvement analyst"), ("data", r"data (?:analyst|quality|operations|validation|management)|analytics (?:analyst|associate)|insights analyst|research data analyst")) if re.search(pattern, title)), None)
+    family = next((name for name, pattern in (("research", r"research|market intelligence|competitive intelligence|market insights|consumer insights|research executive|(?:junior|associate|graduate) strategy|strategy (?:analyst|associate)"), ("reporting", r"\bmis\b|reporting|power bi|\bbi\b|business intelligence|dashboard analyst|tableau analyst|data visuali[sz]ation"), ("process", r"business analyst|business process analyst|process analyst|operations (?:analyst|insights)|business operations analyst|process improvement analyst"), ("data", r"data (?:analyst|quality|operations|validation|management)|analytics (?:analyst|associate)|insights analyst|research data analyst")) if re.search(pattern, title)), None)
     if not family and re.search(r"associate|junior|analyst i\b", title) and re.search(r"data analysis|dashboard|research|reporting", text):
         family = "data"
     requirements = _assess_requirements(text, profile)
@@ -471,7 +471,7 @@ def evaluate_job(post, profile=None, now=None):
     duties = re.findall(responsibility_patterns[family], text)
     if len(text.strip()) < 35 or not duties:
         return reject("Usable responsibilities not available")
-    if re.search(r"\b(?:senior|sr\.?|manager|director|head|principal|lead)\b", title):
+    if re.search(r"\b(?:senior|sr\.?|manager|director|head|principal|lead|vp|avp|vice president|chief)\b", title):
         return reject("Senior or management vacancy")
     employment = str(post.get("employment_type") or post.get("employmenttype") or "").lower()
     if re.search(r"internship|\bintern\b|part.time|temporary|contract|freelance", title + " " + employment) or re.search(r"(?:employment|job|position) type\s*[:\-]?\s*(?:contract|temporary|part.time|internship)|(?:this is|we offer|position is|role is)\s*(?:an?\s+)?(?:internship|temporary|contract|part.time)", text):
@@ -537,6 +537,12 @@ def evaluate_job(post, profile=None, now=None):
                 result["warnings"].append("Experience value unverified")
     result["experience_min"] = minimum
     entry_level = bool(re.search(r"entry.level|freshers?|no (?:prior )?experience|graduate opportunity", text))
+    # Missing tenure is not an invented requirement. Only clearly junior scope
+    # may use this exception; generic analyst titles alone are insufficient.
+    junior_scope = bool(re.search(r"\bjunior\b|\bassociate\b|\bgraduate\b|\banalyst (?:i|1)\b", title)
+                        or re.search(r"\b(?:assist|support)\b.{0,70}\b(?:research|analysis|reporting|analysts?|team)\b|under (?:the )?(?:supervision|guidance)|early.career|junior role", text))
+    independent_scope = bool(re.search(r"\b(?:manage|lead|supervise|mentor)\b.{0,45}\b(?:team|analysts?|staff)|independently (?:own|lead)|own.{0,30}(?:research function|department)", text))
+    junior_unspecified = minimum is None and junior_scope and not independent_scope
     if minimum is not None and minimum > 3:
         requirements["mandatory"]["unmet"].append(f"Minimum {minimum:g} years experience")
         return reject("Experience exceeds stretch limit")
@@ -549,11 +555,13 @@ def evaluate_job(post, profile=None, now=None):
         result["review_reasons"].append("Mandatory experience requirement exceeds evidenced tenure")
     elif minimum is not None:
         requirements["mandatory"]["met"].append(f"Minimum {minimum:g} years experience")
-    if minimum is None and not entry_level:
-        requirements["mandatory"]["unknown"].append("Minimum experience not stated")
+    if minimum is None:
         result["warnings"].append("Experience requirement undisclosed")
-        result["review_required"] = True
-        result["review_reasons"].append("Minimum experience requirement is unknown")
+        if not (entry_level or junior_unspecified):
+            requirements["mandatory"]["unknown"].append("Minimum experience not stated")
+            result["review_required"] = True
+            result["review_reasons"].append("Minimum experience requirement is unknown")
+    result["junior_experience_exception"] = junior_unspecified
     skills = [s for s in profile.get("skills", []) if re.search(r"(?<!\w)" + re.escape(s.lower()) + r"(?!\w)", title + " " + text)]
     result["matched_skills"] = skills
     listed = set(s.lower() for s in profile.get("listed_only_skills", []))
@@ -590,7 +598,7 @@ def evaluate_job(post, profile=None, now=None):
     mandatory_known = not requirements["mandatory"]["unknown"] and not requirements["mandatory"]["unmet"]
     result["email_safe"] = (
         result["eligible"] and result["tier"] == "core" and location_ok and
-        (minimum is not None or entry_level) and mandatory_known and
+        (minimum is not None or entry_level or junior_unspecified) and mandatory_known and
         "Experience value unverified" not in result["warnings"] and
         "Full-time employment not confirmed" not in result["warnings"] and
         risk["resume_autosend_allowed"]

@@ -1,6 +1,6 @@
 /** GitHub-backed Telegram queue: no database, no workflow run for feedback. */
 const REPO = "shukla009/Hermes_Job_Scout_Agent";
-const ACTIONS = new Set(["applied", "notfit", "snooze", "reply", "interview", "rejected"]);
+const ACTIONS = new Set(["applied", "notfit", "snooze", "reply", "interview", "rejected", "skipped", "referral"]);
 const escapeHTML = value => String(value ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 const timeIST = value => {
   const stamp = Date.parse(String(value ?? ""));
@@ -44,7 +44,7 @@ async function stateFile(env) {
   return value;
 }
 export async function verifyCallback(value, token, now = Math.floor(Date.now() / 1000)) {
-  const match = /^(applied|notfit|snooze|reply|interview|rejected):([a-f0-9]{24}):(\d{10}):([a-f0-9]{12})$/.exec(value || "");
+  const match = /^(applied|notfit|snooze|reply|interview|rejected|skipped|referral):([a-f0-9]{24}):(\d{10}):([a-f0-9]{12})$/.exec(value || "");
   if (!match || !ACTIONS.has(match[1]) || Number(match[3]) < now || Number(match[3]) > now + 7 * 86400) return null;
   const payload = match.slice(1, 4).join(":");
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(token), {name: "HMAC", hash: "SHA-256"}, false, ["sign"]);
@@ -68,6 +68,23 @@ async function queueCard(env, job) {
   const text = `${escapeHTML(job.job_title || job.title || "Relevant role")} — ${escapeHTML(job.company || "Employer")}\n${escapeHTML(job.apply_url || job.application_url || job.url || "Check listing")}\n${escapeHTML(job.fit_reason || job.reason || "Review fit and requirements before applying")}`;
   return telegram(env, "sendMessage", {chat_id: env.TELEGRAM_CHAT_ID, text, parse_mode: "HTML", disable_web_page_preview: true,
     reply_markup: {inline_keyboard: [buttons.slice(0,3), buttons.slice(3)]}});
+}
+export function optionalJobs(jobs, now = Date.now()) {
+  return jobs.filter(j => {
+    const original = Date.parse(j.date_posted || "");
+    const age = now - original;
+    return j.manual_action_status && !["applied", "skipped"].includes(j.manual_action_status) &&
+      !j.archived && !j.submitted && !j.emailed && !j.outcome && j.email_safe === true &&
+      Number.isFinite(age) && age >= 0 && age <= 48 * 3600000;
+  }).sort((a,b) => (b.fit_score || 0) - (a.fit_score || 0)).slice(0,3);
+}
+async function optionalCard(env, job) {
+  const actions = [["Applied", "applied"], ["Skipped", "skipped"], ["Referral requested", "referral"]];
+  const buttons = await Promise.all(actions.map(async ([text, action]) => ({text, callback_data: await createCallback(action, job.id, env.TELEGRAM_BOT_TOKEN)})));
+  const outcomes = await Promise.all([["Reply","reply"],["Interview","interview"],["Rejected","rejected"]].map(async ([text,action]) => ({text, callback_data: await createCallback(action, job.id, env.TELEGRAM_BOT_TOKEN)})));
+  return telegram(env, "sendMessage", {chat_id:env.TELEGRAM_CHAT_ID, parse_mode:"HTML", disable_web_page_preview:true,
+    text:`<b>Optional phone action — not an approval</b>\n${escapeHTML(job.job_title || "Role")} — ${escapeHTML(job.company || "Employer")}\n${escapeHTML(job.apply_url || job.application_url || "")}\n${escapeHTML((job.evidence || []).slice(0,2).join("\n"))}\nReferral draft (only for someone who knows your work):\n${escapeHTML(job.manual_draft || "")}\nAutomatic applications continue independently.`,
+    reply_markup:{inline_keyboard:[buttons,outcomes]}});
 }
 export async function storeFeedback(env, updateId, event) {
   if (!Number.isSafeInteger(updateId) || updateId < 0) throw new Error("Invalid update ID");
@@ -125,7 +142,7 @@ export default {
         }
       } else {
         const command = String(message.text || "").trim().split(/\s/)[0].split("@")[0].toLowerCase();
-        if (!["/run", "/queue", "/status", "/stats"].includes(command)) return new Response("OK");
+        if (!["/run", "/queue", "/status", "/stats", "/actions"].includes(command)) return new Response("OK");
         const state = await stateFile(env);
         const jobs = Object.values(state.jobs);
         if (command === "/run") {
@@ -141,10 +158,15 @@ export default {
               await reply(env, env.TELEGRAM_CHAT_ID, result.status === 204 ? "Scout started. Results will arrive here when complete." : `Unable to start scout (GitHub HTTP ${result.status}). Check Worker token and workflow settings before sending a new /run.`);
             }
           }
+        } else if (command === "/actions") {
+          const optional = optionalJobs(jobs);
+          if (!optional.length) await reply(env, env.TELEGRAM_CHAT_ID, "No fresh optional phone actions. Automatic outreach continues without approval.");
+          else for (const job of optional) await optionalCard(env, job);
         } else if (command === "/queue") {
           if (env.HANDS_OFF_ONLY !== "false") {
             const run = state.last_run || {};
             const forms = run.applications || {};
+            if (optionalJobs(jobs).length) await reply(env, env.TELEGRAM_CHAT_ID, "Optional phone-friendly opportunities are available with /actions. These are not approvals and do not block automatic outreach.");
             await reply(env, env.TELEGRAM_CHAT_ID, `Hands-off application processing\nSMTP accepted in last run: ${run.emails_accepted_by_smtp || 0}\nConfirmed portal applications: ${forms.confirmed || 0}\nVerified form adapters enabled: ${forms.enabled_adapters || 0}\nUnsupported/blocked routes: ${(forms.unsupported || 0) + (forms.blocked || 0)}\n${escapeHTML(Object.keys(run.coverage_gaps || {}).slice(0,3).join(", ") || "No pending action required")}\nNo manual approval queue. Replies and interviews will be reported here.`);
             const recent = jobs.filter(j => (j.emailed || j.submitted) && /^[a-f0-9]{24}$/.test(j.id)).sort((a,b) => String(b.applied_at || b.emailed_at || "").localeCompare(String(a.applied_at || a.emailed_at || ""))).slice(0,3);
             for (const job of recent) {
@@ -163,8 +185,10 @@ export default {
           const attempt = state.last_attempt || {};
           const attemptText = attempt.at ? `Latest attempt: ${escapeHTML(attempt.status || "Unknown")}\nAttempt at: ${escapeHTML(timeIST(attempt.at))}\n${attempt.reason ? "Reason: " + escapeHTML(attempt.reason) + "\n" : ""}${attempt.next_due_at ? "Next eligible scheduled run: " + escapeHTML(timeIST(attempt.next_due_at)) + " (GitHub may start later)\n" : ""}` : "";
           const health = run.discovery_health || {};
+          const funnel = run.funnel || {};
+          const reachText = `Fresh: ${Number(funnel.verified_fresh) || 0}; suitable: ${Number(funnel.suitable) || 0}; reachable: ${Number(funnel.reachable) || 0}\nCareers-inbox shadow: ${Number(run.contact_discovery?.shadow_runs_completed) || 0}/3 scheduled runs\nOptional phone actions sent: ${Number(run.manual_actions?.sent) || 0} (use /actions)\n`;
           const healthText = `Failing discovery sources: ${Number(health.failing_sources) || 0}\nAlert-link failures: ${escapeHTML(Object.entries(health.alert_failure_categories || {}).slice(0,4).map(([name,count])=>`${name.replaceAll("_"," ")}: ${count}`).join("; ") || "none recorded")}\n`;
-          await reply(env, env.TELEGRAM_CHAT_ID, `${attemptText}Last scout execution: ${escapeHTML(run.status || "No completed run")}\nAt: ${escapeHTML(timeIST(run.at))}\nDiscovered: ${run.results_discovered || 0}\nPotential matches: ${run.relevant_apply_leads || 0}\nSMTP accepted: ${run.emails_accepted_by_smtp || 0}\nPortal confirmed: ${run.applications?.confirmed || 0}\nVerified form adapters: ${run.applications?.enabled_adapters || 0}\n${healthText}Budget: ${state.budget?.paused ? "Paused" : state.budget?.mode === "standard_public" ? "Free public standard runners" : "Within configured limits"}\nRuntime minutes estimate: ${state.budget?.used_minutes_estimate || 0}${state.budget?.mode === "standard_public" ? " (no private-minute ceiling)" : "/" + (state.budget?.monthly_ceiling || 1200)}\nFeedback is reconciled on the next scout run.`);
+          await reply(env, env.TELEGRAM_CHAT_ID, `${attemptText}Last scout execution: ${escapeHTML(run.status || "No completed run")}\nAt: ${escapeHTML(timeIST(run.at))}\nDiscovered: ${run.results_discovered || 0}\nPotential matches: ${run.relevant_apply_leads || 0}\n${reachText}SMTP accepted: ${run.emails_accepted_by_smtp || 0}\nPortal confirmed: ${run.applications?.confirmed || 0}\nVerified form adapters: ${run.applications?.enabled_adapters || 0}\n${healthText}Budget: ${state.budget?.paused ? "Paused" : state.budget?.mode === "standard_public" ? "Free public standard runners" : "Within configured limits"}\nRuntime minutes estimate: ${state.budget?.used_minutes_estimate || 0}${state.budget?.mode === "standard_public" ? " (no private-minute ceiling)" : "/" + (state.budget?.monthly_ceiling || 1200)}\nFeedback is reconciled on the next scout run.`);
         } else {
           const cutoff = new Date(Date.now() - 7 * 86400000).toISOString();
           const count = key => jobs.filter(j => String(j[key] || "") >= cutoff).length;

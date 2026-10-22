@@ -127,6 +127,16 @@ def test_contact_footer_has_exact_order_and_no_duplicate_links():
     assert body.count("https://www.linkedin.com/in/shivank-shukla09") == 1
 
 
+def test_relevant_existing_case_study_without_rewriting_work_highlights_or_footer():
+    body = compose("Build Power BI dashboards for inventory reporting.", "reporting")["email_body"]
+    assert "Portfolio example: Blinkit Sales Performance Analysis" in body
+    assert len([line for line in body.splitlines() if line.startswith("- ")]) == 3
+    assert "ProSca:" not in body
+    assert body.count("https://shivank-shukla-portfolio.vercel.app/") == 1
+    assert "Portfolio example:" not in compose("Conduct market research.")["email_body"]
+    assert "Portfolio example:" not in compose("Build Power BI dashboards.", "reporting", page_fetched=False)["email_body"]
+
+
 def test_missing_profile_fact_does_not_authorize_alignment():
     profile = deepcopy(load_profile())
     profile["email_experience_highlights"] = {}

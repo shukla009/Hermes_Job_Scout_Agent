@@ -15,7 +15,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 
 def callback_data(ident, action, token, now=None):
-    if not re.fullmatch(r"[0-9a-f]{24}", ident) or action not in ("applied", "notfit", "snooze", "reply", "interview", "rejected"):
+    if not re.fullmatch(r"[0-9a-f]{24}", ident) or action not in ("applied", "notfit", "snooze", "reply", "interview", "rejected", "skipped", "referral"):
         raise ValueError("Invalid callback target")
     expiry = int(time.time() if now is None else now) + 7 * 86400
     payload = f"{action}:{ident}:{expiry}"
@@ -62,6 +62,9 @@ class StateStore:
                     raise ValueError("unsupported state shape")
                 if not isinstance(value.get("processed_feedback"), list):
                     raise ValueError("invalid feedback ledger")
+                for key in ("employer_contacts", "contacts_rollout", "manual_alert_days"):
+                    if key in value and not isinstance(value[key], dict):
+                        raise ValueError("invalid recruiter-reach state")
                 self.data = value
                 if not value.get("legacy_dates_repaired") and self.history_path.exists():
                     legacy = load_json(self.history_path)
@@ -131,7 +134,7 @@ class StateStore:
         if record.get("archived"):
             record["last_seen"] = now
             return record
-        for key in ("job_title", "title", "company", "location", "application_url", "apply_url", "url", "score", "fit_score", "fit_reason", "stretch", "email", "warnings", "family", "tier", "reason", "evidence", "source_id", "source_name", "requirements", "review_required", "review_reasons", "risk_assessment", "risk_flags", "score_breakdown", "score_kind", "date_posted", "vacancy_reference"):
+        for key in ("job_title", "title", "company", "location", "application_url", "apply_url", "url", "score", "fit_score", "fit_reason", "stretch", "email", "warnings", "family", "tier", "reason", "evidence", "source_id", "source_name", "requirements", "review_required", "review_reasons", "risk_assessment", "risk_flags", "score_breakdown", "score_kind", "date_posted", "vacancy_reference", "contact_route", "email_safe", "junior_experience_exception"):
             if key in analysis:
                 record[key] = analysis[key]
         if post:
@@ -229,7 +232,7 @@ class StateStore:
                 event = load_json(path)
                 ident, action = event["job_id"], event["action"]
                 record = self.data["jobs"].get(ident)
-                if not record or action not in ("applied", "notfit", "snooze", "reply", "interview", "rejected"):
+                if not record or action not in ("applied", "notfit", "snooze", "reply", "interview", "rejected", "skipped", "referral"):
                     continue
                 previous = int(record.get("feedback_update_id", -1))
                 if int(path.stem) > previous:
@@ -237,6 +240,11 @@ class StateStore:
                         record["submitted"] = True
                         record["submission_unconfirmed"] = False
                         record["applied_at"] = event.get("created_at") or datetime.now(timezone.utc).isoformat()
+                        record["application_route"] = "user_reported"
+                        record["manual_action_status"] = "applied"
+                    elif action in ("skipped", "referral"):
+                        record["manual_action_status"] = "skipped" if action == "skipped" else "referral_requested"
+                        record["manual_action_at"] = event.get("created_at") or datetime.now(timezone.utc).isoformat()
                     elif action == "snooze" and not record.get("outcome"):
                         record["snoozed_until"] = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
                     if action in ("reply", "interview", "rejected", "notfit") and not (record.get("outcome") in ("interview", "rejected") and action in ("reply", "notfit")):
@@ -257,7 +265,7 @@ class StateStore:
         record = self.data["jobs"].get(ident, {})
         if recipient in self.data.get("suppressed_recipients", {}):
             return None
-        if not record or record.get("outcome") in ("notfit", "rejected", "reply", "interview") or record.get("submitted") or self.application_reserved(ident):
+        if not record or record.get("outcome") in ("notfit", "rejected", "reply", "interview") or record.get("submitted") or record.get("manual_action_status") in {"skipped", "referral_requested", "applied"} or self.application_reserved(ident):
             return None
         if step == "initial" and self.company_in_cooldown(ident):
             return None
@@ -286,6 +294,8 @@ class StateStore:
                     return None
         intent = {"id": intent_id, "job_id": ident, "recipient": recipient, "step": step,
                   "message_id": message_id or f"<hermes-{intent_id}@job-scout.local>", "status": "pending", "created_at": now.isoformat()}
+        if step == "initial":
+            intent["contact_route"] = self.data["jobs"][ident].get("contact_route", "vacancy_email")
         self.data["sends"][intent_id] = intent
         if not self.save():
             return None
@@ -341,7 +351,7 @@ class StateStore:
 
     def reserve_application(self, ident, adapter_id):
         record = self.data["jobs"].get(ident, {})
-        if not record or record.get("submitted") or record.get("emailed") or record.get("outcome"):
+        if not record or record.get("submitted") or record.get("emailed") or record.get("outcome") or record.get("manual_action_status") in {"skipped", "referral_requested", "applied"}:
             return None
         if self.application_reserved(ident) or self.company_in_cooldown(ident):
             return None

@@ -608,10 +608,11 @@ def _smartrecruiters_jobs(employer):
 
 
 def discover_ats_jobs():
-    from scout_sources import discover_sources
+    from scout_sources import discover_sources, prioritize_registry
     from scout_runtime import read_state
     previous = read_state("state/sources.json", dict, {})
-    jobs, stats, updated = discover_sources(_load_employer_registry(), _request_with_retries, previous)
+    registry = prioritize_registry(_load_employer_registry(), ACTIVE_STORE.data.get("jobs", {}) if ACTIVE_STORE else {})
+    jobs, stats, updated = discover_sources(registry, _request_with_retries, previous)
     _save_json("state/sources.json", updated)
     return jobs, stats
 
@@ -757,6 +758,7 @@ def analyze_post_verbose(post, max_retries=3):
         "score_kind": checked.get("score_kind", "deterministic_fit_points_not_probability"),
         "date_posted": post.get("date_posted") or post.get("posted_at") or post.get("published_at"),
         "vacancy_reference": str(post.get("vacancy_reference") or post.get("source_id") or "")[:100],
+        "junior_experience_exception": checked.get("junior_experience_exception", False),
     }
     result["job_id"] = _job_fingerprint({"href": result["application_url"], "job_title": result["job_title"], "company": result["company"]})
     return result, "ok" if result["recruiter_email"] else "apply"
@@ -790,13 +792,16 @@ def _fallback_email(analysis, post=None):
     current_background += (f" currently working in research and strategy at {current['employer']}.\n\n" if current else ".\n\n")
     skill_line = ("Relevant skills: " + ", ".join(tailored["skills"]) + ".\n\n") if tailored["skills"] else ""
     alignment = tailored["alignment"] + "\n\n" if tailored["alignment"] else ""
-    vacancy_line = ("Vacancy reference: " + str(analysis["application_url"]) + "\n\n") if analysis.get("application_url") else ""
+    example = ("Portfolio example: " + tailored["portfolio_example"] + " (see Portfolio below).\n\n") if tailored.get("portfolio_example") else ""
+    reference = re.sub(r"[\r\n]+", " ", str(analysis.get("vacancy_reference") or ""))[:100]
+    reference_label = (" (reference " + reference + ")") if reference and not reference.startswith("https://") else ""
+    vacancy_line = ("Vacancy link: " + str(analysis["application_url"]) + "\n\n") if analysis.get("application_url") else ""
     body = (
-        f"Hello Hiring Team,\n\nI'm applying for the {title} position at {company}. "
+        f"Hello Hiring Team,\n\nI'm applying for the {title} position{reference_label} at {company}. "
         + current_background + alignment + skill_line
         + "Experience highlights:\n"
         + "\n".join("- " + str(point) for point in points[:3])
-        + "\n\nMy resume is attached. Would you consider my profile for this opening?\n\n"
+        + "\n\n" + example + "My resume is attached. Would you consider my profile for this opening?\n\n"
         + vacancy_line
         + _email_footer()
     )
@@ -962,12 +967,19 @@ def _send_apply_alert(analysis):
         + ("⚠️ " + html.escape(warnings) + "\n" if warnings else "")
         + "<a href='" + html.escape(str(analysis.get("application_url", "")), quote=True) + "'>Apply on official site</a>"
     )
+    if analysis.get("manual_optional"):
+        message = ("<b>Optional phone action — not an approval</b>\n" + message +
+                   "\nAutomatic applications continue independently. Only contact someone who knows your work.\n" +
+                   "<b>Referral draft:</b>\n" + html.escape(str(analysis.get("manual_draft", ""))[:850]))
     if os.getenv("TELEGRAM_TRACKING_READY", "false").lower() != "true":
         return send_telegram(message)
-    buttons = [[{"text": label, "callback_data": callback_data(analysis["job_id"], action, TELEGRAM_BOT_TOKEN)}
-                for label, action in pair] for pair in (
+    pairs = (
+                    (("Applied", "applied"), ("Skipped", "skipped"), ("Referral requested", "referral")),
+                    (("Reply", "reply"), ("Interview", "interview"), ("Rejected", "rejected"))) if analysis.get("manual_optional") else (
                     (("Applied", "applied"), ("Not suitable", "notfit"), ("Snooze", "snooze")),
-                    (("Reply", "reply"), ("Interview", "interview"), ("Rejected", "rejected")))]
+                    (("Reply", "reply"), ("Interview", "interview"), ("Rejected", "rejected")))
+    buttons = [[{"text": label, "callback_data": callback_data(analysis["job_id"], action, TELEGRAM_BOT_TOKEN)}
+                for label, action in pair] for pair in pairs]
     return send_telegram(message, {"inline_keyboard": buttons})
 
 

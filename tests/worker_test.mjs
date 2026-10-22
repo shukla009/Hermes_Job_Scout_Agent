@@ -3,7 +3,7 @@ import {webcrypto, createHmac} from 'node:crypto';
 import assert from 'node:assert/strict';
 if (!globalThis.crypto) Object.defineProperty(globalThis, 'crypto', {value:webcrypto});
 const source = await readFile(new URL('../workers/telegram_trigger_worker.js', import.meta.url), 'utf8');
-const {default: worker, verifyCallback, createCallback, storeFeedback, reserveDispatch} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {default: worker, verifyCallback, createCallback, storeFeedback, reserveDispatch, optionalJobs} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const ident = 'a'.repeat(24), now = 1800000000;
 const payload = `applied:${ident}:${now + 60}`;
 const sig = createHmac('sha256', 'bot').update(payload).digest('hex').slice(0,12);
@@ -59,6 +59,22 @@ for(const button of card.reply_markup.inline_keyboard.flat()) {
 }
 const fresh=await createCallback('interview',ident,'bot',now);
 assert.equal((await verifyCallback(fresh,'bot',now)).action,'interview');
+for (const action of ['referral', 'skipped']) {
+  const value = await createCallback(action, ident, 'bot', now);
+  assert.ok(Buffer.byteLength(value) <= 64);
+  assert.equal((await verifyCallback(value, 'bot', now)).action, action);
+  assert.equal(await verifyCallback(value, 'wrong', now), null);
+}
+const manualNow = Date.now();
+const manualJob = {id:ident, manual_action_status:'notified', email_safe:true,
+  date_posted:new Date(manualNow-3600000).toISOString(), fit_score:80};
+assert.equal(optionalJobs([manualJob], manualNow).length, 1);
+for (const change of [{submitted:true},{emailed:true},{archived:true},{outcome:'reply'},
+  {manual_action_status:'skipped'},{email_safe:false}, {date_posted:new Date(manualNow-49*3600000).toISOString()},
+  {date_posted:new Date(manualNow+3600000).toISOString()}]) {
+  assert.equal(optionalJobs([{...manualJob, ...change}], manualNow).length, 0);
+}
+assert.equal(optionalJobs(Array.from({length:5},(_,i)=>({...manualJob,id:String(i)})),manualNow).length,3);
 calls=[];
 assert.equal((await worker.fetch(request({message:{chat:{id:10},from:{id:10},text:'/queue'}}),{...env,HANDS_OFF_ONLY:'true'})).status,200);
 const automaticQueue = JSON.parse(calls.find(c=>c.url.includes('/sendMessage')).options.body);

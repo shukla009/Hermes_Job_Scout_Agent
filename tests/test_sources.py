@@ -83,7 +83,7 @@ def test_sr_not_title_filtered():
 def test_registry_unique_bounded_and_no_naukri():
     from pathlib import Path
     entries=json.loads((Path(__file__).parents[1]/'config/employers.json').read_text())
-    assert len(entries)==31 and len({e['name'] for e in entries})==31
+    assert len(entries)==32 and len({e['name'] for e in entries})==32
     assert not any('naukri' in str(e).lower() for e in entries)
     assert next(e for e in entries if e['name']=='ProcDNA')['ats']=='html'
     assert next(e for e in entries if e['name']=='Himalayas Remote')['ats']=='himalayas'

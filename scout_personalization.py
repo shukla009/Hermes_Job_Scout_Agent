@@ -131,5 +131,17 @@ def personalize_email(text, profile, family):
             skills.append(value)
     skills.sort(key=lambda value: priorities.index(value.lower()) if value.lower() in priorities else len(priorities))
     skills = [value[:1].upper() + value[1:] + (" (knowledge)" if value.lower() in listed else "") for value in skills[:4]]
-    return {"alignment": alignment, "skills": skills, "highlights": points,
+    # These case studies were checked on the existing portfolio. Names only:
+    # links stay grouped in the user's footer, and project work never becomes
+    # ProSca employment or unverified commercial impact.
+    positive = " ".join(clause for clause, _ in clauses).lower()
+    example = ""
+    if family in {"reporting", "data"}:
+        if re.search(r"healthcare|mental health|public health", positive) and re.search(r"python|tableau|data analysis", positive):
+            example = "Mental Health Data Insights — a Python and Tableau case study"
+        elif re.search(r"power\s*bi", positive) and re.search(r"dashboard|sales|inventory|retail|reporting", positive):
+            example = "Blinkit Sales Performance Analysis — a Power BI, Excel and DAX case study"
+        elif re.search(r"forecasting|time.series", positive) and re.search(r"python|lstm", positive):
+            example = "Stock Price Prediction using LSTM — a forecasting project, not professional ML employment"
+    return {"alignment": alignment, "skills": skills, "highlights": points, "portfolio_example": example,
             "matched_topics": topics, "method": "verified_rules" if alignment or skills else "neutral_fallback"}

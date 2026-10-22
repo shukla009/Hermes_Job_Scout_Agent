@@ -9,8 +9,8 @@ from urllib.parse import urlparse, urljoin, quote
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 
-ROLE = re.compile(r"analyst|research|intelligence|insights|reporting|\bmis\b|business intelligence|data (?:quality|operations)|power bi", re.I)
-SENIOR = re.compile(r"\b(?:senior|sr|manager|director|principal|head|internship)\b", re.I)
+ROLE = re.compile(r"analyst|research|intelligence|insights|reporting|\bmis\b|business intelligence|data (?:quality|operations)|power bi|(?:junior|associate|graduate) strategy|strategy associate", re.I)
+SENIOR = re.compile(r"\b(?:senior|sr|manager|director|principal|head|internship|vp|avp|vice president|chief)\b", re.I)
 POLL_SECONDS = {'high': 0, 'medium': 86400, 'low': 86400}
 MAX_WATCHLIST_POLLS_PER_RUN = 6
 
@@ -91,6 +91,27 @@ def _publication_time(value):
     except (ValueError,TypeError):
         return None
 
+
+def prioritize_registry(registry, jobs, now=None):
+    """Outcome-backed ordering, with an exploration slot and no extra requests."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=30)).isoformat()
+    scores = {}
+    for job in jobs.values():
+        if job.get('first_seen', '') < cutoff: continue
+        source = job.get('source_name', '')
+        score = (20 if job.get('outcome') == 'interview' else 10 if job.get('outcome') == 'reply' else
+                 3 if job.get('emailed') or job.get('submitted') else 1 if job.get('reachability_route') in {'vacancy_email','official_careers_inbox','public_form'} else 0)
+        scores[source] = scores.get(source, 0) + score
+    ranked = sorted(registry, key=lambda e: (-scores.get(f"{e.get('ats','html')}:{e['name']}", 0), registry.index(e)))
+    # Every source still participates; a rotating early slot prevents feedback
+    # from starving an employer before it has had a chance to produce outcomes.
+    if ranked:
+        explorer = registry[now.toordinal() % len(registry)]
+        ranked.remove(explorer)
+        ranked.insert(0, explorer)
+    return ranked
+
 def _himalayas_location(job):
     restrictions=job.get('locationRestrictions') or []
     restrictions=[restrictions] if isinstance(restrictions,(str,dict)) else restrictions
@@ -146,6 +167,8 @@ def _locations(value):
     if isinstance(value, dict):
         a=value.get('address',value)
         if isinstance(a,str): return a
+        if isinstance(a,list): return _locations(a)
+        if not isinstance(a,dict): return ''
         return ', '.join(str(a.get(k,'')) for k in ('addressLocality','addressRegion','addressCountry','city','region','country') if a.get(k))
     return ''
 
@@ -156,7 +179,7 @@ def _jsonld(content, base, e, now):
         if isinstance(node,list):
             for item in node: walk(item)
         elif isinstance(node,dict):
-            types=node.get('@type',[])
+            types=node.get('@type') or []
             if 'JobPosting' in ([types] if isinstance(types,str) else types):
                 expiry=node.get('validThrough','')
                 try:
@@ -470,6 +493,8 @@ def _fetch(e, get, now, cursor=0):
                 found,_=_jsonld(get(url,timeout=20).text,url,e,now); jobs.extend(found)
             incomplete=cursor+5<len(candidates); next_cursor=cursor+5 if incomplete else 0
     status=dict(status='ok' if jobs or ats in ('greenhouse','lever','smartrecruiters','ashby','workable','workday','oracle','himalayas','xml') else 'link_only',raw_listings=raw,leads=len(jobs),incomplete=incomplete)
+    status['original_dates']=sum(_publication_time(j.get('date_posted')) is not None for j in jobs)
+    status['missing_original_dates']=len(jobs)-status['original_dates']
     status.update(metrics)
     return jobs,status,next_cursor
 

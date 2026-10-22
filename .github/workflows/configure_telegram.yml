@@ -45,9 +45,15 @@ jobs:
               'allowed_updates':['message','callback_query'], 'drop_pending_updates':False})
           info = call('getWebhookInfo')
           assert info.get('url') == url and 'callback_query' in info.get('allowed_updates', []), 'Webhook verification failed'
+          call('setMyCommands', {'commands': [
+              {'command':'run', 'description':'Start the cloud job scout'},
+              {'command':'status', 'description':'Latest search, reachability and rollout'},
+              {'command':'queue', 'description':'Automatic applications and outcomes'},
+              {'command':'actions', 'description':'Optional phone actions, not approvals'},
+              {'command':'stats', 'description':'Applications, replies and interviews'}]})
           print('Existing webhook secured; messages and callbacks enabled. No secret values logged.')
           # A read-only command probes Worker authentication and existing GitHub access.
-          commands = ['/status', '/stats', '/queue']
+          commands = ['/status', '/stats', '/queue', '/actions']
           if os.getenv('VERIFY_DISPATCH', '').lower() == 'true':
               commands.append('/run')
           identity = int(time.time() * 1000)

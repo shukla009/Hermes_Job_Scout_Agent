@@ -3,6 +3,30 @@
   "note": "Only individually verified public form contracts may be enabled. A publicly readable job board is not permission or credentials for its application API. No route below is enabled; email submission remains operational.",
   "adapters": [
     {
+      "id": "markntel-careers-audit",
+      "company": "MarkNtel Advisors",
+      "enabled": false,
+      "audit_url": "https://www.marknteladvisors.com/careers",
+      "checked_at": "2026-10-23",
+      "disabled_reason": "Official page has application form but no verified resume-upload or submission/receipt contract. CTC and notice period cannot be invented. Current page does not establish a fresh suitable analyst vacancy."
+    },
+    {
+      "id": "techsci-careers-audit",
+      "company": "TechSci Research",
+      "enabled": false,
+      "audit_url": "https://www.techsciresearch.com/career/Current-Openings.aspx",
+      "checked_at": "2026-10-23",
+      "disabled_reason": "Noida Research Analyst opening is readable but original publication date and complete application confirmation contract are unverified. Sales enquiry form is not a recruitment route."
+    },
+    {
+      "id": "6wresearch-careers-audit",
+      "company": "6Wresearch",
+      "enabled": false,
+      "audit_url": "https://www.6wresearch.com/careers",
+      "checked_at": "2026-10-23",
+      "disabled_reason": "Official careers inbox accepts applications; public current-openings page does not establish original posting dates. Other site enquiry forms are not application forms. Use inbox only with independently verified fresh and suitable vacancy."
+    },
+    {
       "id": "neev-research-audit",
       "company": "NEEV Research",
       "enabled": false,

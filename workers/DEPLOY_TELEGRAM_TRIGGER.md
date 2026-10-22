@@ -2,7 +2,7 @@
 
 ## Queue upgrade: required configuration
 
-The JavaScript Worker now supports `/run`, `/queue`, `/status`, `/stats`, and signed
+The JavaScript Worker now supports `/run`, `/queue`, `/actions`, `/status`, `/stats`, and signed
 outcome buttons. Outcomes are immutable encrypted GitHub files when encryption is enabled; buttons do
 not start Actions runs or require a database. Deploy the updated JavaScript source
 to the existing Worker; a repository push alone does not deploy Cloudflare.
@@ -23,6 +23,9 @@ to the existing Worker; a repository push alone does not deploy Cloudflare.
   acceptance is not proof of delivery or a recruiter reply.
 - Validate with `node tests/worker_test.mjs` before deployment and check `/status`
   after the first successful scout state migration.
+- `/actions` is optional, not an approval queue. It exposes only independently verified
+  fresh suitable jobs that the scout cannot submit automatically. Applied is user-reported;
+  Skipped and Referral requested hold conflicting outreach on the next scout reconciliation.
 - Retain the Cloudflare Free plan and stopped paid upgrades. No new paid services
   or database are required. GitHub budget enforcement remains in the workflow;
   a persisted `budget.paused` blocks manual dispatch in the Worker too.

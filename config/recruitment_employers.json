@@ -1,0 +1,26 @@
+[
+  {
+    "name": "6Wresearch",
+    "official_domains": ["6wresearch.com"],
+    "careers_url": "https://www.6wresearch.com/careers",
+    "recruitment_pages": ["https://www.6wresearch.com/careers"],
+    "audit": "Official careers page invites applications by email. Contact route only: undated openings are not fresh vacancies.",
+    "checked_on": "2026-10-23"
+  },
+  {
+    "name": "TechSci Research",
+    "official_domains": ["techsciresearch.com"],
+    "careers_url": "https://www.techsciresearch.com/career/Current-Openings.aspx",
+    "recruitment_pages": ["https://www.techsciresearch.com/career/Current-Openings.aspx"],
+    "audit": "Official Noida research opening page; no assumed email route or original date. Never use sales contact.",
+    "checked_on": "2026-10-23"
+  },
+  {
+    "name": "MarkNtel Advisors",
+    "official_domains": ["marknteladvisors.com"],
+    "careers_url": "https://www.marknteladvisors.com/careers",
+    "recruitment_pages": ["https://www.marknteladvisors.com/careers"],
+    "audit": "Official form has CTC and notice-period fields; no verified resume upload, dated analyst vacancy or receipt. Disabled for submission.",
+    "checked_on": "2026-10-23"
+  }
+]

@@ -21,7 +21,15 @@
   unsafe and permanently unavailable links are classified without exposing URL tokens.
 - Rejects unsuitable roles, unsupported mandatory requirements, closed jobs and risky offers.
 - Sends a personalised email with the existing `Shivank_Shukla_Data_Analyst.pdf` only when
-  the vacancy provides a verified recruitment address and permits email applications.
+  the vacancy provides a verified recruitment address, or its verified employer publishes
+  an official careers inbox explicitly accepting applications. Vacancy-specific portal-only
+  instructions always override a general inbox. No guessed or unrelated contacts.
+- Careers-inbox joins require matching employer identity and an owned vacancy URL/ATS tenant,
+  exact contact evidence and verification within 24 hours. At most six contact-page requests
+  run per search, two per employer, within the existing shared HTTP/runtime budget.
+- The new careers-inbox route starts with **three actual scheduled shadow executions**.
+  It then permits at most **two new-route attempts daily for seven days**, inside the existing
+  six-action ceiling. Original vacancy-email outreach continues during this validation.
 - Sends initial emails on weekdays between **08:30 and 18:30 IST**. Other runs can discover jobs.
 - Rechecks freshness before sending; queued jobs expire after 48 hours.
 - Uses at most three application attempts per run and six outbound actions per IST day,
@@ -56,19 +64,33 @@
   responsibilities and select up to four resume-listed skills. Knowledge-only
   skills are labelled; no ProSca use of those tools is implied. Unverified or
   unsupported descriptions receive no invented alignment sentence.
+- When relevant, a verified existing portfolio case study is named separately from the
+  ProSca work bullets. Links remain grouped in the footer; no project impact is invented.
 - Emails end with Portfolio, LinkedIn, Email and Phone together, then
   "Best regards, Shivank Shukla". Follow-ups use the same contact footer.
 - Prioritises research/market intelligence, MIS/reporting, junior BI/data analysis,
   data quality/operations and process/business analysis based on actual responsibilities.
 - Verified listed SQL knowledge can meet a knowledge requirement; it cannot establish
   professional production experience. Alternative requirements are distinguished from AND requirements.
+- Missing minimum experience alone no longer blocks clearly junior/associate/support-scope
+  roles. The undisclosed-experience warning remains; generic analyst titles are not enough.
+  Explicit experience deficits, unknown mandatory skills and unconfirmed full-time work still block.
 - ProSca internship ended July 2026; full-time role began August 2026. Both degrees are completed.
 - Internships, projects and full-time work remain separate; overlapping internships are not double-counted.
 - The current resume stays unchanged. No invented experience, guessed recruiter emails or fake claims.
 
 ## Where jobs come from
 
-- The registry contains 31 sources, not a promise of 31 productive employers.
+- The registry contains 32 sources, not a promise of 32 productive employers.
+- All original 31 were checked in a bounded public audit; see `config/source_audit.json`.
+  Moody's now polls as a readable dated source; Gartner's nested-address parser is repaired.
+  Source ordering favours recorded interviews/replies/reachable applications, with a rotating
+  exploration slot. This does not increase the shared request limit.
+- Wood Mackenzie's verified Workday feed adds Gurugram research coverage with original
+  posting dates. It is a discovery source, not a promise of fresh matches or auto-apply access.
+- 6Wresearch, TechSci Research and MarkNtel were investigated separately. Their undated pages
+  are **not** presented as fresh jobs. The contact registry can join an official inbox only
+  to an independently verified fresh suitable vacancy from that same employer.
 - Public Greenhouse, Lever, SmartRecruiters, Ashby and Workable connectors where supported.
 - **Genpact Workday:** public search and vacancy details, including NCR location filtering
   and two bounded result pages per keyword. This is not an exhaustive scan of all jobs.
@@ -77,6 +99,10 @@
 - Himalayas' free feed supplies a bounded slice of full-time India-compatible remote jobs.
 - Official readable career pages and structured vacancy data supplement feeds.
 - Authenticated alerts from supported free platforms provide additional discovery hints.
+- Alert parsing prioritises explicit employer destinations embedded in authenticated content,
+  including nested tracker targets and structured email URLs; email dates never prove job age.
+- Native platform subscriptions are a one-time candidate-account setting, not something a
+  GitHub workflow can create without your account interaction. See [free alert setup](docs/FREE_ALERT_SETUP.md).
 - Diagnostics distinguish productive feeds, verified feeds without matches, discovery-only
   pages and temporarily failing sources. Blocked sources never produce invented vacancies.
 - Generic watchlists rotate and cool down; sources share request and runtime limits.
@@ -90,6 +116,14 @@
 - `/status`: show the latest attempt/skip separately from the last real search,
   SMTP acceptance, portal confirmation and form readiness.
 - `/stats`: show recorded applications, replies and interviews separately.
+- `/actions`: show up to three fresh optional phone-friendly opportunities with a referral
+  draft and Applied/Skipped/Referral requested buttons. A maximum of three new cards is sent
+  per IST day. These are **not approvals**; automatic outreach continues independently.
+- Referral requested holds conflicting automatic outreach for that vacancy. Skipped suppresses
+  it. Neither is counted as an application; Applied is labelled user-reported, not portal receipt.
+- The funnel now separates discovered, verified fresh, suitable, reachable, SMTP accepted,
+  portal confirmed, human replies and interviews. Every 14 days, an outcome review recommends
+  coverage improvements or targeting/evidence changes rather than higher sending volume.
 - Reply/Interview/Rejected buttons record outcomes; they are not application approvals.
 - Routine unchanged zero-result runs stay quiet apart from the daily summary; important failures remain visible.
 

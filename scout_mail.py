@@ -5,6 +5,7 @@ GMAIL_PASSWORD and IMAP_CHECK). No credentials or message bodies are logged.
 Alert results are unverified discovery hints, never application instructions.
 """
 import imaplib
+import json
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -56,11 +57,16 @@ def _has_recruitment_cta(address, before, after):
     patterns = (
         rf"(?:send|share|email|submit|forward)\b.{{0,100}}?(?:resume|résumé|cv|application)\b.{{0,100}}?{address_pattern}",
         rf"(?:resume|résumé|cv|application)\b.{{0,100}}?(?:send|share|email|submit|forward)\b.{{0,100}}?{address_pattern}",
-        rf"\bapply\b.{{0,120}}?(?:email|at|to)\b.{{0,80}}?{address_pattern}",
+        rf"\bapply\b.{{0,120}}?(?:email|at|to|via|through)\b.{{0,80}}?{address_pattern}",
         rf"{address_pattern}.{{0,100}}?(?:resume|résumé|cv|application)\b",
         rf"\brecruit(?:er|ment)\b.{{0,100}}?(?:contact|email)\b.{{0,80}}?{address_pattern}",
     )
     return any(re.search(pattern, joined, re.I) for pattern in patterns)
+
+
+def email_applications_forbidden(post):
+    text = re.sub(r"\s+", " ", str(post.get("source_text") or post.get("description") or post.get("body") or ""))
+    return bool(re.search(r"do not (?:send|email)|no (?:email|e-mail) applications|applications? (?:must|should) (?:only )?be (?:submitted|made).{0,80}(?:portal|website)|apply (?:only|exclusively) (?:via|through|on)|(?:portal|website)[- ]only applications", text, re.I))
 
 
 def recruitment_contacts(post, candidate_email=""):
@@ -68,8 +74,7 @@ def recruitment_contacts(post, candidate_email=""):
     if post.get("page_fetched") is not True or post.get("page_fetch_failed") or post.get("access_blocked"):
         return []
     text = str(post.get("source_text") or post.get("description") or post.get("body") or "")
-    normalized = re.sub(r"\s+", " ", text)
-    if not text or re.search(r"do not (?:send|email)|applications? (?:must|should) (?:only )?be (?:submitted|made).{0,80}(?:portal|website)|apply (?:only|exclusively) (?:via|through|on)", normalized, re.I):
+    if not text or email_applications_forbidden(post):
         return []
     output, evidence = [], []
     for match in EMAIL.finditer(text):
@@ -484,6 +489,59 @@ class _Links(HTMLParser):
             self.href = None
 
 
+def alert_destinations(kind, content):
+    """Extract explicit destinations before trackers; never import email dates as proof."""
+    from scout_discovery import _unwrap, _url_block_reason
+    links = []
+    if kind == "text/html":
+        parser = _Links()
+        parser.feed(content)
+        links.extend(parser.links)
+        # Some providers embed JobPosting data in an email. It supplies a URL
+        # hint only: the employer vacancy still needs independent verification.
+        from scout_sources import Page
+        page = Page()
+        page.feed(content)
+        pending = []
+        for script in page.scripts[:10]:
+            try:
+                pending.append(json.loads(script))
+            except ValueError:
+                continue
+        inspected = 0
+        while pending and inspected < 100:
+            node = pending.pop()
+            inspected += 1
+            if isinstance(node, list):
+                pending.extend(node[:20])
+            elif isinstance(node, dict):
+                types = node.get("@type") or []
+                if "JobPosting" in ([types] if isinstance(types, str) else types):
+                    url = node.get("url")
+                    if isinstance(url, str):
+                        links.insert(0, (url, str(node.get("title") or "Job opening")[:200]))
+                pending.extend(v for v in node.values() if isinstance(v, (dict, list)))
+    else:
+        links.extend((url.rstrip(".,);"), "") for url in re.findall(r"https://[^\s<>\"]+", content))
+    resolved, seen = [], set()
+    for url, caption in links[:100]:
+        try:
+            target = _unwrap(url)
+        except (ValueError, TypeError):
+            continue
+        # Keep original platform links for diagnostics, but do not unwrap to an
+        # unsafe/excluded destination and then fetch its outer tracker instead.
+        if target != url and _url_block_reason(target):
+            continue
+        if target not in seen:
+            resolved.append((target, caption))
+            seen.add(target)
+    def rank(row):
+        host = urlsplit(row[0]).hostname or ""
+        return int(bool(re.search(r"linkedin|indeed|foundit|cutshort|instahyre|wellfound|hirist|iimjobs|internshala|unstop|track|click|email", host, re.I)))
+    return sorted(resolved, key=rank)
+
+
 def _decoded_parts(message):
     for part in message.walk():
         if part.get_content_type() in ("text/plain", "text/html") and part.get_content_disposition() != "attachment":
@@ -575,7 +633,8 @@ def ingest_alert_batch(agent, label="HermesJobAlerts", max_messages=30, allowed_
     if not limit:
         report["status"] = "disabled"
         return report
-    allowed = {"cutshort.io", "instahyre.com", "linkedin.com", "indeed.com", "indeedemail.com", "foundit.in"}
+    allowed = {"cutshort.io", "instahyre.com", "linkedin.com", "indeed.com", "indeedemail.com", "foundit.in",
+               "hirist.com", "hirist.tech", "iimjobs.com", "wellfound.com", "internshala.com", "unstop.com"}
     allowed.update(value.strip().lower() for value in os.getenv("SCOUT_ALERT_SENDER_DOMAINS", "").split(","))
     allowed.update(str(d).lower().strip() for d in (allowed_sender_domains or []))
     allowed = {d for d in allowed if re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}", d) and "naukri" not in d}
@@ -609,12 +668,7 @@ def ingest_alert_batch(agent, label="HermesJobAlerts", max_messages=30, allowed_
                 report["authenticated"] += 1
                 links = []
                 for kind, content in _alert_text_parts(mailbox, str(uid), message.get_content_type()):
-                    if kind == "text/html":
-                        parser = _Links()
-                        parser.feed(content)
-                        links.extend(parser.links)
-                    else:
-                        links.extend((url.rstrip(".,);"), "") for url in re.findall(r"https://[^\s<>\"]+", content))
+                    links.extend(alert_destinations(kind, content))
                 for url, caption in links:
                     parsed = urlsplit(url)
                     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or "naukri" in parsed.hostname.lower() or url in seen:

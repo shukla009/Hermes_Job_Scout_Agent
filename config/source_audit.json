@@ -1,0 +1,27 @@
+{
+  "checked_at": "2026-10-22T19:00:52+00:00",
+  "local_date": "2026-10-23 IST",
+  "method": "Read-only bounded public fetch: all 31 registered sources plus three recruitment employers; 66 HTTP requests. One research keyword and one detail request for large feeds. Not an exhaustive vacancy audit or proof of fit/freshness.",
+  "dated_vacancies_in_sample": ["Groww", "Paytm", "Portcast", "ION", "Genpact", "Moody's"],
+  "readable_feeds_no_matching_sample": ["Razorpay", "Meesho", "NielsenIQ", "Bosch", "Himalayas Remote", "EXL"],
+  "vacancies_without_original_dates": ["ProcDNA"],
+  "discovery_only": ["American Express", "Fidelity International", "Kantar", "Ipsos", "EY", "S&P Global", "Everest Group", "ZS", "Aon", "Cvent", "Escalent", "Accenture", "Deloitte", "WNS"],
+  "errors": {
+    "Evalueserve": "Public response exceeds bounded response limit; no bypass or unbounded fetch.",
+    "Gartner": "Nested address array caused AttributeError; parser repaired and regression tested separately.",
+    "The Smart Cube": "TLS failure; verification remains enabled.",
+    "Dynata": "HTTP 403; no login/proxy bypass."
+  },
+  "investigated_not_added_as_fresh_feeds": {
+    "6Wresearch": "Official careers page accepts email; original publication dates unverified.",
+    "TechSci Research": "Official Noida research listing; original publication dates unverified.",
+    "MarkNtel Advisors": "Official careers form; no fresh suitable analyst vacancy or verified submission contract."
+  },
+  "additional_verified_feed": {
+    "name": "Wood Mackenzie",
+    "official_url": "https://www.woodmac.com/careers/overview/",
+    "careers_url": "https://woodmac.wd3.myworkdayjobs.com/woodmaccareers",
+    "method": "Official careers page links the Workday tenant. One research-keyword probe returned two Gurugram research vacancies with original dates. This establishes a working source, not two fresh qualified jobs or an automated submission route."
+  },
+  "changes": ["Moody's promoted from generic low-priority watchlist to a regularly polled readable source.", "Wood Mackenzie added after official ownership and public original-date feed verification; registry is now 32 sources.", "Gartner nested address parsing repaired; repeat probe returned zero usable vacancies rather than crashing.", "Outcome-backed source ordering retains a rotating exploration slot."]
+}
