@@ -86,7 +86,9 @@ globalThis.fetch=async(url,options)=>{
   calls.push({url,options});
   if(url.includes('contents/state/scout.json'))return new Response(JSON.stringify({content:Buffer.from(JSON.stringify({version:1,jobs:{},sends:{},budget:{mode:'private_allowance'},
     last_attempt:{at:'2026-10-22T12:30:00Z',status:'private_cadence_skip',reason:'Minimum interval < 5h',next_due_at:'2026-10-22T15:30:00Z'},
-    last_run:{at:'2026-10-22T10:30:00Z',status:'partial',results_discovered:16,discovery_health:{failing_sources:3,alert_failure_categories:{http_access_denied:6}}}})).toString('base64')}));
+    last_run:{at:'2026-10-22T10:30:00Z',status:'partial',results_discovered:16,
+      named_contacts:{contacts_discovered:2,hiring_relevance_confirmed:1,contacts_rejected:1,backend:'free_quota_exhausted',shadow_runs_completed:2,cloud_backend_verified:true,introductions_accepted_by_smtp:1},
+      discovery_health:{failing_sources:3,alert_failure_categories:{http_access_denied:6}}}})).toString('base64')}));
   return new Response(JSON.stringify({ok:true}));
 };
 assert.equal((await worker.fetch(request({message:{chat:{id:10},from:{id:10},text:'/status'}}),env)).status,200);
@@ -98,6 +100,10 @@ assert.match(attemptStatus,/Next eligible scheduled run: 22 Oct 2026, 21:00 IST/
 assert.match(attemptStatus,/Minimum interval &lt; 5h/);
 assert.match(attemptStatus,/Failing discovery sources: 3/);
 assert.match(attemptStatus,/http access denied: 6/);
+assert.match(attemptStatus,/Named contacts: 2; hiring relevance confirmed: 1; rejected: 1/);
+assert.match(attemptStatus,/Named-contact shadow: 2\/3; cloud backend verified: yes/);
+assert.match(attemptStatus,/Contact backend: free_quota_exhausted/);
+assert.match(attemptStatus,/Introductions accepted by SMTP: 1/);
 // Telegram retries must not dispatch twice, even if the first reply is lost.
 calls=[];
 let reservedEvent;

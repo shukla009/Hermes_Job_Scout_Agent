@@ -62,7 +62,7 @@ class StateStore:
                     raise ValueError("unsupported state shape")
                 if not isinstance(value.get("processed_feedback"), list):
                     raise ValueError("invalid feedback ledger")
-                for key in ("employer_contacts", "contacts_rollout", "manual_alert_days"):
+                for key in ("employer_contacts", "contacts_rollout", "manual_alert_days", "named_contacts", "named_contacts_rollout", "contact_search_days"):
                     if key in value and not isinstance(value[key], dict):
                         raise ValueError("invalid recruiter-reach state")
                 self.data = value
@@ -96,6 +96,9 @@ class StateStore:
                     if entry.get("route") in ("apply", "alert"):
                         record["alerted"] = True
                         record["submission_unconfirmed"] = True
+                    elif entry.get("route") == "recruiter_intro":
+                        record.update(intro_emailed=True, intro_emailed_at=entry.get("timestamp"), submitted=True,
+                                      submission_unconfirmed=True, intro_recipient=entry.get("email"))
                     elif entry.get("email"):
                         record["emailed"] = True
                         record["email"] = entry["email"]
@@ -157,6 +160,35 @@ class StateStore:
     def known_emailed(self, ident):
         return bool(self.data["jobs"].get(ident, {}).get("emailed"))
 
+    def introduction_eligible(self, ident):
+        """Only a confirmed form receipt or explicit Applied feedback is evidence.
+
+        A pending/ambiguous request dominates any later user flag. An email (even
+        ambiguous) precludes changing recipients and calling it an introduction.
+        """
+        row = self.data["jobs"].get(ident, {})
+        if (not row.get("submitted") or row.get("submission_unconfirmed") or row.get("emailed")
+                or row.get("intro_emailed") or row.get("outcome") or row.get("archived")
+                or row.get("delivery_status") == "bounced"
+                or row.get("manual_action_status") in {"skipped", "referral_requested"}):
+            return False
+        forms = [v for v in self.data.get("applications", {}).values() if v.get("job_id") == ident]
+        if any(v.get("status") in {"pending", "ambiguous"} for v in forms):
+            return False
+        if any(v.get("job_id") == ident and v.get("step", "initial") == "initial"
+               and v.get("status") in {"pending", "uncertain", "accepted"} for v in self.data["sends"].values()):
+            return False
+        return bool((row.get("application_route") == "public_form" and any(v.get("status") == "confirmed" for v in forms))
+                    or (row.get("application_route") == "user_reported" and row.get("manual_action_status") == "applied"
+                        and row.get("feedback_update_id") is not None))
+
+    def introduction_followup_allowed(self, ident, recipient):
+        row = self.data["jobs"].get(ident, {})
+        return bool(row.get("intro_emailed") and not row.get("outcome") and
+                    any(v.get("job_id") == ident and v.get("recipient") == recipient
+                        and v.get("outreach_purpose") == "recruiter_intro" and v.get("step") == "initial"
+                        and v.get("status") == "accepted" for v in self.data["sends"].values()))
+
     def pending_jobs(self):
         return [record for record in self.data["jobs"].values() if not record.get("archived") and not record.get("submitted") and not record.get("outcome")]
 
@@ -168,6 +200,7 @@ class StateStore:
                 "alerted": sum(j.get("alerted_at", "") >= cutoff for j in jobs),
                 "submitted": sum(j.get("applied_at", "") >= cutoff for j in jobs),
                 "emailed": sum(j.get("emailed_at", "") >= cutoff for j in jobs),
+                "recruiter_introductions": sum(j.get("intro_emailed_at", "") >= cutoff for j in jobs),
                 "replies": sum(j.get("outcome") == "reply" and j.get("outcome_at", "") >= cutoff for j in jobs),
                 "interviews": sum(j.get("outcome") == "interview" and j.get("outcome_at", "") >= cutoff for j in jobs),
                 "median_minutes_to_application": round(median(delays), 1) if delays else "unavailable"}
@@ -259,13 +292,20 @@ class StateStore:
             self.save()
         return count
 
-    def reserve_send(self, ident, recipient, step="initial", message_id=None):
+    def reserve_send(self, ident, recipient, step="initial", message_id=None, outreach_purpose="application"):
+        if outreach_purpose not in {"application", "recruiter_intro"}:
+            return None
         recipient = recipient.strip().lower()
         intent_id = hashlib.sha256(f"{ident}|{recipient}|{step}".encode()).hexdigest()[:32]
         record = self.data["jobs"].get(ident, {})
         if recipient in self.data.get("suppressed_recipients", {}):
             return None
-        if not record or record.get("outcome") in ("notfit", "rejected", "reply", "interview") or record.get("submitted") or record.get("manual_action_status") in {"skipped", "referral_requested", "applied"} or self.application_reserved(ident):
+        intro = outreach_purpose == "recruiter_intro"
+        if intro and not (self.introduction_eligible(ident) if step == "initial" else self.introduction_followup_allowed(ident, recipient)):
+            return None
+        if (not record or record.get("outcome") in ("notfit", "rejected", "reply", "interview")
+                or record.get("manual_action_status") in {"skipped", "referral_requested"}
+                or (not intro and (record.get("submitted") or record.get("manual_action_status") == "applied" or self.application_reserved(ident)))):
             return None
         if step == "initial" and self.company_in_cooldown(ident):
             return None
@@ -293,9 +333,14 @@ class StateStore:
                 except (ValueError, KeyError, TypeError):
                     return None
         intent = {"id": intent_id, "job_id": ident, "recipient": recipient, "step": step,
+                  "outreach_purpose": outreach_purpose,
                   "message_id": message_id or f"<hermes-{intent_id}@job-scout.local>", "status": "pending", "created_at": now.isoformat()}
         if step == "initial":
             intent["contact_route"] = self.data["jobs"][ident].get("contact_route", "vacancy_email")
+            if intro:
+                applied = self.data["jobs"][ident]
+                intent["application_evidence_kind"] = "portal_confirmed" if applied.get("application_route") == "public_form" else "user_reported"
+                intent["applied_at"] = applied.get("applied_at")
         self.data["sends"][intent_id] = intent
         if not self.save():
             return None
@@ -309,6 +354,11 @@ class StateStore:
         if status == "accepted":
             record = self.data["jobs"].get(intent["job_id"])
             if record:
+                if intent.get("outreach_purpose") == "recruiter_intro":
+                    record["intro_emailed"] = True
+                    record.setdefault("intro_emailed_at", datetime.now(timezone.utc).isoformat())
+                    record["intro_recipient"] = intent["recipient"]
+                    return self.save()
                 record["emailed"] = True
                 if intent.get("step") == "initial":
                     record["email"] = intent["recipient"]

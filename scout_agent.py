@@ -396,7 +396,10 @@ def _extract_job_json_ld(page_html):
             continue
         organization = job.get("hiringOrganization") or {}
         company = organization.get("name", "") if isinstance(organization, dict) else str(organization)
-        return {"job_title": str(job.get("title") or ""), "company": str(company or ""), "location": _extract_location(job), "date_posted": str(job.get("datePosted") or ""), "valid_through": str(job.get("validThrough") or ""), "employment_type": job.get("employmentType") or "", "description": _html_to_text(str(job.get("description") or "")), "application_url": str(job.get("url") or "")}
+        websites = [organization.get(k) for k in ("url", "sameAs")] if isinstance(organization, dict) else []
+        websites = [u for value in websites for u in (value if isinstance(value, list) else [value])
+                    if isinstance(u, str) and u.startswith("https://")][:4]
+        return {"job_title": str(job.get("title") or ""), "company": str(company or ""), "location": _extract_location(job), "date_posted": str(job.get("datePosted") or ""), "valid_through": str(job.get("validThrough") or ""), "employment_type": job.get("employmentType") or "", "description": _html_to_text(str(job.get("description") or "")), "application_url": str(job.get("url") or ""), "employer_websites": websites}
     return {}
 
 
@@ -796,8 +799,19 @@ def _fallback_email(analysis, post=None):
     reference = re.sub(r"[\r\n]+", " ", str(analysis.get("vacancy_reference") or ""))[:100]
     reference_label = (" (reference " + reference + ")") if reference and not reference.startswith("https://") else ""
     vacancy_line = ("Vacancy link: " + str(analysis["application_url"]) + "\n\n") if analysis.get("application_url") else ""
+    # Only the runtime's evidence-checked contact may personalise the greeting.
+    from scout_contacts import contact_is_current
+    proof = next((row for row in post.get("recruitment_contact_evidence", [])
+                  if row.get("email") == analysis.get("recruiter_email") and row.get("route") == "named_recruiter"), {})
+    first = proof.get("first_name", "")
+    greeting = ("Hello " + first) if (re.fullmatch(r"[A-Z][A-Za-z'-]{1,30}", first)
+                 and contact_is_current(post, analysis.get("recruiter_email"))) else "Hello Hiring Team"
+    intro = analysis.get("outreach_purpose") == "recruiter_intro"
+    opening = (f"I applied for the {title} position{reference_label} at {company}"
+               + (" through your application portal" if analysis.get("application_evidence_kind") == "portal_confirmed" else "")
+               + " and wanted to briefly introduce myself. ") if intro else f"I'm applying for the {title} position{reference_label} at {company}. "
     body = (
-        f"Hello Hiring Team,\n\nI'm applying for the {title} position{reference_label} at {company}. "
+        greeting + ",\n\n" + opening
         + current_background + alignment + skill_line
         + "Experience highlights:\n"
         + "\n".join("- " + str(point) for point in points[:3])
@@ -805,7 +819,8 @@ def _fallback_email(analysis, post=None):
         + vacancy_line
         + _email_footer()
     )
-    return {"email_subject": f"Application: {title} - {CANDIDATE_NAME}", "email_body": body}
+    prefix = "Regarding my application" if intro else "Application"
+    return {"email_subject": f"{prefix}: {title} - {CANDIDATE_NAME}", "email_body": body}
 
 
 def compose_email(post, analysis, max_retries=3):
@@ -813,12 +828,13 @@ def compose_email(post, analysis, max_retries=3):
     return _fallback_email(analysis, post), "fallback"
 
 
-def schedule_follow_up(email, subject, body_text, job_id=None):
+def schedule_follow_up(email, subject, body_text, job_id=None, outreach_purpose="application"):
     """Store one evolving follow-up record, preventing duplicate chains."""
     created = datetime.now(timezone.utc)
     record = {"email": email, "subject": subject, "body": body_text, "job_id": job_id or "", "step": 1, "offsets_days": FOLLOW_UP_OFFSETS_DAYS, "created_at": created.timestamp(), "next_send": (created + timedelta(days=FOLLOW_UP_OFFSETS_DAYS[0])).timestamp()}
     record["message_id"] = ACTIVE_MESSAGE_ID or ""
     record["original_message_id"] = ACTIVE_MESSAGE_ID or ""
+    record["outreach_purpose"] = outreach_purpose
     pending = [item for item in load_follow_up() if not (item.get("email", "").lower() == email.lower() and item.get("job_id", "") == record["job_id"])]
     pending.append(record)
     save_follow_up(pending)
@@ -854,7 +870,9 @@ def process_pending_follow_ups(max_sends=None):
             continue
         job = ACTIVE_STORE.data.get("jobs", {}).get(record.get("job_id", ""), {}) if hasattr(ACTIVE_STORE, "data") else {}
         if (job.get("outcome") in {"notfit", "rejected", "reply", "interview"}
-                or job.get("submitted") or job.get("delivery_status") == "bounced"
+                or (job.get("submitted") and not (record.get("outreach_purpose") == "recruiter_intro"
+                    and ACTIVE_STORE.introduction_followup_allowed(record.get("job_id", ""), record.get("email", ""))))
+                or job.get("delivery_status") == "bounced"
                 or job.get("active_listing") is False
                 or str(job.get("exclusion_reason", "")).lower() in {"vacancy closed", "application deadline expired"}):
             continue
@@ -884,7 +902,8 @@ def process_pending_follow_ups(max_sends=None):
             except Exception:
                 updated.append(record)
                 continue
-        intent = ACTIVE_STORE.reserve_send(record.get("job_id", ""), record.get("email", ""), step=f"followup-{step}")
+        purpose_args = {"outreach_purpose": "recruiter_intro"} if record.get("outreach_purpose") == "recruiter_intro" else {}
+        intent = ACTIVE_STORE.reserve_send(record.get("job_id", ""), record.get("email", ""), step=f"followup-{step}", **purpose_args)
         if not intent:
             updated.append(record)
             continue

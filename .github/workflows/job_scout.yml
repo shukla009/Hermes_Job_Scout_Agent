@@ -43,7 +43,7 @@ jobs:
       # Scheduled runs only need a fast integrity check, preserving free minutes.
       - name: Verify Runtime Imports
         run: |
-          python -m compileall -q scout_agent.py scout_mail.py scout_matching.py scout_persistence.py scout_runtime.py scout_sources.py scout_state.py scout_storage.py scout_discovery.py scout_applications.py scout_personalization.py scout_schedule.py scout_contacts.py scout_actions.py
+          python -m compileall -q scout_agent.py scout_mail.py scout_matching.py scout_persistence.py scout_runtime.py scout_sources.py scout_state.py scout_storage.py scout_discovery.py scout_applications.py scout_personalization.py scout_schedule.py scout_contacts.py scout_actions.py scout_contact_search.py
           python -c "import scout_agent, scout_mail, scout_matching, scout_persistence, scout_runtime, scout_sources, scout_state, scout_storage, scout_discovery, scout_applications, scout_personalization, scout_schedule, scout_contacts, scout_actions"
 
       - name: Run Job Scout Agent
@@ -54,6 +54,7 @@ jobs:
           ENABLE_JOB_ALERT_EMAILS: ${{ vars.ENABLE_JOB_ALERT_EMAILS || 'true' }}
           HANDS_OFF_ONLY: "true"
           SCOUT_OPTIONAL_ACTIONS: "true"
+          SCOUT_NAMED_BACKENDS_VERIFIED: ${{ vars.SCOUT_NAMED_BACKENDS_VERIFIED || '' }}
           SCOUT_ENCRYPT_STATE: ${{ vars.SCOUT_ENCRYPT_STATE || 'false' }}
           SCOUT_STATE_KEY: ${{ secrets.SCOUT_STATE_KEY }}
           SCOUT_APPLICATION_ANSWERS: ${{ secrets.SCOUT_APPLICATION_ANSWERS }}

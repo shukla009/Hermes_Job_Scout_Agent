@@ -21,8 +21,9 @@
   unsafe and permanently unavailable links are classified without exposing URL tokens.
 - Rejects unsuitable roles, unsupported mandatory requirements, closed jobs and risky offers.
 - Sends a personalised email with the existing `Shivank_Shukla_Data_Analyst.pdf` only when
-  the vacancy provides a verified recruitment address, or its verified employer publishes
-  an official careers inbox explicitly accepting applications. Vacancy-specific portal-only
+  the vacancy provides a verified recruitment address, a named recruitment contact is
+  evidenced on its employer's official site, or that employer publishes an official
+  careers inbox explicitly accepting applications. Vacancy-specific portal-only
   instructions always override a general inbox. No guessed or unrelated contacts.
 - Careers-inbox joins require matching employer identity and an owned vacancy URL/ATS tenant,
   exact contact evidence and verification within 24 hours. At most six contact-page requests
@@ -37,6 +38,47 @@
 - Stops duplicate applications across email/form routes, including uncertain submissions.
 - Follows up on days four and nine only after checking the mailbox and vacancy is still open.
 - Reports human replies immediately; it never conducts a recruiter conversation automatically.
+
+## Named recruiters and personalised outreach (free cloud route)
+
+- Agent Reach supplies backend guidance, not an email database. The workflow directly uses
+  Exa's unauthenticated hosted MCP **web_search_exa only**, plus optional Jina Reader.
+  It needs no running computer, Hunter account, paid key, browser cookies or Codex session.
+- Checks the vacancy first, then verified employer recruitment pages. Search results only
+  suggest pages: snippets, social posts and employee databases cannot authorise sending.
+- Requires a published work address, named person, current employer and recruitment function.
+  Exact-role hiring managers take priority over relevant recruiters, HR recruitment contacts,
+  then the verified general careers inbox. Unrelated department managers do not qualify.
+- For ATS vacancies, the official employer site must link the exact configured ATS tenant.
+  Unknown domains also require an employer-website assertion in the trusted ATS vacancy;
+  a search ranking/name match alone is not enough. Unverified bindings stay blocked.
+- Never guesses addresses, probes inboxes, scrapes logged-in LinkedIn, uses private addresses,
+  or ignores portal-only/no-unsolicited-email instructions. No alternate recipient after silence.
+- Named contacts without a resume CTA can qualify only with the person/employer/recruitment
+  evidence above. Public PDFs need explicit name/designation/email labels; unsupported layouts
+  are skipped. Reader is optional after a successful public original fetch, never an access bypass.
+- Uses a verified first-name greeting when available, the actual role/requisition and supported
+  responsibilities. Existing ProSca bullets, metrics, grouped links and PDF resume remain unchanged.
+- After a confirmed portal submission or explicit **Applied** feedback, permits at most one
+  separately tracked recruiter introduction. A user report is not called a portal receipt.
+  Prior application email, pending/ambiguous submission or uncertain send blocks an introduction.
+- Both purposes share the six-outbound-actions daily ceiling, cooldowns, reply/bounce suppression
+  and day-four/day-nine follow-up rules. An introduction is not counted as another application.
+- Searches are limited to **two per scout run, six per IST day**; failures count too.
+  At most **four evidence/Reader requests per run** share the existing 120-request/420-second budget.
+  Discoveries are cached, revalidated within 24 hours and unused cache entries expire after 30 days.
+  Contact names, exact excerpts and provenance are stored in encrypted state, not public logs.
+- Authentication/payment demands, free-quota exhaustion and changed schemas stop enrichment;
+  there is no paid fallback, key rotation or limit evasion. Existing outreach continues safely.
+- The `Free contact backend verification` Actions workflow checks Exa search and Jina without
+  candidate data or Gmail credentials. New sending requires a successful **cloud** check and
+  the repository variable `SCOUT_NAMED_BACKENDS_VERIFIED=named-recruitment-v1`.
+- Then three distinct actual scheduled shadow runs precede a seven-day canary capped at two
+  new-route attempts daily. Manual reruns do not accelerate it. Existing vacancy emails remain live.
+- `/status` and Telegram summaries distinguish contacts found, relevance confirmed, rejected
+  contacts, backend status, SMTP-accepted introductions and human replies. `/actions` remains
+  optional for unreachable opportunities, not an approval queue. Published email evidence does
+  not prove deliverability or guarantee a reply/interview.
 
 ## What can currently submit an application?
 

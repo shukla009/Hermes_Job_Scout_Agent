@@ -1,0 +1,28 @@
+name: Free contact backend verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-backends:
+    if: vars.ZERO_COST_VERIFIED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements.txt
+      - name: Verify unauthenticated free backends (no candidate data or mail access)
+        id: backend
+        run: python scout_contact_search.py
+      - name: Require both free backends
+        env:
+          VERIFIED: ${{ steps.backend.outputs.verified }}
+        run: test "$VERIFIED" = "true"

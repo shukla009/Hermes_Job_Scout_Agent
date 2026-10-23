@@ -5,7 +5,7 @@ import json
 import os
 import time
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from scout_state import StateStore, StateCorruptError, IST
@@ -27,6 +27,30 @@ def read_state(path, kind, default):
 def _history_aliases(agent, history):
     return {agent._normalize_url(row.get("url") or row.get("href") or ""): row
             for row in history if isinstance(row, dict)}
+
+
+def _introduction_posts(store, posts, normalize, now=None):
+    """A source polling cooldown must not hide an explicitly applied fresh job."""
+    now = now or datetime.now(timezone.utc)
+    seen = {normalize(p.get("application_url") or p.get("href") or "") for p in posts}
+    pending = []
+    for row in sorted(store.data["jobs"].values(), key=lambda r: str(r.get("applied_at", "")), reverse=True):
+        url = row.get("apply_url") or row.get("application_url") or row.get("url")
+        if not url or normalize(url) in seen or not store.introduction_eligible(row["id"]):
+            continue
+        try:
+            published = datetime.fromisoformat(str(row.get("date_posted", "")).replace("Z", "+00:00"))
+            if published.tzinfo is None or not timedelta(0) <= now - published <= timedelta(hours=48):
+                continue
+        except (ValueError, TypeError):
+            continue
+        pending.append({"href": url, "source_type": "direct_apply", "needs_reverification": True,
+                        "job_title": row.get("job_title"), "company": row.get("company"),
+                        "location": row.get("location"), "date_posted": row.get("date_posted")})
+        seen.add(normalize(url))
+        if len(pending) == 3:
+            break
+    return pending
 
 
 def reconcile_pending(agent, store):
@@ -60,7 +84,7 @@ def _daily_sends(store, agent, history):
                  and row.get("status") in {"pending", "uncertain", "accepted"}
                  for row in store.data["sends"].values())
     legacy = sum(same_day(row.get("timestamp"))
-                 and row.get("route") in {"email", "follow_up"}
+                 and row.get("route") in {"email", "follow_up", "recruiter_intro"}
                  and not any(intent.get("job_id") == row.get("job_id")
                              and intent.get("recipient") == row.get("email")
                              for intent in store.data["sends"].values())
@@ -213,6 +237,7 @@ def run(agent, *, dry_run=False, notify=True):
     report = {"status": "healthy", "results_discovered": 0, "pages_fetched": 0,
               "relevant_apply_leads": 0, "relevant_email_leads": 0,
               "emails_attempted": 0, "emails_accepted_by_smtp": 0,
+              "introductions_accepted_by_smtp": 0,
               "duplicates": 0, "irrelevant": 0, "model_errors": 0,
               "safety_skips": 0, "query_errors": [], "queries_attempted": 0,
               "queries_successful": 0, "source_stats": {}, "rejection_reasons": {},
@@ -308,6 +333,7 @@ def run(agent, *, dry_run=False, notify=True):
         posts = []
         report["status"] = "partial"
         report["query_errors"].append(type(exc).__name__)
+    posts += _introduction_posts(store, posts, agent._normalize_url)
     report["results_discovered"] = len(posts)
     report["discovery_health"] = discovery_health(report.get("source_stats", {}))
     if report["discovery_health"]["failing_sources"] and report["status"] == "healthy":
@@ -316,6 +342,12 @@ def run(agent, *, dry_run=False, notify=True):
     from scout_contacts import ContactDiscovery, rollout_state, can_send_new_contact, contact_is_current, complete_contact_shadow
     from scout_actions import reserve_manual_card, funnel_counts, review_reach, eligibility_holds
     contacts = ContactDiscovery(agent._request_with_retries, store.data.setdefault("employer_contacts", {}))
+    from scout_contact_search import NamedDiscovery, named_rollout, named_send_allowed, POLICY
+    named = NamedDiscovery(agent._request_with_retries, store)
+    named_phase = named_rollout(store.data, named.revision)
+    named_shadow_this_run = named_phase.get("shadow_runs", 0) < 3
+    named_cloud_verified = (cloud and os.getenv("SCOUT_NAMED_BACKENDS_VERIFIED") == POLICY
+                            and os.getenv("SCOUT_ENCRYPT_STATE", "false").lower() == "true")
     contact_rollout = rollout_state(store.data, contacts.revision)
     contact_shadow_this_run = contact_rollout.get("shadow_runs", 0) < 3
     candidates = []
@@ -327,7 +359,7 @@ def run(agent, *, dry_run=False, notify=True):
             break
         # Avoid spending enrichment budget on already-submitted/emailed vacancies.
         old = aliases.get(agent._normalize_url(post.get("application_url") or post.get("href", "")))
-        if old and old.get("route") in {"email", "submitted", "follow_up"}:
+        if old and old.get("route") in {"email", "follow_up", "recruiter_intro"}:
             report["duplicates"] += 1
             continue
         try:
@@ -354,29 +386,51 @@ def run(agent, *, dry_run=False, notify=True):
         if not store:
             candidates.append((analysis, enriched, verdict))
             continue
-        if analysis.get("email_safe") and not analysis.get("recruiter_email"):
-            found = contacts.find(enriched, getattr(agent, "CANDIDATE_EMAIL", ""))
-            if found:
-                analysis["recruiter_email"] = found[0]
-                analysis["contact_route"] = "official_careers_inbox"
-                verdict = "ok"
-        elif analysis.get("recruiter_email"):
-            analysis["contact_route"] = "vacancy_email"
         record = store.upsert_job(analysis, enriched)
-        contact_evidence = enriched.get("recruitment_contact_evidence")
-        if contact_evidence:
-            # Preserve the exact bounded public-page excerpt that authorised
-            # outreach.  This is audit evidence, not a guessed contact source.
-            record["recruitment_contact_evidence"] = contact_evidence[:3]
         analysis["job_id"] = record["id"]
-        if record.get("submitted") or record.get("emailed") or record.get("outcome") or record.get("manual_action_status") in {"skipped", "referral_requested", "applied"} or store.application_reserved(record["id"]):
+        intro = store.introduction_eligible(record["id"])
+        if ((not intro and (record.get("submitted") or store.application_reserved(record["id"])))
+                or record.get("emailed") or record.get("intro_emailed") or record.get("outcome")
+                or record.get("manual_action_status") in {"skipped", "referral_requested"}
+                or any(row.get("job_id") == record["id"] and row.get("status") in {"pending", "uncertain", "accepted"}
+                       for row in store.data["sends"].values())):
             report["duplicates"] += 1
             continue
+        if intro:
+            analysis["outreach_purpose"] = "recruiter_intro"
+            analysis["application_evidence_kind"] = "portal_confirmed" if record.get("application_route") == "public_form" else "user_reported"
         candidates.append((analysis, enriched, verdict))
     candidates.sort(key=lambda x: (x[0].get("tier") == "stretch", {"research": 0, "process": 1, "reporting": 1}.get(x[0].get("family"), 2), -x[0].get("fit_score", 0)))
+    # Enrich the best fully eligible vacancies first, not whichever source ran first.
+    for analysis, enriched, verdict in candidates:
+        if analysis.get("recruiter_email"):
+            analysis["contact_route"] = "vacancy_email"
+        elif analysis.get("email_safe") and agent._structured_freshness(enriched)[0]:
+            enriched.update(company=analysis.get("company"), job_title=analysis.get("job_title"),
+                            vacancy_reference=analysis.get("vacancy_reference"))
+            proof = None
+            if not cloud or os.getenv("SCOUT_ENCRYPT_STATE", "false").lower() == "true":
+                proof = named.find(enriched)
+            else:
+                named.reason("encrypted_state_required")
+            if proof:
+                analysis.update(recruiter_email=proof["email"], contact_route="named_recruiter")
+            else:
+                found = contacts.find(enriched, getattr(agent, "CANDIDATE_EMAIL", ""))
+                if found:
+                    analysis.update(recruiter_email=found[0], contact_route="official_careers_inbox")
+        record = store.data["jobs"][analysis["job_id"]]
+        record["contact_route"] = analysis.get("contact_route", "unavailable")
+        if enriched.get("recruitment_contact_evidence"):
+            record["recruitment_contact_evidence"] = enriched["recruitment_contact_evidence"][:3]
     report["rejection_reasons"] = dict(reasons)
-    report["relevant_apply_leads"] = len(candidates)
+    report["relevant_apply_leads"] = sum(row[0].get("outreach_purpose") != "recruiter_intro" for row in candidates)
+    report["relevant_intro_leads"] = sum(row[0].get("outreach_purpose") == "recruiter_intro" for row in candidates)
     report["relevant_email_leads"] = sum(bool(row[0].get("recruiter_email")) for row in candidates)
+    if named.stats["backend"] == "state_safety_stop":
+        safe_state = outbound = False
+        agent.OUTBOUND_READY = False
+        report["status"] = "state_safety_stop"
     if store and not store.save():
         safe_state = outbound = False
         agent.OUTBOUND_READY = False
@@ -423,6 +477,9 @@ def run(agent, *, dry_run=False, notify=True):
             report["eligibility_holds"].update(eligibility_holds(analysis, post))
             continue
         if not recipient:
+            if analysis.get("outreach_purpose") == "recruiter_intro":
+                report["coverage_gaps"]["introduction_no_verified_contact"] += 1
+                continue  # Already applied; never submit a second form.
             def public_request(method, url, **kwargs):
                 return agent._request_with_retries(url, method=method, return_http_errors=True, max_retries=0, **kwargs)
             plan = prepare_application(post, analysis, public_request, answers=answers)
@@ -479,6 +536,15 @@ def run(agent, *, dry_run=False, notify=True):
         reachable += 1
         store.data["jobs"][ident]["reachability_route"] = analysis.get("contact_route", "vacancy_email")
         new_route = analysis.get("contact_route") == "official_careers_inbox"
+        named_route = analysis.get("contact_route") == "named_recruiter" or analysis.get("outreach_purpose") == "recruiter_intro"
+        if named_route:
+            allowed, phase = named_send_allowed(store.data, named_phase, named_cloud_verified)
+            if not allowed:
+                report["coverage_gaps"][phase] += 1
+                continue
+            if not contact_is_current(post, recipient):
+                report["coverage_gaps"]["named_contact_evidence_expired"] += 1
+                continue
         if new_route:
             allowed, phase = can_send_new_contact(store.data, contact_rollout)
             if not allowed:
@@ -501,7 +567,8 @@ def run(agent, *, dry_run=False, notify=True):
         fresh, _ = agent._structured_freshness(post)
         if not fresh:
             continue
-        intent = store.reserve_send(ident, recipient)
+        purpose = analysis.get("outreach_purpose", "application")
+        intent = store.reserve_send(ident, recipient, outreach_purpose=purpose)
         if not intent:
             report["safety_skips"] += 1
             continue
@@ -509,6 +576,8 @@ def run(agent, *, dry_run=False, notify=True):
         intent["contact_route"] = analysis.get("contact_route", "vacancy_email")
         if new_route:
             contact_rollout.setdefault("live_since", datetime.now(timezone.utc).isoformat())
+        if named_route:
+            named_phase.setdefault("live_since", datetime.now(timezone.utc).isoformat())
         if not store.save():
             outbound = False
             report["status"] = "state_safety_stop"
@@ -522,14 +591,16 @@ def run(agent, *, dry_run=False, notify=True):
             report["status"] = "state_safety_stop"
         if accepted:
             emails += 1
-            report["emails_accepted_by_smtp"] += 1
-            agent._record_history(history, analysis, post, "email", recipient)
-            agent.schedule_follow_up(recipient, written["email_subject"], written["email_body"], ident)
+            is_intro = purpose == "recruiter_intro"
+            report["introductions_accepted_by_smtp" if is_intro else "emails_accepted_by_smtp"] += 1
+            agent._record_history(history, analysis, post, "recruiter_intro" if is_intro else "email", recipient)
+            extra = {"outreach_purpose": purpose} if is_intro else {}
+            agent.schedule_follow_up(recipient, written["email_subject"], written["email_body"], ident, **extra)
             if not store.save():
                 outbound = False
                 report["status"] = "state_safety_stop"
             if notify:
-                agent.send_telegram("✉️ <b>Application email accepted by SMTP</b>\n" +
+                agent.send_telegram(("✉️ <b>Recruiter introduction accepted by SMTP</b>\n" if is_intro else "✉️ <b>Application email accepted by SMTP</b>\n") +
                     html.escape(str(analysis.get("company", ""))) + " — " +
                     html.escape(str(analysis.get("job_title", ""))))
     if any(x.get("status") == "error" for x in report.get("source_stats", {}).values()) and report["status"] == "healthy":
@@ -538,6 +609,12 @@ def run(agent, *, dry_run=False, notify=True):
     if (cloud and trigger == "schedule" and not dry_run and safe_state and verified_sources
             and report["status"] not in {"state_safety_stop", "budget_limited"}):
         complete_contact_shadow(contact_rollout, identity.split(":", 1)[0])
+        if named_cloud_verified and named.stats["backend"] in {"not_needed", "ready"}:
+            complete_contact_shadow(named_phase, identity.split(":", 1)[0])
+    report["named_contacts"] = {**named.stats, "cloud_backend_verified": named_cloud_verified,
+                                "shadow_runs_completed": named_phase.get("shadow_runs", 0),
+                                "validation_mode": named_shadow_this_run,
+                                "introductions_accepted_by_smtp": report["introductions_accepted_by_smtp"]}
     report["contact_discovery"]["shadow_runs_completed"] = contact_rollout.get("shadow_runs", 0)
     report["funnel"] = funnel_counts(store, discovered=len(posts), fresh=verified_fresh,
                                     suitable=sum(bool(a.get("email_safe")) for a, _, _ in candidates),
@@ -552,6 +629,7 @@ def run(agent, *, dry_run=False, notify=True):
     report["alerts_sent"] = alerts
     report["outreach"]["status"] = (
         "emails_accepted" if report["emails_accepted_by_smtp"] else
+        "introductions_accepted" if report["introductions_accepted_by_smtp"] else
         "forms_confirmed" if report["applications"]["confirmed"] else
         "validation_mode" if shadow else
         "smtp_failed" if report["outreach"]["smtp"] == "failed" else
@@ -577,7 +655,7 @@ def run(agent, *, dry_run=False, notify=True):
         store.data["last_run"]["coverage_gaps"] = report["coverage_gaps"]
         store.data["last_run"]["runtime_seconds"] = report["runtime_seconds"]
         store.data["last_run"]["discovery_health"] = report["discovery_health"]
-        for key in ("funnel", "contact_discovery", "manual_actions", "eligibility_holds"):
+        for key in ("funnel", "contact_discovery", "manual_actions", "eligibility_holds", "named_contacts"):
             store.data["last_run"][key] = report[key]
         store.data["last_attempt"] = {"at": store.data["last_run"]["at"], "status": report["status"],
                                       "reason": "Discovery run completed", "next_due_at": report.get("next_due_at"),
@@ -598,13 +676,18 @@ def run(agent, *, dry_run=False, notify=True):
         today = datetime.now(IST).date().isoformat()
         morning = datetime.now(IST).hour >= 8 and (not store or store.data.get("reported_day") != today)
         important = report["status"] in {"state_safety_stop", "free_quota_pause", "budget_limited"}
-        if alerts or morning or important or not store or report["emails_accepted_by_smtp"] or report["applications"]["confirmed"]:
+        backend_problem = named.stats["backend"] not in {"not_needed", "ready"}
+        important = important or (backend_problem and store.data.get("reported_named_backend") != named.stats["backend"])
+        if alerts or emails or morning or important or not store or report["applications"]["confirmed"]:
             agent.send_telegram("📋 <b>Job Scout — " + html.escape(report["status"]) + "</b>\n" +
                 f"Potential matches: {len(candidates)}; alerts: {alerts}\n" +
                 f"Verified recruitment-email leads: {report['relevant_email_leads']}\n" +
                 f"Fresh: {verified_fresh}; suitable: {report['funnel']['suitable']}; reachable: {reachable}\n" +
                 f"Optional phone actions: {report['manual_actions']['sent']} (not approvals)\n" +
                 f"Careers-inbox shadow: {contact_rollout.get('shadow_runs', 0)}/3 scheduled runs\n" +
+                f"Named contacts: {named.stats['contacts_discovered']}; hiring relevance confirmed: {named.stats['hiring_relevance_confirmed']}; rejected: {named.stats['contacts_rejected']}\n" +
+                f"Named-contact shadow: {named_phase.get('shadow_runs', 0)}/3; backend: {named.stats['backend']}\n" +
+                f"Recruiter introductions accepted: {report['introductions_accepted_by_smtp']}\n" +
                 "Fit holds: " + html.escape("; ".join(f"{k.replace('_', ' ')}: {v}" for k, v in report["eligibility_holds"].items()) or "none") + "\n" +
                 f"Application emails accepted: {report['emails_accepted_by_smtp']}\n" +
                 f"Confirmed portal applications: {report['applications']['confirmed']}\n" +
@@ -615,6 +698,7 @@ def run(agent, *, dry_run=False, notify=True):
                 "Top exclusions: " + html.escape("; ".join(f"{k}: {v}" for k, v in reasons.most_common(3)) or "none"))
             if store:
                 store.data["reported_day"] = today
+                store.data["reported_named_backend"] = named.stats["backend"]
                 store.save()
         if report["reply_monitor"]["new_human_replies"]:
             agent.send_telegram("💬 <b>Recruiter reply detected</b>\n" +
