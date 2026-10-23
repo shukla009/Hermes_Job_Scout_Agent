@@ -70,9 +70,13 @@
   Contact names, exact excerpts and provenance are stored in encrypted state, not public logs.
 - Authentication/payment demands, free-quota exhaustion and changed schemas stop enrichment;
   there is no paid fallback, key rotation or limit evasion. Existing outreach continues safely.
-- The `Free contact backend verification` Actions workflow checks Exa search and Jina without
-  candidate data or Gmail credentials. New sending requires a successful **cloud** check and
-  the repository variable `SCOUT_NAMED_BACKENDS_VERIFIED=named-recruitment-v1`.
+- The `Free contact backend verification` Actions workflow queries only public test pages,
+  without Gmail credentials, and records its result in encrypted state. New sending requires
+  a successful **cloud** check for the current contact policy; no local success can enable it.
+  Failures stay visible and pause new enrichment. Once free access is available again, run
+  that check from GitHub/mobile: a pass automatically unlocks the scheduled shadow rollout,
+  not immediate sending. Do not repeatedly rerun a quota failure or rotate runners to evade it.
+  The check also reserves one search inside the shared six-search daily budget.
 - Then three distinct actual scheduled shadow runs precede a seven-day canary capped at two
   new-route attempts daily. Manual reruns do not accelerate it. Existing vacancy emails remain live.
 - `/status` and Telegram summaries distinguish contacts found, relevance confirmed, rejected

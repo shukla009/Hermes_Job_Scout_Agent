@@ -387,6 +387,15 @@ class NamedDiscovery:
     def find(self, post):
         if self.stopped:
             return None
+        try:
+            return self._find(post)
+        except Exception:
+            # Malformed public documents/cache/provider output cannot take down
+            # the existing application pipeline or become sending evidence.
+            self.reason("contact_evidence_invalid")
+            return None
+
+    def _find(self, post):
         if (post.get("page_fetched") is not True or any(post.get(k) for k in ("page_fetch_failed", "access_blocked", "reverification_failed"))
                 or email_applications_forbidden(post)):
             self.reason("vacancy_not_verified_or_portal_only")
@@ -529,6 +538,25 @@ def named_send_allowed(data, rollout, cloud_verified, now=None):
         return False, "named_rollout_invalid"
 
 
+BACKEND_LABELS = {"verified", "free_quota_exhausted", "authentication_or_payment_required",
+                  "backend_http_error", "backend_contract_error", "backend_schema_changed",
+                  "backend_unavailable", "unavailable", "search_contract_unverified", "daily_search_limit"}
+
+
+def cloud_backend_verification(data, *, cloud, encrypted, legacy_revision="", bootstrap_status=""):
+    """A failed cloud check is visible, not silently mistaken for 'not needed'."""
+    if not cloud or not encrypted:
+        return False, "encrypted_cloud_verification_required"
+    row = data.get("named_backend_verification", {})
+    if row.get("policy") == POLICY and row.get("origin") == "github_actions" and str(row.get("run_id", "")).isdigit():
+        verified = row.get("verified") is True and row.get("exa") == row.get("jina") == "verified"
+        failure = row.get("exa") if row.get("exa") != "verified" else row.get("jina")
+        return verified, "verified" if verified else failure if failure in BACKEND_LABELS else "backend_unavailable"
+    if bootstrap_status in BACKEND_LABELS and bootstrap_status != "verified":
+        return False, bootstrap_status
+    return legacy_revision == POLICY, "verified" if legacy_revision == POLICY else "not_verified"
+
+
 def probe_backends(request):
     """Credential-free Actions contract check; no candidate or recruiter data."""
     result = {"exa": "not_checked", "jina": "not_checked"}
@@ -548,10 +576,48 @@ def probe_backends(request):
     return result
 
 
+def record_cloud_check():
+    """Operator-triggered, no retry after a quota response, encrypted results.
+
+    The check queries only example.com. It neither reads Gmail nor sends a resume.
+    A later successful check activates the same scheduled shadow/canary safeguards
+    without requiring a local computer or somebody to toggle a sending flag.
+    """
+    import os
+    from scout_persistence import RuntimeBudget, GitHubWriter
+    from scout_state import StateStore
+    if (os.getenv("GITHUB_ACTIONS") != "true" or os.getenv("ZERO_COST_VERIFIED") != "true"
+            or os.getenv("SCOUT_ENCRYPT_STATE") != "true" or not os.getenv("GITHUB_TOKEN")):
+        raise RuntimeError("Encrypted zero-cost Actions verification is required")
+    writer = GitHubWriter(token=os.environ["GITHUB_TOKEN"], repo=os.environ["GITHUB_REPOSITORY"])
+    store = StateStore(commit_callback=writer)
+    now = datetime.now(timezone.utc)
+    day = now.astimezone(IST).date().isoformat()
+    ledger = store.data.setdefault("contact_search_days", {})
+    used = ledger.get(day, 0)
+    if type(used) is not int or used < 0 or used >= 6:
+        result = {"exa": "daily_search_limit", "jina": "not_checked"}
+    else:
+        ledger[day] = used + 1
+        if not store.save():
+            raise RuntimeError("Backend quota reservation could not be persisted")
+        result = probe_backends(RuntimeBudget(max_requests=4, deadline_seconds=60).request)
+    verified = result == {"exa": "verified", "jina": "verified"}
+    store.data["named_backend_verification"] = {**result, "verified": verified, "policy": POLICY,
+        "origin": "github_actions", "run_id": os.environ["GITHUB_RUN_ID"], "checked_at": now.isoformat()}
+    if not store.save():
+        raise RuntimeError("Backend verification result could not be persisted")
+    return result
+
+
 if __name__ == "__main__":
     import os
+    import argparse
     from scout_persistence import RuntimeBudget
-    result = probe_backends(RuntimeBudget(max_requests=4, deadline_seconds=60).request)
+    parser = argparse.ArgumentParser(description="Credential-free public search/Reader contract check")
+    parser.add_argument("--record-cloud-check", action="store_true")
+    args = parser.parse_args()
+    result = record_cloud_check() if args.record_cloud_check else probe_backends(RuntimeBudget(max_requests=4, deadline_seconds=60).request)
     verified = result == {"exa": "verified", "jina": "verified"}
     print(json.dumps(result, sort_keys=True))
     if os.getenv("GITHUB_OUTPUT"):

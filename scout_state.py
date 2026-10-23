@@ -62,7 +62,7 @@ class StateStore:
                     raise ValueError("unsupported state shape")
                 if not isinstance(value.get("processed_feedback"), list):
                     raise ValueError("invalid feedback ledger")
-                for key in ("employer_contacts", "contacts_rollout", "manual_alert_days", "named_contacts", "named_contacts_rollout", "contact_search_days"):
+                for key in ("employer_contacts", "contacts_rollout", "manual_alert_days", "named_contacts", "named_contacts_rollout", "contact_search_days", "named_backend_verification"):
                     if key in value and not isinstance(value[key], dict):
                         raise ValueError("invalid recruiter-reach state")
                 self.data = value

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from scout_contact_search import (FreeSearch, BackendUnavailable, NamedDiscovery,
-    named_evidence, named_rollout, named_send_allowed, labelled_contacts, POLICY)
+    named_evidence, named_rollout, named_send_allowed, labelled_contacts, cloud_backend_verification, POLICY)
 from scout_state import StateStore
 
 NOW = datetime.now(timezone.utc)
@@ -271,6 +271,26 @@ def test_contact_evidence_is_inside_authenticated_encrypted_state(monkeypatch):
     encrypted = encode_state(value, "state/scout.json")
     assert "Asha" not in json.dumps(encrypted) and "asha@" not in json.dumps(encrypted)
     assert decode_state(encrypted, "state/scout.json") == value
+
+
+def test_actual_cloud_failure_dominates_legacy_flag_and_later_pass_unlocks_shadow_only():
+    data = {"named_backend_verification": {"policy": POLICY, "origin": "github_actions", "run_id": "123",
+             "exa": "free_quota_exhausted", "jina": "verified", "verified": False}}
+    assert cloud_backend_verification(data, cloud=True, encrypted=True, legacy_revision=POLICY) == (False, "free_quota_exhausted")
+    data["named_backend_verification"].update(exa="verified", verified=True)
+    assert cloud_backend_verification(data, cloud=True, encrypted=True, bootstrap_status="free_quota_exhausted") == (True, "verified")
+    assert not named_send_allowed(data, named_rollout(data, "rev"), True)[0]
+    assert cloud_backend_verification(data, cloud=False, encrypted=True)[0] is False
+    assert cloud_backend_verification(data, cloud=True, encrypted=False)[0] is False
+    assert cloud_backend_verification({}, cloud=True, encrypted=True, bootstrap_status="free_quota_exhausted") == (False, "free_quota_exhausted")
+
+
+def test_invalid_public_evidence_does_not_crash_existing_scout(tmp_path):
+    finder = NamedDiscovery(lambda *a, **kw: response(person()), state(tmp_path), registry=[EMPLOYER], now=NOW)
+    finder.cache["broken"] = {"checked_at": NOW.isoformat(), "evidence": "unexpected shape"}
+    finder._find = lambda post: (_ for _ in ()).throw(ValueError("secret public page content"))
+    assert finder.find(dict(POST)) is None
+    assert finder.stats["reasons"] == {"contact_evidence_invalid": 1}
 
 
 def test_pending_intro_rechecks_only_fresh_confirmed_applied_jobs(tmp_path):

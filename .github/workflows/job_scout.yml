@@ -55,6 +55,7 @@ jobs:
           HANDS_OFF_ONLY: "true"
           SCOUT_OPTIONAL_ACTIONS: "true"
           SCOUT_NAMED_BACKENDS_VERIFIED: ${{ vars.SCOUT_NAMED_BACKENDS_VERIFIED || '' }}
+          SCOUT_NAMED_BACKEND_STATUS: ${{ vars.SCOUT_NAMED_BACKEND_STATUS || '' }}
           SCOUT_ENCRYPT_STATE: ${{ vars.SCOUT_ENCRYPT_STATE || 'false' }}
           SCOUT_STATE_KEY: ${{ secrets.SCOUT_STATE_KEY }}
           SCOUT_APPLICATION_ANSWERS: ${{ secrets.SCOUT_APPLICATION_ANSWERS }}

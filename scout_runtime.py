@@ -342,12 +342,17 @@ def run(agent, *, dry_run=False, notify=True):
     from scout_contacts import ContactDiscovery, rollout_state, can_send_new_contact, contact_is_current, complete_contact_shadow
     from scout_actions import reserve_manual_card, funnel_counts, review_reach, eligibility_holds
     contacts = ContactDiscovery(agent._request_with_retries, store.data.setdefault("employer_contacts", {}))
-    from scout_contact_search import NamedDiscovery, named_rollout, named_send_allowed, POLICY
+    from scout_contact_search import NamedDiscovery, named_rollout, named_send_allowed, cloud_backend_verification
     named = NamedDiscovery(agent._request_with_retries, store)
     named_phase = named_rollout(store.data, named.revision)
     named_shadow_this_run = named_phase.get("shadow_runs", 0) < 3
-    named_cloud_verified = (cloud and os.getenv("SCOUT_NAMED_BACKENDS_VERIFIED") == POLICY
-                            and os.getenv("SCOUT_ENCRYPT_STATE", "false").lower() == "true")
+    named_cloud_verified, cloud_check_status = cloud_backend_verification(store.data, cloud=cloud,
+        encrypted=os.getenv("SCOUT_ENCRYPT_STATE", "false").lower() == "true",
+        legacy_revision=os.getenv("SCOUT_NAMED_BACKENDS_VERIFIED", ""),
+        bootstrap_status=os.getenv("SCOUT_NAMED_BACKEND_STATUS", ""))
+    if cloud and cloud_check_status not in {"verified", "not_verified", "encrypted_cloud_verification_required"}:
+        named.stopped = True
+        named.stats["backend"] = cloud_check_status
     contact_rollout = rollout_state(store.data, contacts.revision)
     contact_shadow_this_run = contact_rollout.get("shadow_runs", 0) < 3
     candidates = []
@@ -612,6 +617,7 @@ def run(agent, *, dry_run=False, notify=True):
         if named_cloud_verified and named.stats["backend"] in {"not_needed", "ready"}:
             complete_contact_shadow(named_phase, identity.split(":", 1)[0])
     report["named_contacts"] = {**named.stats, "cloud_backend_verified": named_cloud_verified,
+                                "cloud_verification_status": cloud_check_status,
                                 "shadow_runs_completed": named_phase.get("shadow_runs", 0),
                                 "validation_mode": named_shadow_this_run,
                                 "introductions_accepted_by_smtp": report["introductions_accepted_by_smtp"]}

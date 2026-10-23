@@ -4,7 +4,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: job-scout
+  cancel-in-progress: false
 
 jobs:
   public-backends:
@@ -19,9 +23,15 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install -r requirements.txt
-      - name: Verify unauthenticated free backends (no candidate data or mail access)
+      - name: Verify free backends (public test queries, no Gmail access)
         id: backend
-        run: python scout_contact_search.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ZERO_COST_VERIFIED: ${{ vars.ZERO_COST_VERIFIED }}
+          SCOUT_ENCRYPT_STATE: ${{ vars.SCOUT_ENCRYPT_STATE || 'false' }}
+          SCOUT_STATE_KEY: ${{ secrets.SCOUT_STATE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: python scout_contact_search.py --record-cloud-check
       - name: Require both free backends
         env:
           VERIFIED: ${{ steps.backend.outputs.verified }}
