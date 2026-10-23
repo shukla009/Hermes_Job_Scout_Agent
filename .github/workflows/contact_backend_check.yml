@@ -2,6 +2,11 @@ name: Free contact backend verification
 
 on:
   workflow_dispatch:
+    inputs:
+      check_exa:
+        description: Also check optional Exa search (respects persisted cooldown)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -31,8 +36,15 @@ jobs:
           SCOUT_ENCRYPT_STATE: ${{ vars.SCOUT_ENCRYPT_STATE || 'false' }}
           SCOUT_STATE_KEY: ${{ secrets.SCOUT_STATE_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: python scout_contact_search.py --record-cloud-check
-      - name: Require both free backends
+          SCOUT_NAMED_BACKEND_STATUS: ${{ vars.SCOUT_NAMED_BACKEND_STATUS || '' }}
+          CHECK_EXA: ${{ inputs.check_exa || 'false' }}
+        run: |
+          if [ "$CHECK_EXA" = "true" ]; then
+            python scout_contact_search.py --record-cloud-check --check-exa
+          else
+            python scout_contact_search.py --record-cloud-check
+          fi
+      - name: Require direct public-page capability (optional providers cannot block it)
         env:
           VERIFIED: ${{ steps.backend.outputs.verified }}
         run: test "$VERIFIED" = "true"

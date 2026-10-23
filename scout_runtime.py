@@ -342,7 +342,7 @@ def run(agent, *, dry_run=False, notify=True):
     from scout_contacts import ContactDiscovery, rollout_state, can_send_new_contact, contact_is_current, complete_contact_shadow
     from scout_actions import reserve_manual_card, funnel_counts, review_reach, eligibility_holds
     contacts = ContactDiscovery(agent._request_with_retries, store.data.setdefault("employer_contacts", {}))
-    from scout_contact_search import NamedDiscovery, named_rollout, named_send_allowed, cloud_backend_verification
+    from scout_contact_search import NamedDiscovery, named_rollout, named_send_allowed, cloud_backend_verification, record_search_health, BACKEND_LABELS
     named = NamedDiscovery(agent._request_with_retries, store)
     named_phase = named_rollout(store.data, named.revision)
     named_shadow_this_run = named_phase.get("shadow_runs", 0) < 3
@@ -350,9 +350,13 @@ def run(agent, *, dry_run=False, notify=True):
         encrypted=os.getenv("SCOUT_ENCRYPT_STATE", "false").lower() == "true",
         legacy_revision=os.getenv("SCOUT_NAMED_BACKENDS_VERIFIED", ""),
         bootstrap_status=os.getenv("SCOUT_NAMED_BACKEND_STATUS", ""))
-    if cloud and cloud_check_status not in {"verified", "not_verified", "encrypted_cloud_verification_required"}:
-        named.stopped = True
-        named.stats["backend"] = cloud_check_status
+    bootstrap = os.getenv("SCOUT_NAMED_BACKEND_STATUS", "")
+    if cloud and not store.data.get("contact_search_health") and bootstrap in BACKEND_LABELS and bootstrap != "verified":
+        record_search_health(store.data, bootstrap, datetime.now(timezone.utc))
+    search_health = store.data.get("contact_search_health", {})
+    if search_health.get("status") not in {None, "verified"}:
+        named.stats["backend"] = search_health.get("status", "backend_unavailable")
+    named.jina_enabled = not cloud or store.data.get("named_backend_verification", {}).get("jina") == "verified"
     contact_rollout = rollout_state(store.data, contacts.revision)
     contact_shadow_this_run = contact_rollout.get("shadow_runs", 0) < 3
     candidates = []
@@ -614,10 +618,13 @@ def run(agent, *, dry_run=False, notify=True):
     if (cloud and trigger == "schedule" and not dry_run and safe_state and verified_sources
             and report["status"] not in {"state_safety_stop", "budget_limited"}):
         complete_contact_shadow(contact_rollout, identity.split(":", 1)[0])
-        if named_cloud_verified and named.stats["backend"] in {"not_needed", "ready"}:
+        if named_cloud_verified:
             complete_contact_shadow(named_phase, identity.split(":", 1)[0])
     report["named_contacts"] = {**named.stats, "cloud_backend_verified": named_cloud_verified,
                                 "cloud_verification_status": cloud_check_status,
+                                "direct_pages": "available" if named_cloud_verified else "not_cloud_verified",
+                                "jina": "available" if named.jina_enabled else "not_cloud_verified",
+                                "search_retry_at": store.data.get("contact_search_health", {}).get("retry_at"),
                                 "shadow_runs_completed": named_phase.get("shadow_runs", 0),
                                 "validation_mode": named_shadow_this_run,
                                 "introductions_accepted_by_smtp": report["introductions_accepted_by_smtp"]}
@@ -692,7 +699,8 @@ def run(agent, *, dry_run=False, notify=True):
                 f"Optional phone actions: {report['manual_actions']['sent']} (not approvals)\n" +
                 f"Careers-inbox shadow: {contact_rollout.get('shadow_runs', 0)}/3 scheduled runs\n" +
                 f"Named contacts: {named.stats['contacts_discovered']}; hiring relevance confirmed: {named.stats['hiring_relevance_confirmed']}; rejected: {named.stats['contacts_rejected']}\n" +
-                f"Named-contact shadow: {named_phase.get('shadow_runs', 0)}/3; backend: {named.stats['backend']}\n" +
+                f"Named-contact shadow: {named_phase.get('shadow_runs', 0)}/3; official pages: {report['named_contacts']['direct_pages']}\n" +
+                f"Optional Exa search: {named.stats['backend']}; Reader: {report['named_contacts']['jina']}\n" +
                 f"Recruiter introductions accepted: {report['introductions_accepted_by_smtp']}\n" +
                 "Fit holds: " + html.escape("; ".join(f"{k.replace('_', ' ')}: {v}" for k, v in report["eligibility_holds"].items()) or "none") + "\n" +
                 f"Application emails accepted: {report['emails_accepted_by_smtp']}\n" +

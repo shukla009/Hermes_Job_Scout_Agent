@@ -68,15 +68,19 @@
   At most **four evidence/Reader requests per run** share the existing 120-request/420-second budget.
   Discoveries are cached, revalidated within 24 hours and unused cache entries expire after 30 days.
   Contact names, exact excerpts and provenance are stored in encrypted state, not public logs.
-- Authentication/payment demands, free-quota exhaustion and changed schemas stop enrichment;
-  there is no paid fallback, key rotation or limit evasion. Existing outreach continues safely.
+- Exa is optional. Its authentication/payment demands, quota failures or changed schemas stop
+  **Exa searches only**. Verified official pages and bounded employer-site links continue working.
+  Jina is also optional and has a separate check. No paid fallback, key rotation or limit evasion.
+- Search failures use encrypted persistent backoff: quota failures start at 24 hours, double up
+  to seven days and honour a longer provider Retry-After. A due retry occurs only when a suitable
+  vacancy needs search, within two/run and six/day. Auth/schema changes require a manual check.
 - The `Free contact backend verification` Actions workflow queries only public test pages,
   without Gmail credentials, and records its result in encrypted state. New sending requires
-  a successful **cloud** check for the current contact policy; no local success can enable it.
-  Failures stay visible and pause new enrichment. Once free access is available again, run
-  that check from GitHub/mobile: a pass automatically unlocks the scheduled shadow rollout,
-  not immediate sending. Do not repeatedly rerun a quota failure or rotate runners to evade it.
-  The check also reserves one search inside the shared six-search daily budget.
+  a successful **direct-page cloud** check for the current contact policy, not Exa/Jina success.
+  It checks direct HTTPS and Reader separately; Exa checking is optional and off by default.
+  Optional-provider failures do not fail a working direct-page check. A pass unlocks scheduled
+  shadows, not immediate sending. An opted-in Exa check respects cooldown and reserves one search
+  inside the six-search daily budget. Do not repeatedly retry quota failures or rotate runners.
 - Then three distinct actual scheduled shadow runs precede a seven-day canary capped at two
   new-route attempts daily. Manual reruns do not accelerate it. Existing vacancy emails remain live.
 - `/status` and Telegram summaries distinguish contacts found, relevance confirmed, rejected

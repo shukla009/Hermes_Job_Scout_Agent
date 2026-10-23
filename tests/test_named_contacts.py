@@ -6,7 +6,8 @@ from types import SimpleNamespace
 import pytest
 
 from scout_contact_search import (FreeSearch, BackendUnavailable, NamedDiscovery,
-    named_evidence, named_rollout, named_send_allowed, labelled_contacts, cloud_backend_verification, POLICY)
+    named_evidence, named_rollout, named_send_allowed, labelled_contacts, cloud_backend_verification,
+    record_search_health, search_recovery, probe_backends, POLICY)
 from scout_state import StateStore
 
 NOW = datetime.now(timezone.utc)
@@ -273,16 +274,59 @@ def test_contact_evidence_is_inside_authenticated_encrypted_state(monkeypatch):
     assert decode_state(encrypted, "state/scout.json") == value
 
 
-def test_actual_cloud_failure_dominates_legacy_flag_and_later_pass_unlocks_shadow_only():
+def test_direct_cloud_check_is_independent_of_optional_provider_failure():
     data = {"named_backend_verification": {"policy": POLICY, "origin": "github_actions", "run_id": "123",
              "exa": "free_quota_exhausted", "jina": "verified", "verified": False}}
-    assert cloud_backend_verification(data, cloud=True, encrypted=True, legacy_revision=POLICY) == (False, "free_quota_exhausted")
-    data["named_backend_verification"].update(exa="verified", verified=True)
+    assert cloud_backend_verification(data, cloud=True, encrypted=True, legacy_revision=POLICY) == (False, "direct_pages_not_cloud_verified")
+    data["named_backend_verification"].update(direct="verified")
     assert cloud_backend_verification(data, cloud=True, encrypted=True, bootstrap_status="free_quota_exhausted") == (True, "verified")
     assert not named_send_allowed(data, named_rollout(data, "rev"), True)[0]
     assert cloud_backend_verification(data, cloud=False, encrypted=True)[0] is False
     assert cloud_backend_verification(data, cloud=True, encrypted=False)[0] is False
-    assert cloud_backend_verification({}, cloud=True, encrypted=True, bootstrap_status="free_quota_exhausted") == (False, "free_quota_exhausted")
+    assert cloud_backend_verification({}, cloud=True, encrypted=True, bootstrap_status="free_quota_exhausted") == (False, "not_verified")
+
+
+def test_exa_quota_does_not_block_direct_contact_or_site_navigation(tmp_path):
+    store = state(tmp_path)
+    record_search_health(store.data, "free_quota_exhausted", NOW)
+    calls = []
+    def request(url, **kw):
+        calls.append(url)
+        assert "mcp.exa.ai" not in url
+        if url.endswith("/team"):
+            return response(person(), url=url)
+        return response('<html><p>' + 'Public careers information. ' * 8 + '</p><a href="/team">Recruitment team</a></html>', url=url)
+    finder = NamedDiscovery(request, store, registry=[EMPLOYER], now=NOW)
+    assert finder._search("test") == []
+    assert finder.find(dict(POST))["email"] == "asha@fixture.org"
+    assert finder.searches == 0 and finder.fetches <= 4
+
+
+def test_recovery_is_persistent_exponential_bounded_and_respects_retry_after():
+    data = {}
+    for n in range(1, 10):
+        record_search_health(data, "free_quota_exhausted", NOW)
+        expected = min(7, 2 ** (n - 1))
+        assert datetime.fromisoformat(data["contact_search_health"]["retry_at"]) == NOW + timedelta(days=expected)
+    assert not search_recovery(data, NOW + timedelta(days=6))[0]
+    assert search_recovery(data, NOW + timedelta(days=7))[0]
+    record_search_health(data, "free_quota_exhausted", NOW, 10 * 86400)
+    assert not search_recovery(data, NOW + timedelta(days=8))[0]
+    record_search_health(data, "verified", NOW)
+    assert search_recovery(data, NOW)[0]
+    record_search_health(data, "authentication_or_payment_required", NOW)
+    assert not search_recovery(data, NOW + timedelta(days=100))[0]
+
+
+def test_optional_probe_does_not_call_exa_and_reader_failure_leaves_direct_verified():
+    calls = []
+    def request(url, **kw):
+        calls.append(url)
+        assert "mcp.exa.ai" not in url
+        return response("Example Domain", status=429 if "jina" in url else 200, url=url)
+    result = probe_backends(request, check_exa=False)
+    assert result == {"direct": "verified", "exa": "not_checked", "jina": "unavailable"}
+    assert len(calls) == 2
 
 
 def test_invalid_public_evidence_does_not_crash_existing_scout(tmp_path):
@@ -398,6 +442,9 @@ def test_runtime_uses_existing_resume_pipeline_and_separate_intro_accounting(tmp
     monkeypatch.setattr(agent, "search_recruiter_posts", lambda: [copy.deepcopy(post)])
     monkeypatch.setattr(agent, "LAST_SEARCH_STATS", {"source_stats":{"fixture":{"status":"ok"}}})
     store = StateStore("state/scout.json", agent.HISTORY_FILE)
+    store.data["named_backend_verification"] = {"policy": POLICY, "origin": "github_actions", "run_id": "100",
+        "direct": "verified", "jina": "verified", "exa": "free_quota_exhausted", "verified": True}
+    record_search_health(store.data, "free_quota_exhausted", NOW)
     if intro:
         applied_job(store)
     finder = NamedDiscovery(agent._request_with_retries, store, registry=[EMPLOYER])
@@ -410,6 +457,9 @@ def test_runtime_uses_existing_resume_pipeline_and_separate_intro_accounting(tmp
     assert "attach_resume" not in sent[0][1]  # existing send_email default is True
     assert result["introductions_accepted_by_smtp"] == int(intro)
     assert result["emails_accepted_by_smtp"] == int(not intro)
+    assert result["named_contacts"]["direct_pages"] == "available"
+    assert result["named_contacts"]["backend"] == "free_quota_exhausted"
+    assert result["named_contacts"]["searches"] == 0
     assert "asha@fixture.org" not in json.dumps(result)
     assert "Asha Sharma" not in json.dumps(result)
     if intro:

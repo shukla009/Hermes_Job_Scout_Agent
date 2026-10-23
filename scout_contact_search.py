@@ -46,6 +46,7 @@ class FreeSearch:
     def __init__(self, request):
         self.request, self.schema = request, None
         self.status = "not_checked"
+        self.retry_after = 0
 
     def _rpc(self, method, params, identity):
         try:
@@ -56,6 +57,15 @@ class FreeSearch:
             if response.status_code in {401, 402, 403}:
                 raise BackendUnavailable("authentication_or_payment_required")
             if response.status_code == 429:
+                value = str(getattr(response, "headers", {}).get("Retry-After", ""))
+                try:
+                    self.retry_after = max(0, int(value))
+                except ValueError:
+                    from email.utils import parsedate_to_datetime
+                    try:
+                        self.retry_after = max(0, (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds())
+                    except (TypeError, ValueError):
+                        pass
                 raise BackendUnavailable("free_quota_exhausted")
             if response.status_code != 200:
                 raise BackendUnavailable("backend_http_error")
@@ -278,7 +288,10 @@ class NamedDiscovery:
         self.client = FreeSearch(request)
         self.fetches = self.searches = 0
         self.stopped = False
+        self.search_stopped = False
+        self.jina_enabled = True
         self.pages = {}
+        self.reader_pages = set()
         self.stats = {"contacts_discovered": 0, "hiring_relevance_confirmed": 0, "contacts_rejected": 0,
                       "searches": 0, "evidence_fetches": 0, "backend": "not_needed", "reasons": {}}
         self.cache = store.data.setdefault("named_contacts", {})
@@ -298,8 +311,13 @@ class NamedDiscovery:
         self.stats["reasons"][label] = self.stats["reasons"].get(label, 0) + 1
 
     def _search(self, query):
-        if self.stopped or self.searches >= 2:
+        if self.stopped or self.search_stopped or self.searches >= 2:
             self.reason("run_search_limit")
+            return []
+        allowed, status = search_recovery(self.store.data, self.now)
+        if not allowed:
+            self.stats["backend"] = status
+            self.reason("search_recovery_wait")
             return []
         ledger = self.store.data.setdefault("contact_search_days", {})
         day = self.now.astimezone(IST).date().isoformat()
@@ -320,10 +338,15 @@ class NamedDiscovery:
         try:
             urls = self.client.search(query[:600])
             self.stats["backend"] = "ready"
+            record_search_health(self.store.data, "verified", self.now)
             return urls
         except BackendUnavailable as exc:
-            self.stopped = True
+            self.search_stopped = True
             self.stats["backend"] = str(exc)
+            record_search_health(self.store.data, str(exc), self.now, getattr(self.client, "retry_after", 0))
+            if not self.store.save():
+                self.stopped = True
+                self.stats["backend"] = "state_safety_stop"
             self.reason(str(exc))
             return []
 
@@ -366,7 +389,7 @@ class NamedDiscovery:
             # Reader is optional only AFTER a successful unrestricted original
             # fetch. Never use it for a 403, CAPTCHA or authentication barrier.
             visible = text(re.sub(r"<script\b[^>]*>.*?</script>", "", content, flags=re.I | re.S))
-            if len(visible) < 120 and not is_pdf and "application/ld+json" not in content and self.fetches < 4:
+            if self.jina_enabled and len(visible) < 120 and not is_pdf and "application/ld+json" not in content and self.fetches < 4:
                 self.fetches += 1
                 self.stats["evidence_fetches"] = self.fetches
                 try:
@@ -374,6 +397,7 @@ class NamedDiscovery:
                     if reader.status_code == 200 and not re.search(r"captcha|access denied|login required|robots.txt", reader.text, re.I):
                         from html import escape
                         content += labelled_contacts(reader.text[:100000]) + "<pre>" + escape(reader.text[:100000]) + "</pre>"
+                        self.reader_pages.add(final)
                     else:
                         self.reason("reader_unavailable")
                 except Exception:
@@ -408,7 +432,10 @@ class NamedDiscovery:
         if not roots:
             # Search can suggest a site, but only an employer-named official
             # page linking the exact configured ATS tenant can bind it.
-            for url in self._search(f'"{employer["name"]}" official careers website'):
+            candidates = [u for u in post.get("employer_websites", []) if safe_url(u)][:2]
+            if not candidates:
+                candidates = self._search(f'"{employer["name"]}" official careers website')
+            for url in candidates:
                 host = (urlsplit(url).hostname or "").removeprefix("www.")
                 page = self._page(url, {host})
                 if not page:
@@ -458,7 +485,8 @@ class NamedDiscovery:
         evidence = [v for v in evidence if isinstance(v, dict) and v.get("email") and v.get("source_url")
                     and v.get("route") == "named_recruiter" and v.get("rank") in {1, 2, 3, 4}]
         if _recent(cached.get("checked_at"), self.now):
-            valid = [row for row in evidence if _recent(row.get("verified_at"), self.now)]
+            valid = [row for row in evidence if _recent(row.get("verified_at"), self.now)
+                     and (self.jina_enabled or row.get("evidence_backend") != "jina")]
         else:
             urls = [row["source_url"] for row in evidence if isinstance(row, dict) and row.get("source_url")]
             seeds = employer.get("recruitment_pages") or [employer.get("official_url") or employer.get("careers_url")]
@@ -485,6 +513,8 @@ class NamedDiscovery:
                     continue
                 final, content = page
                 rows, rejected = named_evidence(content, final, employer, roots, post, self.now)
+                for row in rows:
+                    row["evidence_backend"] = "jina" if final in self.reader_pages else "direct"
                 if final == vacancy_url:
                     for row in rows:
                         row.update(rank=1, scope="vacancy", hiring_relevance="vacancy_contact")
@@ -495,6 +525,16 @@ class NamedDiscovery:
                 valid.extend(rows)
                 if valid:
                     break
+                # Bounded official-site navigation, independent of web search.
+                parser = ContactPage()
+                parser.feed(content)
+                for link in parser.links:
+                    target = urljoin(final, link)
+                    if (safe_url(target) and target not in visited and target not in urls
+                            and any(_owned_host(urlsplit(target).hostname, root) for root in roots)
+                            and re.search(r"career|recruit|team|people|leadership|contact", urlsplit(target).path, re.I)):
+                        urls.append(target)
+                urls = urls[:8]
             if visited:
                 self.cache[key] = {"checked_at": self.now.isoformat(), "evidence": valid[:3]}
         if not valid:
@@ -543,32 +583,57 @@ BACKEND_LABELS = {"verified", "free_quota_exhausted", "authentication_or_payment
                   "backend_unavailable", "unavailable", "search_contract_unverified", "daily_search_limit"}
 
 
+def record_search_health(data, status, now, retry_after=0):
+    previous = data.get("contact_search_health", {})
+    failures = min(8, int(previous.get("failures", 0)) + 1) if status != "verified" else 0
+    delay = (min(7 * 86400, 86400 * 2 ** (failures - 1)) if status == "free_quota_exhausted"
+             else min(86400, 3600 * 2 ** max(0, failures - 1))) if failures else 0
+    delay = max(delay, retry_after)
+    data["contact_search_health"] = {"status": status, "failures": failures, "checked_at": now.isoformat(),
+        "retry_at": (now + timedelta(seconds=delay)).isoformat(), "policy": POLICY,
+        "manual_check_required": status in {"authentication_or_payment_required", "backend_schema_changed", "backend_contract_error"}}
+
+
+def search_recovery(data, now):
+    row = data.get("contact_search_health", {})
+    if not row or row.get("status") == "verified":
+        return True, "ready"
+    if row.get("manual_check_required"):
+        return False, row.get("status", "backend_unavailable")
+    try:
+        due = datetime.fromisoformat(row["retry_at"])
+        if due.tzinfo is None:
+            raise ValueError("Invalid recovery time")
+        return now >= due, row.get("status", "backend_unavailable")
+    except (KeyError, TypeError, ValueError):
+        return False, "backend_unavailable"
+
+
 def cloud_backend_verification(data, *, cloud, encrypted, legacy_revision="", bootstrap_status=""):
     """A failed cloud check is visible, not silently mistaken for 'not needed'."""
     if not cloud or not encrypted:
         return False, "encrypted_cloud_verification_required"
     row = data.get("named_backend_verification", {})
     if row.get("policy") == POLICY and row.get("origin") == "github_actions" and str(row.get("run_id", "")).isdigit():
-        verified = row.get("verified") is True and row.get("exa") == row.get("jina") == "verified"
-        failure = row.get("exa") if row.get("exa") != "verified" else row.get("jina")
-        return verified, "verified" if verified else failure if failure in BACKEND_LABELS else "backend_unavailable"
-    if bootstrap_status in BACKEND_LABELS and bootstrap_status != "verified":
-        return False, bootstrap_status
+        verified = row.get("direct") == "verified"
+        return verified, "verified" if verified else "direct_pages_not_cloud_verified"
     return legacy_revision == POLICY, "verified" if legacy_revision == POLICY else "not_verified"
 
 
-def probe_backends(request):
+def probe_backends(request, *, check_exa=True):
     """Credential-free Actions contract check; no candidate or recruiter data."""
-    result = {"exa": "not_checked", "jina": "not_checked"}
+    result = {"direct": "not_checked", "exa": "not_checked", "jina": "not_checked"}
     client = FreeSearch(request)
     try:
-        urls = client.search("site:example.com Example Domain")
-        result["exa"] = "verified" if urls else "search_contract_unverified"
+        if check_exa:
+            urls = client.search("site:example.com Example Domain")
+            result["exa"] = "verified" if urls else "search_contract_unverified"
     except BackendUnavailable as exc:
         result["exa"] = str(exc)
     try:
         response = request("https://example.com/", max_retries=0, timeout=10, return_http_errors=True)
-        if response.status_code == 200:
+        if response.status_code == 200 and "Example Domain" in response.text:
+            result["direct"] = "verified"
             response = request("https://r.jina.ai/https://example.com/", max_retries=0, timeout=15, return_http_errors=True)
             result["jina"] = "verified" if response.status_code == 200 and "Example Domain" in response.text else "unavailable"
     except Exception:
@@ -576,7 +641,7 @@ def probe_backends(request):
     return result
 
 
-def record_cloud_check():
+def record_cloud_check(*, check_exa=False):
     """Operator-triggered, no retry after a quota response, encrypted results.
 
     The check queries only example.com. It neither reads Gmail nor sends a resume.
@@ -592,17 +657,26 @@ def record_cloud_check():
     writer = GitHubWriter(token=os.environ["GITHUB_TOKEN"], repo=os.environ["GITHUB_REPOSITORY"])
     store = StateStore(commit_callback=writer)
     now = datetime.now(timezone.utc)
+    bootstrap = os.getenv("SCOUT_NAMED_BACKEND_STATUS", "")
+    if not store.data.get("contact_search_health") and bootstrap in BACKEND_LABELS and bootstrap != "verified":
+        record_search_health(store.data, bootstrap, now)
     day = now.astimezone(IST).date().isoformat()
     ledger = store.data.setdefault("contact_search_days", {})
     used = ledger.get(day, 0)
-    if type(used) is not int or used < 0 or used >= 6:
-        result = {"exa": "daily_search_limit", "jina": "not_checked"}
-    else:
+    allowed, status = search_recovery(store.data, now)
+    if check_exa and store.data.get("contact_search_health", {}).get("manual_check_required"):
+        allowed = True  # Explicit operator check, never an automatic auth/schema retry.
+    attempt_exa = check_exa and allowed and type(used) is int and 0 <= used < 6
+    if attempt_exa:
         ledger[day] = used + 1
         if not store.save():
             raise RuntimeError("Backend quota reservation could not be persisted")
-        result = probe_backends(RuntimeBudget(max_requests=4, deadline_seconds=60).request)
-    verified = result == {"exa": "verified", "jina": "verified"}
+    result = probe_backends(RuntimeBudget(max_requests=4, deadline_seconds=60).request, check_exa=attempt_exa)
+    if attempt_exa:
+        record_search_health(store.data, result["exa"], now)
+    else:
+        result["exa"] = store.data.get("contact_search_health", {}).get("status", "not_checked")
+    verified = result["direct"] == "verified"
     store.data["named_backend_verification"] = {**result, "verified": verified, "policy": POLICY,
         "origin": "github_actions", "run_id": os.environ["GITHUB_RUN_ID"], "checked_at": now.isoformat()}
     if not store.save():
@@ -616,10 +690,17 @@ if __name__ == "__main__":
     from scout_persistence import RuntimeBudget
     parser = argparse.ArgumentParser(description="Credential-free public search/Reader contract check")
     parser.add_argument("--record-cloud-check", action="store_true")
+    parser.add_argument("--check-exa", action="store_true", help="Optional Exa check; respects persistent cooldown and search quota")
     args = parser.parse_args()
-    result = record_cloud_check() if args.record_cloud_check else probe_backends(RuntimeBudget(max_requests=4, deadline_seconds=60).request)
-    verified = result == {"exa": "verified", "jina": "verified"}
+    result = record_cloud_check(check_exa=args.check_exa) if args.record_cloud_check else probe_backends(RuntimeBudget(max_requests=4, deadline_seconds=60).request, check_exa=args.check_exa)
+    verified = result["direct"] == "verified"
     print(json.dumps(result, sort_keys=True))
+    if args.record_cloud_check and os.getenv("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+            handle.write("## Contact capability check\n\n" + "\n".join(f"- {key}: {value}" for key, value in result.items())
+                         + "\n\nDirect-page success unlocks scheduled shadows only. Exa and Reader are optional; no paid fallback.\n")
+        if result["exa"] not in {"verified", "not_checked"}:
+            print("::warning::Optional Exa search is unavailable; direct-page discovery is independent.")
     if os.getenv("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
             handle.write(f"verified={'true' if verified else 'false'}\n")

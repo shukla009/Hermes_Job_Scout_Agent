@@ -189,7 +189,19 @@ export default {
           const holdLabels = new Set(["minimum_experience_not_stated_for_nonjunior_scope","mandatory_requirement_unverified","mandatory_requirement_not_met","full_time_unconfirmed","location_or_remote_eligibility_unconfirmed","recruitment_safety_review","vacancy_reverification_failed","other_eligibility_hold"]);
           const fitHolds = Object.entries(run.eligibility_holds || {}).filter(([key])=>holdLabels.has(key)).slice(0,3).map(([key,count])=>`${key.replaceAll("_"," ")}: ${Number(count) || 0}`).join("; ") || "none recorded";
           const named = run.named_contacts || {};
-          const reachText = `Fresh: ${Number(funnel.verified_fresh) || 0}; suitable: ${Number(funnel.suitable) || 0}; reachable: ${Number(funnel.reachable) || 0}\nFit holds: ${escapeHTML(fitHolds)}\nCareers-inbox shadow: ${Number(run.contact_discovery?.shadow_runs_completed) || 0}/3 scheduled runs\nNamed contacts: ${Number(named.contacts_discovered) || 0}; hiring relevance confirmed: ${Number(named.hiring_relevance_confirmed) || 0}; rejected: ${Number(named.contacts_rejected) || 0}\nNamed-contact shadow: ${Number(named.shadow_runs_completed) || 0}/3; cloud backend verified: ${named.cloud_backend_verified === true ? "yes" : "no"}\nContact backend: ${escapeHTML(String(named.backend || "not checked"))}\nIntroductions accepted by SMTP: ${Number(named.introductions_accepted_by_smtp) || 0}\nHuman replies in last run: ${Number(run.reply_monitor?.new_human_replies) || 0}\nOptional phone actions sent: ${Number(run.manual_actions?.sent) || 0} (use /actions)\n`;
+          const reachText = [
+            `Fresh: ${Number(funnel.verified_fresh) || 0}; suitable: ${Number(funnel.suitable) || 0}; reachable: ${Number(funnel.reachable) || 0}`,
+            `Fit holds: ${escapeHTML(fitHolds)}`,
+            `Careers-inbox shadow: ${Number(run.contact_discovery?.shadow_runs_completed) || 0}/3 scheduled runs`,
+            `Named contacts: ${Number(named.contacts_discovered) || 0}; hiring relevance confirmed: ${Number(named.hiring_relevance_confirmed) || 0}; rejected: ${Number(named.contacts_rejected) || 0}`,
+            `Named-contact shadow: ${Number(named.shadow_runs_completed) || 0}/3; cloud backend verified: ${named.cloud_backend_verified === true ? "yes" : "no"}`,
+            `Official-page discovery: ${escapeHTML(String(named.direct_pages || "not checked"))}`,
+            `Optional Exa search: ${escapeHTML(String(named.backend || "not checked"))}; Reader: ${escapeHTML(String(named.jina || "not checked"))}`,
+            `Search retry eligible: ${escapeHTML(timeIST(named.search_retry_at))}`,
+            `Introductions accepted by SMTP: ${Number(named.introductions_accepted_by_smtp) || 0}`,
+            `Human replies in last run: ${Number(run.reply_monitor?.new_human_replies) || 0}`,
+            `Optional phone actions sent: ${Number(run.manual_actions?.sent) || 0} (use /actions)`, ""
+          ].join("\n");
           const healthText = `Failing discovery sources: ${Number(health.failing_sources) || 0}\nAlert-link failures: ${escapeHTML(Object.entries(health.alert_failure_categories || {}).slice(0,4).map(([name,count])=>`${name.replaceAll("_"," ")}: ${count}`).join("; ") || "none recorded")}\n`;
           await reply(env, env.TELEGRAM_CHAT_ID, `${attemptText}Last scout execution: ${escapeHTML(run.status || "No completed run")}\nAt: ${escapeHTML(timeIST(run.at))}\nDiscovered: ${run.results_discovered || 0}\nPotential matches: ${run.relevant_apply_leads || 0}\n${reachText}SMTP accepted: ${run.emails_accepted_by_smtp || 0}\nPortal confirmed: ${run.applications?.confirmed || 0}\nVerified form adapters: ${run.applications?.enabled_adapters || 0}\n${healthText}Budget: ${state.budget?.paused ? "Paused" : state.budget?.mode === "standard_public" ? "Free public standard runners" : "Within configured limits"}\nRuntime minutes estimate: ${state.budget?.used_minutes_estimate || 0}${state.budget?.mode === "standard_public" ? " (no private-minute ceiling)" : "/" + (state.budget?.monthly_ceiling || 1200)}\nFeedback is reconciled on the next scout run.`);
         } else {

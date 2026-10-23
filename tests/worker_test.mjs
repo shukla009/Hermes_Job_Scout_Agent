@@ -102,7 +102,8 @@ assert.match(attemptStatus,/Failing discovery sources: 3/);
 assert.match(attemptStatus,/http access denied: 6/);
 assert.match(attemptStatus,/Named contacts: 2; hiring relevance confirmed: 1; rejected: 1/);
 assert.match(attemptStatus,/Named-contact shadow: 2\/3; cloud backend verified: yes/);
-assert.match(attemptStatus,/Contact backend: free_quota_exhausted/);
+assert.match(attemptStatus,/Optional Exa search: free_quota_exhausted/);
+assert.match(attemptStatus,/Official-page discovery: not checked/);
 assert.match(attemptStatus,/Introductions accepted by SMTP: 1/);
 // Telegram retries must not dispatch twice, even if the first reply is lost.
 calls=[];
