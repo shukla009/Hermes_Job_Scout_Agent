@@ -23,8 +23,8 @@ export function statusSummary(state) {
     `Application emails: ${count(run.emails_accepted_by_smtp)} accepted by Gmail`);
   if (run.named_contacts?.introductions_accepted_by_smtp) lines.push(`Recruiter introductions: ${count(run.named_contacts.introductions_accepted_by_smtp)} accepted by Gmail`);
   if (run.applications?.confirmed) lines.push(`Online applications confirmed: ${count(run.applications.confirmed)}`);
-  const sent = count(run.emails_accepted_by_smtp) + count(run.named_contacts?.introductions_accepted_by_smtp) + count(run.applications?.confirmed);
-  lines.push("", paused ? "Sending is paused to protect your saved application records." : mailFailed ? "The Gmail connection failed." : sent ? "Email acceptance does not confirm delivery or a recruiter reply." : funnel.suitable === 0 ? "No email sent: no jobs passed all your requirements." : "No new email sent. Contact availability, safety checks or sending hours may be the reason.");
+  const sent = count(run.emails_accepted_by_smtp) + count(run.named_contacts?.introductions_accepted_by_smtp);
+  lines.push("", paused ? "Sending is paused to protect your saved application records." : mailFailed ? "The Gmail connection failed." : sent ? "Email acceptance does not confirm delivery or a recruiter reply." : run.applications?.confirmed ? "The application website confirmed submission." : funnel.suitable === 0 ? "No application email sent: no jobs passed all your requirements." : "No new application email sent. Contact availability, safety checks or sending hours may be the reason.");
   if (run.named_contacts?.validation_mode && run.named_contacts?.cloud_backend_verified) lines.push(`New contact feature: safety checks ${count(run.named_contacts.shadow_runs_completed)}/3 completed.`);
   if (run.discovery_health?.failing_sources) lines.push("Some job sources were unavailable; results may be incomplete.");
   lines.push("", paused ? "Your action: check /status details before restarting." : mailFailed ? "Your action: check the saved Gmail login settings." : "Your action: none. The next search is automatic.", "More detail: /status details");

@@ -175,14 +175,16 @@ def telegram_summary(report, *, shadow=False):
         reason, action = "Sending is paused to protect your saved application records.", "Check /status details before restarting."
     elif smtp_failed:
         reason, action = "The Gmail connection failed; no new application emails were sent.", "Check the saved Gmail login settings."
-    elif sent or intros or forms.get("confirmed"):
+    elif sent or intros:
         reason, action = "Email acceptance does not confirm delivery or a recruiter reply.", "None. Replies will be reported here."
+    elif forms.get("confirmed"):
+        reason, action = "The application website confirmed submission.", "None. Replies will be reported here."
     elif not funnel.get("suitable"):
-        reason, action = "No email sent: no jobs passed all your requirements.", "None. The next search is automatic."
+        reason, action = "No application email sent: no jobs passed all your requirements.", "None. The next search is automatic."
     elif shadow:
-        reason, action = "No email sent: automatic sending is completing its safety checks.", "None. Testing continues automatically."
+        reason, action = "No application email sent: automatic sending is completing its safety checks.", "None. Testing continues automatically."
     elif not funnel.get("reachable"):
-        reason, action = "No email sent: no verified contact or supported application form was found.", "None. The next search is automatic."
+        reason, action = "No application email sent: no verified contact or supported application form was found.", "None. The next search is automatic."
     elif "email_deferred_outside_business_hours" in report.get("coverage_gaps", {}):
         reason, action = "Email sending waits for weekday business hours.", "None. Freshness is checked again before sending."
     else:

@@ -40,3 +40,10 @@ def test_optional_actions_and_incomplete_search_are_explicit():
     message = telegram_summary(report(manual_actions={"sent": 2}, discovery_health={"failing_sources": 1}))
     assert "Optional jobs to apply to yourself: /actions" in message
     assert "results may be incomplete" in message
+
+
+def test_forms_and_followups_are_not_confused_with_new_application_emails():
+    message = telegram_summary(report(applications={"confirmed": 1}))
+    assert "website confirmed submission" in message and "Email acceptance" not in message
+    message = telegram_summary(report(follow_ups={"sent": 1}))
+    assert "Follow-up emails: 1" in message and "No application email sent" in message
