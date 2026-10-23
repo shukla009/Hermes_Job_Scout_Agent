@@ -6,6 +6,17 @@ from scout_sources import safe_url
 from scout_state import IST
 
 
+def posting_url(record):
+    """Use an existing safe destination; never invent an application URL."""
+    return next((record[key] for key in ("application_url", "apply_url", "url", "href")
+                 if safe_url(record.get(key))), "")
+
+
+def posting_markup(record):
+    url = posting_url(record)
+    return {"inline_keyboard": [[{"text": "Open job posting", "url": url}]]} if url else None
+
+
 def manual_draft(analysis, *, route="application"):
     title = re.sub(r"\s+", " ", str(analysis.get("job_title", "this role")))[:140]
     company = re.sub(r"\s+", " ", str(analysis.get("company", "your company")))[:120]

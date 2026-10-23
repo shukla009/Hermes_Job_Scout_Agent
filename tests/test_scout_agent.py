@@ -603,7 +603,7 @@ class TestMainRouting:
         monkeypatch.setattr(scout_agent, "GMAIL_PASSWORD", "password")
         monkeypatch.setattr(scout_agent, "SEND_EMAILS", True)
         monkeypatch.setattr(scout_agent, "SMTP_PREFLIGHT", False)
-        monkeypatch.setattr(scout_agent, "send_telegram", lambda message: True)
+        monkeypatch.setattr(scout_agent, "send_telegram", lambda message, markup=None: True)
         monkeypatch.setattr(scout_agent, "process_pending_follow_ups", lambda *args: {"sent": 0, "failed": 0, "pending": 0})
         posts = [
             {"title": "Data Analyst", "body": "Apply", "href": "https://example.com/jobs/1"},

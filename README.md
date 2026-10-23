@@ -173,6 +173,9 @@
 - `/actions`: show up to three fresh optional phone-friendly opportunities with an application
   draft and Applied/Skipped/Referral requested buttons. A maximum of three new cards is sent
   per IST day. These are **not approvals**; automatic outreach continues independently.
+- Job cards and application confirmations include an **Open job posting** button when a
+  safe posting URL exists. Summaries explicitly say when no new manual links were generated;
+  a fresh listing alone is not a recommendation to apply.
 - Referral wording is used only for an explicit referral route; cards show the original
   posting's 48-hour expiry, not a new deadline based on when the alert arrived.
 - Referral requested holds conflicting automatic outreach for that vacancy. Skipped suppresses

@@ -2,6 +2,17 @@
 const REPO = "shukla009/Hermes_Job_Scout_Agent";
 const ACTIONS = new Set(["applied", "notfit", "snooze", "reply", "interview", "rejected", "skipped", "referral"]);
 const escapeHTML = value => String(value ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+export function postingButtons(job) {
+  for (const key of ["application_url", "apply_url", "url", "href"]) {
+    try {
+      const url = new URL(job[key]);
+      if (url.protocol !== "https:" || url.username || url.password || url.port ||
+          !url.hostname.includes(".") || /naukri|localhost|(?:\.local|\.internal)$|^[\d.]+$|:/.test(url.hostname)) continue;
+      return [[{text:"Open job posting", url:url.href}]];
+    } catch {}
+  }
+  return [];
+}
 const timeIST = value => {
   const stamp = Date.parse(String(value ?? ""));
   return Number.isFinite(stamp) ? new Intl.DateTimeFormat("en-GB", {timeZone:"Asia/Kolkata", dateStyle:"medium", timeStyle:"short"}).format(stamp) + " IST" : "Unknown";
@@ -27,6 +38,7 @@ export function statusSummary(state) {
   lines.push("", paused ? "Sending is paused to protect your saved application records." : mailFailed ? "The Gmail connection failed." : sent ? "Email acceptance does not confirm delivery or a recruiter reply." : run.applications?.confirmed ? "The application website confirmed submission." : funnel.suitable === 0 ? "No application email sent: no jobs passed all your requirements." : "No new application email sent. Contact availability, safety checks or sending hours may be the reason.");
   if (run.named_contacts?.validation_mode && run.named_contacts?.cloud_backend_verified) lines.push(`New contact feature: safety checks ${count(run.named_contacts.shadow_runs_completed)}/3 completed.`);
   if (run.discovery_health?.failing_sources) lines.push("Some job sources were unavailable; results may be incomplete.");
+  lines.push(optionalJobs(Object.values(state.jobs || {})).length ? "Manual application links: /actions (opens job cards)." : "No current manual-application cards. No job link is being withheld.");
   lines.push("", paused ? "Your action: check /status details before restarting." : mailFailed ? "Your action: check the saved Gmail login settings." : "Your action: none. The next search is automatic.", "More detail: /status details");
   return lines.map(escapeHTML).join("\n");
 }
@@ -91,7 +103,7 @@ async function queueCard(env, job) {
   const buttons = await Promise.all(actions.map(async ([text, action]) => ({text, callback_data: await createCallback(action, job.id, env.TELEGRAM_BOT_TOKEN)})));
   const text = `${escapeHTML(job.job_title || job.title || "Relevant role")} — ${escapeHTML(job.company || "Employer")}\n${escapeHTML(job.apply_url || job.application_url || job.url || "Check listing")}\n${escapeHTML(job.fit_reason || job.reason || "Review fit and requirements before applying")}`;
   return telegram(env, "sendMessage", {chat_id: env.TELEGRAM_CHAT_ID, text, parse_mode: "HTML", disable_web_page_preview: true,
-    reply_markup: {inline_keyboard: [buttons.slice(0,3), buttons.slice(3)]}});
+    reply_markup: {inline_keyboard: [...postingButtons(job), buttons.slice(0,3), buttons.slice(3)]}});
 }
 export function optionalJobs(jobs, now = Date.now()) {
   return jobs.filter(j => {
@@ -115,7 +127,7 @@ async function optionalCard(env, job) {
   const outcomes = await Promise.all([["Reply","reply"],["Interview","interview"],["Rejected","rejected"]].map(async ([text,action]) => ({text, callback_data: await createCallback(action, job.id, env.TELEGRAM_BOT_TOKEN)})));
   return telegram(env, "sendMessage", {chat_id:env.TELEGRAM_CHAT_ID, parse_mode:"HTML", disable_web_page_preview:true,
     text:optionalCardText(job),
-    reply_markup:{inline_keyboard:[buttons,outcomes]}});
+    reply_markup:{inline_keyboard:[...postingButtons(job),buttons,outcomes]}});
 }
 export async function storeFeedback(env, updateId, event) {
   if (!Number.isSafeInteger(updateId) || updateId < 0) throw new Error("Invalid update ID");
@@ -191,7 +203,7 @@ export default {
           }
         } else if (command === "/actions") {
           const optional = optionalJobs(jobs);
-          if (!optional.length) await reply(env, env.TELEGRAM_CHAT_ID, "No fresh optional phone actions. Automatic outreach continues without approval.");
+          if (!optional.length) await reply(env, env.TELEGRAM_CHAT_ID, "No current manual-application links: no fresh, eligible, unsubmitted job has an optional action card. Fresh does not always mean suitable. Automatic outreach continues without approval.");
           else for (const job of optional) await optionalCard(env, job);
         } else if (command === "/queue") {
           if (env.HANDS_OFF_ONLY !== "false") {
@@ -203,7 +215,7 @@ export default {
             for (const job of recent) {
               const actions = [["Reply", "reply"], ["Interview", "interview"], ["Rejected", "rejected"]];
               const buttons = await Promise.all(actions.map(async ([text, action]) => ({text, callback_data: await createCallback(action, job.id, env.TELEGRAM_BOT_TOKEN)})));
-              await telegram(env, "sendMessage", {chat_id:env.TELEGRAM_CHAT_ID, parse_mode:"HTML", text:`Record an outcome: ${escapeHTML(job.job_title || job.title || "Application")} — ${escapeHTML(job.company || "Employer")}`, reply_markup:{inline_keyboard:[buttons]}});
+              await telegram(env, "sendMessage", {chat_id:env.TELEGRAM_CHAT_ID, parse_mode:"HTML", text:`Record an outcome: ${escapeHTML(job.job_title || job.title || "Application")} — ${escapeHTML(job.company || "Employer")}`, reply_markup:{inline_keyboard:[...postingButtons(job),buttons]}});
             }
             return new Response("OK");
           }

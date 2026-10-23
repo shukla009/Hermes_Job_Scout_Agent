@@ -198,7 +198,10 @@ def telegram_summary(report, *, shadow=False):
     if named.get("backend") == "free_quota_exhausted":
         lines.append("Extra web search is temporarily limited." + (" Company-page checks still work." if named.get("direct_pages") == "available" else ""))
     if report.get("manual_actions", {}).get("sent"):
+        lines.append("Manual application links: in separate job cards; use /actions to view them again.")
         action = "Optional jobs to apply to yourself: /actions. No approval is required."
+    else:
+        lines.append("No new manual-application links in this run.")
     lines += ["", "Your action: " + action, "More detail: /status details"]
     return "\n".join(lines)
 
@@ -599,7 +602,8 @@ def run(agent, *, dry_run=False, notify=True):
                 stage(source_funnel, post, "portal_confirmed")
                 agent._record_history(history, analysis, post, "submitted")
                 if notify:
-                    agent.send_telegram("Application confirmed: " + html.escape(str(analysis.get("company", ""))) + " — " + html.escape(str(analysis.get("job_title", ""))))
+                    from scout_actions import posting_markup
+                    agent.send_telegram("Application confirmed: " + html.escape(str(analysis.get("company", ""))) + " — " + html.escape(str(analysis.get("job_title", ""))), posting_markup(analysis))
             continue
         reachable += 1
         store.data["jobs"][ident]["reachability_route"] = analysis.get("contact_route", "vacancy_email")
@@ -670,9 +674,10 @@ def run(agent, *, dry_run=False, notify=True):
                 outbound = False
                 report["status"] = "state_safety_stop"
             if notify:
+                from scout_actions import posting_markup
                 agent.send_telegram(("✉️ <b>Recruiter introduction accepted by Gmail</b>\n" if is_intro else "✉️ <b>Application email accepted by Gmail</b>\n") +
                     html.escape(str(analysis.get("company", ""))) + " — " +
-                    html.escape(str(analysis.get("job_title", ""))))
+                    html.escape(str(analysis.get("job_title", ""))), posting_markup(analysis))
     if any(x.get("status") == "error" for x in report.get("source_stats", {}).values()) and report["status"] == "healthy":
         report["status"] = "partial"
     verified_sources = any(x.get("status") == "ok" for x in report.get("source_stats", {}).values())

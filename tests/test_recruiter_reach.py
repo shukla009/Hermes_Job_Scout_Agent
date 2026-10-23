@@ -228,6 +228,9 @@ def test_optional_action_notification_has_six_signed_controls(monkeypatch):
     text, markup = notices[0]
     assert "not an approval" in text
     buttons = sum(markup["inline_keyboard"], [])
+    assert buttons[0] == {"text": "Open job posting", "url": "https://fixture.org/jobs/1"}
+    buttons = [b for b in buttons if "callback_data" in b]
+    assert len(buttons) == 6
     assert [b["text"] for b in buttons][:3] == ["Applied", "Skipped", "Referral requested"]
     assert all(len(b["callback_data"].encode()) <= 64 for b in buttons)
 

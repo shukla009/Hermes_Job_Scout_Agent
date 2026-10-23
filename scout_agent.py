@@ -978,6 +978,8 @@ def _record_history(history, analysis, post, route, email=""):
 
 def _send_apply_alert(analysis):
     from scout_state import callback_data
+    from scout_actions import posting_url, posting_markup
+    url = posting_url(analysis)
     warnings = "; ".join(analysis.get("warnings", [])[:3])
     evidence = "\n".join("• " + html.escape(str(x)) for x in analysis.get("evidence", [])[:2])
     message = (
@@ -986,7 +988,7 @@ def _send_apply_alert(analysis):
         + html.escape(str(analysis.get("company", ""))) + " — " + html.escape(str(analysis.get("location", ""))) + "\n"
         + f"Fit: {analysis.get('fit_score', 0)}/100\n" + evidence + "\n"
         + ("⚠️ " + html.escape(warnings) + "\n" if warnings else "")
-        + "<a href='" + html.escape(str(analysis.get("application_url", "")), quote=True) + "'>Apply on official site</a>"
+        + ("<a href='" + html.escape(url, quote=True) + "'>Open job posting</a>" if url else "Posting link unavailable")
     )
     if analysis.get("manual_optional"):
         from scout_state import IST
@@ -1006,7 +1008,8 @@ def _send_apply_alert(analysis):
                    ("Only contact someone who knows your work.\n<b>Referral draft:</b>\n" if referral else "<b>Application draft:</b>\n") +
                    html.escape(str(analysis.get("manual_draft", ""))[:850]))
     if os.getenv("TELEGRAM_TRACKING_READY", "false").lower() != "true":
-        return send_telegram(message)
+        markup = posting_markup(analysis)
+        return send_telegram(message, markup) if markup else send_telegram(message)
     pairs = (
                     (("Applied", "applied"), ("Skipped", "skipped"), ("Referral requested", "referral")),
                     (("Reply", "reply"), ("Interview", "interview"), ("Rejected", "rejected"))) if analysis.get("manual_optional") else (
@@ -1014,6 +1017,8 @@ def _send_apply_alert(analysis):
                     (("Reply", "reply"), ("Interview", "interview"), ("Rejected", "rejected")))
     buttons = [[{"text": label, "callback_data": callback_data(analysis["job_id"], action, TELEGRAM_BOT_TOKEN)}
                 for label, action in pair] for pair in pairs]
+    if url:
+        buttons.insert(0, [{"text": "Open job posting", "url": url}])
     return send_telegram(message, {"inline_keyboard": buttons})
 
 
