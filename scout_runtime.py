@@ -45,6 +45,7 @@ def _introduction_posts(store, posts, normalize, now=None):
         except (ValueError, TypeError):
             continue
         pending.append({"href": url, "source_type": "direct_apply", "needs_reverification": True,
+                        "outreach_recheck": True,
                         "job_title": row.get("job_title"), "company": row.get("company"),
                         "location": row.get("location"), "date_posted": row.get("date_posted")})
         seen.add(normalize(url))
@@ -371,6 +372,13 @@ def run(agent, *, dry_run=False, notify=True):
         report["status"] = "partial"
         report["query_errors"].append(type(exc).__name__)
     posts += _introduction_posts(store, posts, agent._normalize_url)
+    from scout_evaluation import classify_batch, record_review, record_daily, revision as matching_revision, stage
+    posts, vacancy_counts, source_funnel = classify_batch(store.data, posts, agent._normalize_url)
+    report["vacancy_counts"] = vacancy_counts
+    report["source_funnel"] = source_funnel
+    decision_revision = matching_revision()
+    audit_enabled = not cloud or os.getenv("SCOUT_ENCRYPT_STATE", "false").lower() == "true"
+    report["decision_audit"] = {"recorded": 0, "encrypted_cloud_storage": cloud and audit_enabled}
     report["results_discovered"] = len(posts)
     report["discovery_health"] = discovery_health(report.get("source_stats", {}))
     if report["discovery_health"]["failing_sources"] and report["status"] == "healthy":
@@ -411,7 +419,10 @@ def run(agent, *, dry_run=False, notify=True):
         try:
             enriched = agent.enrich_post(post)
             report["pages_fetched"] += int(bool(enriched.get("page_fetched")))
-            verified_fresh += int(agent._structured_freshness(enriched)[0])
+            is_fresh, freshness_reason = agent._structured_freshness(enriched)
+            verified_fresh += int(is_fresh)
+            if is_fresh:
+                stage(source_funnel, post, "fresh")
             analysis, verdict = agent.analyze_post_verbose(enriched)
         except BudgetExhausted:
             report["status"] = "budget_limited"
@@ -419,6 +430,12 @@ def run(agent, *, dry_run=False, notify=True):
         except Exception as exc:
             reasons["analysis error: " + type(exc).__name__] += 1
             continue
+        assessment = enriched.get("eligibility_assessment") or {"eligible": bool(analysis), "email_safe": bool((analysis or {}).get("email_safe")),
+            "reason": enriched.get("rejection_reason", ""), "requirements": (analysis or {}).get("requirements", {})}
+        if audit_enabled:
+            record_review(store.data, enriched, assessment, is_fresh, freshness_reason, decision_revision=decision_revision)
+            report["decision_audit"]["recorded"] += 1
+        stage(source_funnel, post, "suitable" if assessment.get("email_safe") and is_fresh else "held" if analysis else "rejected")
         if not analysis:
             if store:
                 stale_id = agent._job_fingerprint(enriched)
@@ -447,6 +464,7 @@ def run(agent, *, dry_run=False, notify=True):
             analysis["application_evidence_kind"] = "portal_confirmed" if record.get("application_route") == "public_form" else "user_reported"
         candidates.append((analysis, enriched, verdict))
     candidates.sort(key=lambda x: (x[0].get("tier") == "stretch", {"research": 0, "process": 1, "reporting": 1}.get(x[0].get("family"), 2), -x[0].get("fit_score", 0)))
+    candidates = named.prioritize_candidates(candidates)
     # Enrich the best fully eligible vacancies first, not whichever source ran first.
     for analysis, enriched, verdict in candidates:
         if analysis.get("recruiter_email"):
@@ -536,7 +554,9 @@ def run(agent, *, dry_run=False, notify=True):
                 store.data["jobs"][ident]["reachability_route"] = "unsupported_or_manual"
                 if (notify and not dry_run and os.getenv("SCOUT_OPTIONAL_ACTIONS", "true").lower() == "true"
                         and reserve_manual_card(store, analysis)):
-                    manual = dict(analysis, manual_optional=True, manual_draft=store.data["jobs"][ident]["manual_draft"])
+                    manual = dict(analysis, manual_optional=True, manual_draft=store.data["jobs"][ident]["manual_draft"],
+                                  manual_route=store.data["jobs"][ident].get("manual_route", "application"),
+                                  manual_expires_at=store.data["jobs"][ident].get("manual_expires_at"))
                     delivered = agent._send_apply_alert(manual)
                     store.data["jobs"][ident]["manual_action_status"] = "notified" if delivered else "notification_uncertain"
                     if not store.save():
@@ -545,6 +565,7 @@ def run(agent, *, dry_run=False, notify=True):
                     report["manual_actions"]["sent"] += int(bool(delivered))
                 continue
             reachable += 1
+            stage(source_funnel, post, "reachable")
             store.data["jobs"][ident]["reachability_route"] = "public_form"
             if not outbound or form_shadow or dry_run:
                 continue
@@ -575,12 +596,14 @@ def run(agent, *, dry_run=False, notify=True):
             report["applications"][kind if kind in {"confirmed", "ambiguous", "blocked"} else "blocked"] += 1
             forms += 1
             if kind == "confirmed":
+                stage(source_funnel, post, "portal_confirmed")
                 agent._record_history(history, analysis, post, "submitted")
                 if notify:
                     agent.send_telegram("Application confirmed: " + html.escape(str(analysis.get("company", ""))) + " — " + html.escape(str(analysis.get("job_title", ""))))
             continue
         reachable += 1
         store.data["jobs"][ident]["reachability_route"] = analysis.get("contact_route", "vacancy_email")
+        stage(source_funnel, post, "reachable")
         new_route = analysis.get("contact_route") == "official_careers_inbox"
         named_route = analysis.get("contact_route") == "named_recruiter" or analysis.get("outreach_purpose") == "recruiter_intro"
         if named_route:
@@ -638,6 +661,7 @@ def run(agent, *, dry_run=False, notify=True):
         if accepted:
             emails += 1
             is_intro = purpose == "recruiter_intro"
+            stage(source_funnel, post, "introductions_accepted" if is_intro else "application_emails_accepted")
             report["introductions_accepted_by_smtp" if is_intro else "emails_accepted_by_smtp"] += 1
             agent._record_history(history, analysis, post, "recruiter_intro" if is_intro else "email", recipient)
             extra = {"outreach_purpose": purpose} if is_intro else {}
@@ -697,6 +721,7 @@ def run(agent, *, dry_run=False, notify=True):
         report["status"] = "no_matches"
     agent._write_run_report(report)
     if store:
+        record_daily(store.data, report, identity if cloud else "")
         store.data["last_run"] = {k: report[k] for k in ("status", "results_discovered", "relevant_apply_leads", "alerts_sent", "emails_accepted_by_smtp", "shadow_run")}
         store.data["last_run"]["at"] = datetime.now(timezone.utc).isoformat()
         store.data["last_run"]["outreach"] = report["outreach"]
@@ -705,7 +730,7 @@ def run(agent, *, dry_run=False, notify=True):
         store.data["last_run"]["coverage_gaps"] = report["coverage_gaps"]
         store.data["last_run"]["runtime_seconds"] = report["runtime_seconds"]
         store.data["last_run"]["discovery_health"] = report["discovery_health"]
-        for key in ("funnel", "contact_discovery", "manual_actions", "eligibility_holds", "named_contacts"):
+        for key in ("funnel", "contact_discovery", "manual_actions", "eligibility_holds", "named_contacts", "vacancy_counts", "source_funnel", "decision_audit"):
             store.data["last_run"][key] = report[key]
         store.data["last_attempt"] = {"at": store.data["last_run"]["at"], "status": report["status"],
                                       "reason": "Discovery run completed", "next_due_at": report.get("next_due_at"),

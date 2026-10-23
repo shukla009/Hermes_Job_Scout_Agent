@@ -19,6 +19,7 @@
             "employer": "ProSca",
             "title": "Lead Research and Strategy Associate",
             "kind": "full_time",
+            "verified_scopes": ["research", "market research", "process"],
             "start": "2026-08",
             "end": null
         },
@@ -102,6 +103,14 @@
         ],
         "project": [
             "Built an LSTM forecasting project reporting 1.9% MAPE; this is not professional ML employment."
+        ]
+    },
+    "professional_evidence": {
+        "research": [
+            "Performed market research, market-entry research and competitive analysis at ProSca in the full-time role starting August 2026."
+        ],
+        "process": [
+            "Performed gap analysis and workflow mapping at ProSca in the full-time role starting August 2026."
         ]
     },
     "email_experience_highlights": {

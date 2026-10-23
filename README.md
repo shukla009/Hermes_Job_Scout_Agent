@@ -170,9 +170,11 @@
 - `/status`: show the latest attempt/skip separately from the last real search,
   SMTP acceptance, portal confirmation and form readiness.
 - `/stats`: show recorded applications, replies and interviews separately.
-- `/actions`: show up to three fresh optional phone-friendly opportunities with a referral
+- `/actions`: show up to three fresh optional phone-friendly opportunities with an application
   draft and Applied/Skipped/Referral requested buttons. A maximum of three new cards is sent
   per IST day. These are **not approvals**; automatic outreach continues independently.
+- Referral wording is used only for an explicit referral route; cards show the original
+  posting's 48-hour expiry, not a new deadline based on when the alert arrived.
 - Referral requested holds conflicting automatic outreach for that vacancy. Skipped suppresses
   it. Neither is counted as an application; Applied is labelled user-reported, not portal receipt.
 - The funnel now separates discovered, verified fresh, suitable, reachable, SMTP accepted,
@@ -202,6 +204,30 @@
 - Source yield, confirmed submissions, human replies and interviews matter more than raw job counts.
 
 ## Setup and development
+
+### Discovery and matching improvements
+
+- Lever and SmartRecruiters check the newest page on every poll while working through older pages.
+- Limited detail-fetch slots prioritise plausible fresh research/analyst roles; hints never prove freshness.
+- Narrow Operations/Process/Data Associate aliases reach full-description review, not automatic acceptance.
+- Preferred experience is not a mandatory minimum. Required months, written-number tenure and
+  skill-specific experience are checked against dated, verified experience.
+- Plain-text and HTML requirement lists are checked; unsupported mandatory tools still block outreach.
+- Negated night-shift requirements and reporting to a team lead no longer cause those false exclusions.
+- Recruiter searches rotate across unresolved employers within the existing free request limits.
+- New, cached and revalidated contacts are counted separately; addresses are never guessed.
+- Encrypted decision snapshots retain up to 80 recent vacancies (30 days / 700 KB), including
+  rejected jobs. Matching changes can be replayed offline without sending or renewing job freshness.
+- Separate counters track new vacancies, rechecks and post-application introduction checks.
+  Daily per-source funnel counters retain 30 days; repeated checks are not labelled new jobs.
+- No unverified form adapter or new employer feed has been enabled. Careers bookmarks are not
+  claimed as productive vacancy feeds, and real recruiter outcomes remain the success measure.
+- For cloud verification, manually run the existing GitHub workflow with `dry_run` enabled.
+  It performs discovery/matching without email, Telegram notifications or remote state writes.
+- To compare stored decisions offline, run `python scout_evaluation.py --state state/scout.json`
+  with the existing decryption key available privately. It prints counts only, uses the original
+  decision time and never sends applications. Truncated snapshots are skipped. Synthetic regression
+  fixtures are not a measured market-recall benchmark; manually labelled real vacancies are still needed.
 
 - See [one-time setup](docs/ONE_TIME_SETUP.md) for free alerts, answer-bank format and encryption rollout.
 - Configure sources in `config/employers.json`; public forms in `config/application_adapters.json`.

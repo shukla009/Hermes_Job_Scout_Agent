@@ -22,6 +22,7 @@ DENIED = re.compile(r"linkedin|naukri|rocketreach|zoominfo|apollo\.io|signalhire
 PRIVATE = {"gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "live.com", "proton.me", "protonmail.com", "icloud.com", "aol.com"}
 RECRUITMENT = re.compile(r"\brecruit(?:er|ment|ing)?\b|\btalent acquisition\b|\bhiring\b", re.I)
 NEGATIVE = re.compile(r"\bformer(?:ly)?\b|\bprevious(?:ly)?\b|\bex[- ]employee\b|\b(?:worked|used to work) at\b|\buntil 20\d\d\b|\barchived\b|\bno unsolicited\b|\bdo not (?:contact|email)\b", re.I)
+PROHIBITION = re.compile(r"\bno unsolicited\b|\bdo not (?:contact|email)\b", re.I)
 NAME = re.compile(r"[A-Z][A-Za-z'-]{1,30}(?: [A-Z][A-Za-z'-]{1,30}){1,3}\Z")
 
 
@@ -224,7 +225,7 @@ def named_evidence(content, url, employer, roots, post, now):
     parser = ContactPage()
     parser.feed(content[:500000])
     visible = " ".join(parser.visible)
-    if NEGATIVE.search(visible) or email_applications_forbidden({"source_text": visible}):
+    if PROHIBITION.search(visible) or email_applications_forbidden({"source_text": visible}):
         return [], "contact_instructions_prohibit"
     candidates = []
     for person in parser.persons:
@@ -292,7 +293,12 @@ class NamedDiscovery:
         self.jina_enabled = True
         self.pages = {}
         self.reader_pages = set()
+        self.active_employer = None
+        self.employer_fetches = {}
+        self.employer_limit = 4
+        self.counted_contacts = set()
         self.stats = {"contacts_discovered": 0, "hiring_relevance_confirmed": 0, "contacts_rejected": 0,
+                      "contacts_new": 0, "contacts_cached": 0, "contacts_revalidated": 0,
                       "searches": 0, "evidence_fetches": 0, "backend": "not_needed", "reasons": {}}
         self.cache = store.data.setdefault("named_contacts", {})
         for key, row in list(self.cache.items()):
@@ -302,6 +308,18 @@ class NamedDiscovery:
                     del self.cache[key]
             except (ValueError, TypeError, KeyError, AttributeError):
                 del self.cache[key]
+
+    def prioritize_candidates(self, candidates):
+        """Rotate unresolved employers without changing fit order within an employer."""
+        def key(item):
+            return company_key(item[0].get("company"))
+        employers = {key(item) for item in candidates if item[0].get("email_safe") and not item[0].get("recruiter_email")}
+        self.employer_limit = 2 if len(employers) > 1 else 4
+        def age(item):
+            if key(item) not in employers:
+                return ""
+            return self.cache.get("poll:" + key(item), {}).get("checked_at", "")
+        return sorted(candidates, key=age)
 
     @property
     def revision(self):
@@ -353,9 +371,11 @@ class NamedDiscovery:
     def _page(self, url, roots):
         if url in self.pages:
             return self.pages[url]
-        if self.fetches >= 4 or not safe_url(url) or not any(_owned_host(urlsplit(url).hostname, root) for root in roots):
+        if (self.fetches >= 4 or self.employer_fetches.get(self.active_employer, 0) >= self.employer_limit
+                or not safe_url(url) or not any(_owned_host(urlsplit(url).hostname, root) for root in roots)):
             return None
         self.fetches += 1
+        self.employer_fetches[self.active_employer] = self.employer_fetches.get(self.active_employer, 0) + 1
         self.stats["evidence_fetches"] = self.fetches
         try:
             response = self.request(url, max_retries=0, timeout=10, return_http_errors=True)
@@ -389,8 +409,10 @@ class NamedDiscovery:
             # Reader is optional only AFTER a successful unrestricted original
             # fetch. Never use it for a 403, CAPTCHA or authentication barrier.
             visible = text(re.sub(r"<script\b[^>]*>.*?</script>", "", content, flags=re.I | re.S))
-            if self.jina_enabled and len(visible) < 120 and not is_pdf and "application/ld+json" not in content and self.fetches < 4:
+            if (self.jina_enabled and len(visible) < 120 and not is_pdf and "application/ld+json" not in content
+                    and self.fetches < 4 and self.employer_fetches.get(self.active_employer, 0) < self.employer_limit):
                 self.fetches += 1
+                self.employer_fetches[self.active_employer] = self.employer_fetches.get(self.active_employer, 0) + 1
                 self.stats["evidence_fetches"] = self.fetches
                 try:
                     reader = self.request("https://r.jina.ai/" + final, max_retries=0, timeout=10, return_http_errors=True)
@@ -428,6 +450,9 @@ class NamedDiscovery:
         if not employer:
             self.reason("employer_ownership_unverified")
             return None
+        self.active_employer = company_key(employer["name"])
+        if self.fetches < 4 and self.employer_fetches.get(self.active_employer, 0) < self.employer_limit:
+            self.cache["poll:" + self.active_employer] = {"checked_at": self.now.isoformat()}
         roots = official_roots(employer)
         if not roots:
             # Search can suggest a site, but only an employer-named official
@@ -481,21 +506,28 @@ class NamedDiscovery:
         # another vacancy. Re-fetch exact sources after 24h, not old snippets.
         key = hashlib.sha256((self.revision + str(post.get("href")) + "|" + employer["name"]).encode()).hexdigest()[:24]
         cached = self.cache.get(key, {})
+        shared_key = "employer:" + self.revision + ":" + self.active_employer
+        shared = self.cache.get(shared_key, {})
+        if (not cached and _recent(shared.get("checked_at"), self.now)):
+            cached = dict(shared)
+            self.cache[key] = cached
         evidence = cached.get("evidence", [])
         evidence = [v for v in evidence if isinstance(v, dict) and v.get("email") and v.get("source_url")
                     and v.get("route") == "named_recruiter" and v.get("rank") in {1, 2, 3, 4}]
-        if _recent(cached.get("checked_at"), self.now):
+        cache_hit = _recent(cached.get("checked_at"), self.now) and not cached.get("pending_urls")
+        if cache_hit:
             valid = [row for row in evidence if _recent(row.get("verified_at"), self.now)
                      and (self.jina_enabled or row.get("evidence_backend") != "jina")]
         else:
-            urls = [row["source_url"] for row in evidence if isinstance(row, dict) and row.get("source_url")]
+            urls = list(cached.get("pending_urls", []))[:8]
+            urls += [row["source_url"] for row in evidence if isinstance(row, dict) and row.get("source_url")]
             seeds = employer.get("recruitment_pages") or [employer.get("official_url") or employer.get("careers_url")]
             vacancy_url = post.get("application_url") or post.get("href")
             urls += [u for u in [vacancy_url, *seeds] if safe_url(u) and any(_owned_host(urlsplit(u).hostname, root) for root in roots)]
             valid = []
             searched = False
             visited = set()
-            while self.fetches < 4:
+            while self.fetches < 4 and self.employer_fetches.get(self.active_employer, 0) < self.employer_limit:
                 if not urls:
                     if searched or self.stopped:
                         break
@@ -536,14 +568,30 @@ class NamedDiscovery:
                         urls.append(target)
                 urls = urls[:8]
             if visited:
-                self.cache[key] = {"checked_at": self.now.isoformat(), "evidence": valid[:3]}
+                self.cache[key] = {"checked_at": self.now.isoformat(), "evidence": valid[:3],
+                                   "pending_urls": [] if valid else list(dict.fromkeys(urls))[:8]}
+                # Only non-specialist employer-wide recruitment contacts can be
+                # reused across vacancies. Exact-role managers never transfer.
+                reusable = [row for row in valid if row.get("scope") == "employer_recruitment"
+                            and row.get("rank") in {3, 4} and not re.search(
+                                r"\b(?:software|engineering|executive|campus|internship|sales)\b", row.get("position", ""), re.I)]
+                if reusable:
+                    self.cache[shared_key] = {"checked_at": self.now.isoformat(), "evidence": reusable[:3]}
         if not valid:
             self.reason("no_verified_named_contact")
             return None
         proof = sorted(valid, key=lambda row: (row["rank"], row["email"]))[0]
         self.cache[key]["last_used_at"] = self.now.isoformat()
-        self.stats["contacts_discovered"] += len(valid)
-        self.stats["hiring_relevance_confirmed"] += len(valid)
+        old_emails = {row.get("email") for row in evidence}
+        for row in valid:
+            identity = (self.active_employer, row["email"])
+            if identity in self.counted_contacts:
+                continue
+            self.counted_contacts.add(identity)
+            label = "contacts_cached" if cache_hit else "contacts_revalidated" if row["email"] in old_emails else "contacts_new"
+            self.stats[label] += 1
+            self.stats["contacts_discovered"] += int(label == "contacts_new")
+            self.stats["hiring_relevance_confirmed"] += 1
         post["recruitment_contact_evidence"] = [proof]
         return proof
 

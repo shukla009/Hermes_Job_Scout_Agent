@@ -102,12 +102,19 @@ export function optionalJobs(jobs, now = Date.now()) {
       Number.isFinite(age) && age >= 0 && age <= 48 * 3600000;
   }).sort((a,b) => (b.fit_score || 0) - (a.fit_score || 0)).slice(0,3);
 }
+export function optionalCardText(job) {
+  const referral = job.manual_route === "referral";
+  const posted = Date.parse(job.date_posted || "");
+  const expiry = Number.isFinite(posted) ? new Date(posted + 48 * 3600000).toISOString() : job.manual_expires_at;
+  const label = referral ? "Referral draft (only for someone who knows your work):" : "Application draft:";
+  return `<b>Optional phone action — not an approval</b>\n${escapeHTML(job.job_title || "Role")} — ${escapeHTML(job.company || "Employer")}\n${escapeHTML(job.apply_url || job.application_url || "")}\n${escapeHTML((job.evidence || []).slice(0,2).join("\n"))}\n48-hour eligibility ends: ${escapeHTML(timeIST(expiry))}\n${label}\n${escapeHTML(job.manual_draft || "")}\nAutomatic applications continue independently.`;
+}
 async function optionalCard(env, job) {
   const actions = [["Applied", "applied"], ["Skipped", "skipped"], ["Referral requested", "referral"]];
   const buttons = await Promise.all(actions.map(async ([text, action]) => ({text, callback_data: await createCallback(action, job.id, env.TELEGRAM_BOT_TOKEN)})));
   const outcomes = await Promise.all([["Reply","reply"],["Interview","interview"],["Rejected","rejected"]].map(async ([text,action]) => ({text, callback_data: await createCallback(action, job.id, env.TELEGRAM_BOT_TOKEN)})));
   return telegram(env, "sendMessage", {chat_id:env.TELEGRAM_CHAT_ID, parse_mode:"HTML", disable_web_page_preview:true,
-    text:`<b>Optional phone action — not an approval</b>\n${escapeHTML(job.job_title || "Role")} — ${escapeHTML(job.company || "Employer")}\n${escapeHTML(job.apply_url || job.application_url || "")}\n${escapeHTML((job.evidence || []).slice(0,2).join("\n"))}\nReferral draft (only for someone who knows your work):\n${escapeHTML(job.manual_draft || "")}\nAutomatic applications continue independently.`,
+    text:optionalCardText(job),
     reply_markup:{inline_keyboard:[buttons,outcomes]}});
 }
 export async function storeFeedback(env, updateId, event) {
@@ -218,10 +225,13 @@ export default {
           const fitHolds = Object.entries(run.eligibility_holds || {}).filter(([key])=>holdLabels.has(key)).slice(0,3).map(([key,count])=>`${key.replaceAll("_"," ")}: ${Number(count) || 0}`).join("; ") || "none recorded";
           const named = run.named_contacts || {};
           const reachText = [
+            `New to scout: ${Number(run.vacancy_counts?.new_to_scout) || 0}; rechecked: ${Number(run.vacancy_counts?.rechecked) || 0}; introduction rechecks: ${Number(run.vacancy_counts?.introduction_rechecks) || 0}`,
             `Fresh: ${Number(funnel.verified_fresh) || 0}; suitable: ${Number(funnel.suitable) || 0}; reachable: ${Number(funnel.reachable) || 0}`,
             `Fit holds: ${escapeHTML(fitHolds)}`,
+            `Recorded decision audits: ${Number(run.decision_audit?.recorded) || 0}`,
             `Careers-inbox shadow: ${Number(run.contact_discovery?.shadow_runs_completed) || 0}/3 scheduled runs`,
             `Named contacts: ${Number(named.contacts_discovered) || 0}; hiring relevance confirmed: ${Number(named.hiring_relevance_confirmed) || 0}; rejected: ${Number(named.contacts_rejected) || 0}`,
+            `Contact evidence — new: ${Number(named.contacts_new) || 0}; cached: ${Number(named.contacts_cached) || 0}; revalidated: ${Number(named.contacts_revalidated) || 0}`,
             `Named-contact shadow: ${Number(named.shadow_runs_completed) || 0}/3; cloud backend verified: ${named.cloud_backend_verified === true ? "yes" : "no"}`,
             `Official-page discovery: ${escapeHTML(String(named.direct_pages || "not checked"))}`,
             `Optional Exa search: ${escapeHTML(String(named.backend || "not checked"))}; Reader: ${escapeHTML(String(named.jina || "not checked"))}`,

@@ -476,14 +476,23 @@ class _Links(HTMLParser):
         self.links = []
         self.href = None
         self.caption = []
+        self.visible = []
+        self.hidden = 0
     def handle_starttag(self, tag, attrs):
+        if tag in {"script", "style"}:
+            self.hidden += 1
         if tag == "a":
             self.href = dict(attrs).get("href")
             self.caption = []
     def handle_data(self, data):
+        if self.hidden:
+            return
+        self.visible.append(data)
         if self.href:
             self.caption.append(data)
     def handle_endtag(self, tag):
+        if tag in {"script", "style"}:
+            self.hidden = max(0, self.hidden - 1)
         if tag == "a" and self.href:
             self.links.append((self.href, " ".join(self.caption)))
             self.href = None
@@ -497,6 +506,14 @@ def alert_destinations(kind, content):
         parser = _Links()
         parser.feed(content)
         links.extend(parser.links)
+        # HTML alerts sometimes display an employer's full vacancy URL while
+        # the anchor href remains an opaque platform tracker. Treat that exact
+        # visible URL as a public-discovery hint, never an ownership/date proof.
+        visible = " ".join(parser.visible)[:32768]
+        for candidate in re.findall(r"https://[^\s<>\"]+", visible)[:100]:
+            candidate = candidate.rstrip(".,);]")
+            if not _url_block_reason(candidate) and re.search(r"/(?:jobs?|careers?|positions?|requisitions?|apply)(?:/|[?#])", urlsplit(candidate).path, re.I):
+                links.insert(0, (candidate, "Employer vacancy link"))
         # Some providers embed JobPosting data in an email. It supplies a URL
         # hint only: the employer vacancy still needs independent verification.
         from scout_sources import Page

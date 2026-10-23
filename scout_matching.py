@@ -3,6 +3,7 @@ import json
 import re
 from datetime import date, datetime, timezone, timedelta
 import math
+import html
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -92,14 +93,14 @@ def _requirement_clauses(text):
                 for clause in _sentences(remainder):
                     yield clause, section
             continue
-        if new_section.match(line):
+        if new_section.match(line) or re.fullmatch(r"(?:responsibilities|duties|about (?:us|the (?:role|team|company))|what you(?:['’]ll| will) do|benefits|what we offer)\s*:?", line, re.I):
             section = None
             section_items = 0
             section_chars = 0
             continue
         item = bullet.match(line)
-        if section and item and section_items < 12 and section_chars + len(line) <= 1200:
-            clause = item.group(1).strip()
+        if section and section_items < 12 and section_chars + len(line) <= 1200:
+            clause = item.group(1).strip() if item else line
             section_items += 1
             section_chars += len(line)
             if clause:
@@ -117,7 +118,7 @@ def _has_requirement_marker(sentence, preferred=False):
         return bool(re.search(r"\b(?:preferred|nice to have|good to have|desirable|a plus|bonus)\b", sentence))
     return bool(re.search(
         r"\b(?:must have|mandatory|essential qualification|required skills?|required experience|"
-        r"minimum qualification|minimum experience|need to have|proficiency (?:in|with).{0,60}required|"
+        r"minimum qualification|minimum experience|minimum\s+(?:\d|one|two|three|four|five|six|twelve)|need to have|proficiency (?:in|with).{0,60}required|"
         r"experience (?:in|with).{0,60}required|(?:is|are) (?:mandatory|required|essential))\b|"
         r"\b(?:mandatory|required|essential)\s*(?::|$)", sentence
     ))
@@ -125,7 +126,8 @@ def _has_requirement_marker(sentence, preferred=False):
 
 def _profile_evidence_text(profile):
     evidence = " ".join(
-        str(point) for points in profile.get("evidence", {}).values() for point in points
+        str(point) for category in ("evidence", "professional_evidence")
+        for points in profile.get(category, {}).values() for point in points
     ).lower()
     skills = {str(skill).lower() for skill in profile.get("skills", [])}
     listed_only = {str(skill).lower() for skill in profile.get("listed_only_skills", [])}
@@ -172,6 +174,7 @@ def _assess_requirements(text, profile):
     assessment = {
         "mandatory": {"met": [], "unmet": [], "unknown": []},
         "preferred": {"met": [], "unmet": [], "unknown": []},
+        "clauses": [],
     }
     evidence, skills, listed_only = _profile_evidence_text(profile)
     professional_evidence = " ".join(
@@ -184,6 +187,8 @@ def _assess_requirements(text, profile):
         group = "preferred" if explicit_preferred else "mandatory" if explicit_mandatory else inherited
         if not group:
             continue
+        if len(assessment["clauses"]) < 30:
+            assessment["clauses"].append({"text": sentence[:300], "classification": group})
         degree = _degree_requirement(sentence, profile)
         if degree:
             degree_label, degree_status = degree
@@ -197,11 +202,18 @@ def _assess_requirements(text, profile):
             r"\b(?:hands[- ]on|practical)\b|"
             r"\b(?:implement(?:ation|ed|ing)?|deploy(?:ed|ing)?|built|building)\b", sentence
         ))
+        scoped_tenure = _experience_requirements(sentence)
+        if scoped_tenure and any(row["scope"] for row in scoped_tenure):
+            needs_implementation = True
         for key, (label, pattern) in {**_REQUIREMENT_TERMS, **_DOMAIN_TERMS}.items():
             occurrence = re.search(pattern, sentence)
             if not occurrence:
                 continue
-            if needs_implementation:
+            skill_experience = bool(re.search(
+                r"\bexperience\s+(?:in|with|of)\b.{0,60}" + pattern +
+                "|" + pattern + r".{0,35}\bexperience\b", sentence
+            ))
+            if needs_implementation or skill_experience:
                 implementation_evidence = professional_evidence if needs_professional else evidence
                 status = "met" if re.search(pattern, implementation_evidence) else (
                     "unknown" if key in skills or re.search(pattern, evidence) else "unmet"
@@ -227,20 +239,22 @@ def _assess_requirements(text, profile):
             identity = (group, tuple(item[2] for item in matches), "alternative")
             status = ("met" if any(item[4] == "met" for item in matches) else
                       "unknown" if any(item[4] == "unknown" for item in matches) else "unmet")
-            if not pure_alternatives:
+            if not pure_alternatives and not all(item[4] == "met" for item in matches):
                 status, label = "unknown", "Mixed alternative requirement needs clarification: " + sentence[:150]
+            elif not pure_alternatives:
+                label = "All named alternatives evidenced: " + sentence[:150]
             if identity not in found:
                 found.add(identity)
                 assessment[group][status].append(label)
         else:
             for _, _, key, label, status in matches:
-                identity = (group, key, needs_implementation, needs_professional)
+                identity = (group, key, label, status)
                 if identity not in found:
                     found.add(identity)
                     assessment[group][status].append(label)
         # Surface an explicit but unrecognised qualification instead of silently
         # treating it as satisfied. Keep the excerpt bounded for state/Telegram.
-        if not matches and (not degree or re.search(r"\b(?:technical|certification|proficiency)\b", sentence)) and re.search(r"\b(?:technical|experience|proficiency|knowledge|certification|degree|domain|qualification)\b", sentence):
+        if not matches and not scoped_tenure and (not degree or re.search(r"\b(?:technical|certification|proficiency)\b", sentence)) and (inherited or re.search(r"\b(?:technical|experience|proficiency|knowledge|certification|degree|domain|qualification)\b", sentence)):
             assessment[group]["unknown"].append(re.sub(r"\s+", " ", sentence)[:180])
     return assessment
 
@@ -387,9 +401,24 @@ def experience_years(profile, now, full_time=False):
     return len(months) / 12
 
 
-def _experience(text):
-    values = []
-    for sentence in re.split(r"\n|;|(?<!\d)\.(?!\d)", text):
+def _experience_requirements(text):
+    """Typed tenure requirements; preferred tenure never becomes a hard minimum."""
+    rows = []
+    words = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+             "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+             "ten": 10, "eleven": 11, "twelve": 12, "eighteen": 18,
+             "twenty": 20, "thirty": 30, "thirty-six": 36}
+    text = re.sub(r"\b(?:but|however|and\s+(?=(?:at least|minimum|requires?)\b))\b", "\n", text)
+    for original, inherited in _requirement_clauses(text):
+        normalised = re.sub(r"\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[ -](one|two|three|four|five|six|seven|eight|nine)\b",
+                            lambda match: str({"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}[match[1]] + words[match[2]]), original)
+        normalised = re.sub(r"\b(one|two|three|four|five) and (?:a )?half\b", lambda match: str(words[match[1]] + 0.5), normalised)
+        sentence = re.sub(r"\b(?:" + "|".join(sorted(words, key=len, reverse=True)) + r")\b",
+                          lambda match: str(words[match.group()]), normalised)
+        sentence = re.sub(r"\b(\d+(?:\.\d+)?)\s*(?:years?|yrs?)\s*(?:and\s*)?(\d+(?:\.\d+)?)\s*(?:months?|mos?)\b",
+                          lambda match: str(float(match[1]) + float(match[2]) / 12) + " years", sentence)
+        if (inherited == "preferred" and not _has_requirement_marker(sentence)) or _has_requirement_marker(sentence, preferred=True):
+            continue
         candidate_context = bool(re.search(
             r"\b(?:candidates?|applicants?|you (?:have|bring|possess|need)|must have|required|requires|"
             r"minimum|at least|looking for|seeking|should have|need(?:s|ed)?(?: to have)?)\b", sentence
@@ -403,17 +432,47 @@ def _experience(text):
             continue
         if re.search(r"company|founded|established|history", sentence) and not candidate_context:
             continue
-        range_pattern = r"(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*\d+(?:\.\d+)?\s*(?:years?|yrs?)"
-        values.extend(float(v) for v in re.findall(range_pattern, sentence))
-        sentence = re.sub(range_pattern, "", sentence)
-        for pattern in (r"(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*\d+(?:\.\d+)?\s*(?:years?|yrs?)", r"(?:minimum|at least|requires?|experience(?: of|:)?)\s*(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)", r"(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:relevant|professional|work|industry|experience)"):
-            values.extend(float(v) for v in re.findall(pattern, sentence))
-        if candidate_context:
-            values.extend(float(v) for v in re.findall(
-                r"(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)\s+(?:of\s+)?[a-z /+-]{1,35}\s+experience",
-                sentence,
-            ))
-    return max(values) if values else None
+        pattern = r"\b(\d+(?:\.\d+)?)\s*(?:(?:-|–|to)\s*\d+(?:\.\d+)?\s*)?\+?\s*(years?|yrs?|months?|mos?)\b"
+        for match in re.finditer(pattern, sentence):
+            tail = sentence[match.end():]
+            if not (candidate_context or inherited == "mandatory" or re.search(r"\bexperience\b", tail)):
+                continue
+            amount = float(match.group(1)) / (12 if match.group(2).startswith(("month", "mo")) else 1)
+            scopes = [key for key, (_, term) in _REQUIREMENT_TERMS.items() if re.search(term, sentence)]
+            if not scopes:
+                scopes = [key for key, term in {
+                    "research": r"market research|competitive (?:analysis|intelligence)|market intelligence|research experience",
+                    "process": r"workflow mapping|gap (?:analysis|assessment)|process (?:analysis|improvement)",
+                    "reporting": r"dashboard|reporting experience",
+                    "data": r"data (?:analysis|cleaning|validation|quality)",
+                }.items() if re.search(term, sentence)]
+            rows.append({"minimum": amount, "scope": scopes,
+                         "professional": bool(re.search(r"full.time|post.qualification|professional|commercial|production|industry", sentence)),
+                         "clause": original[:300]})
+    return rows
+
+
+def _experience(text):
+    return max((row["minimum"] for row in _experience_requirements(text)), default=None)
+
+
+def _scoped_years(profile, now, row):
+    if not row["scope"]:
+        return experience_years(profile, now, row["professional"])
+    # Skill knowledge and generic tenure cannot prove dated implementation.
+    # Only explicitly attested role scopes enter this calculation.
+    scoped = dict(profile)
+    scoped["experience"] = [item for item in profile.get("experience", [])
+                            if set(row["scope"]).issubset(set(item.get("verified_scopes", [])))]
+    return experience_years(scoped, now, row["professional"])
+
+
+def _normalise_description(value):
+    value = re.sub(r"<(?:script|style)\b[^>]*>.*?</(?:script|style)>", "", value, flags=re.I | re.S)
+    value = re.sub(r"</h[1-6]\s*>", ":\n", value, flags=re.I)
+    value = re.sub(r"</?(?:h[1-6]|p|div|section|ul|ol)\b[^>]*>|<br\s*/?>|</li\s*>", "\n", value, flags=re.I)
+    value = re.sub(r"<li\b[^>]*>", "\n- ", value, flags=re.I)
+    return html.unescape(re.sub(r"<[^>]+>", "", value))
 
 
 def evaluate_job(post, profile=None, now=None):
@@ -424,11 +483,15 @@ def evaluate_job(post, profile=None, now=None):
             now = now.astimezone(timezone(timedelta(hours=5, minutes=30)))
         now = now.date()
     title = str(post.get("job_title") or post.get("title") or "").lower()
-    text = "\n".join(str(post.get(k) or "") for k in ("description", "source_text", "body", "snippet", "requirements")).lower()
+    text = _normalise_description("\n".join(str(post.get(k) or "") for k in ("description", "source_text", "body", "snippet", "requirements"))).lower()
     location = str(post.get("location") or post.get("job_location") or "").lower()
     family = next((name for name, pattern in (("research", r"research|market intelligence|competitive intelligence|market insights|consumer insights|research executive|(?:junior|associate|graduate) strategy|strategy (?:analyst|associate)"), ("reporting", r"\bmis\b|reporting|power bi|\bbi\b|business intelligence|dashboard analyst|tableau analyst|data visuali[sz]ation"), ("process", r"business analyst|business process analyst|process analyst|operations (?:analyst|insights)|business operations analyst|process improvement analyst"), ("data", r"data (?:analyst|quality|operations|validation|management)|analytics (?:analyst|associate)|insights analyst|research data analyst")) if re.search(pattern, title)), None)
     if not family and re.search(r"associate|junior|analyst i\b", title) and re.search(r"data analysis|dashboard|research|reporting", text):
         family = "data"
+    if not family and re.search(r"\bmarket analyst\b", title) and re.search(r"market research|competitive analysis|market intelligence", text):
+        family = "research"
+    if not family and re.search(r"\b(?:business )?operations (?:executive|associate)\b", title) and re.search(r"workflow mapping|gap (?:analysis|assessment)|process improvement|operations analysis", text):
+        family = "process"
     requirements = _assess_requirements(text, profile)
     risk = _assess_risk(post, text)
     result = {
@@ -471,14 +534,18 @@ def evaluate_job(post, profile=None, now=None):
     duties = re.findall(responsibility_patterns[family], text)
     if len(text.strip()) < 35 or not duties:
         return reject("Usable responsibilities not available")
-    if re.search(r"\b(?:senior|sr\.?|manager|director|head|principal|lead|vp|avp|vice president|chief)\b", title):
+    vacancy_title = re.split(r"\breport(?:ing|s)?\s+to\b", title, maxsplit=1)[0]
+    if re.search(r"\b(?:senior|sr\.?|manager|director|head|principal|lead|vp|avp|vice president|chief)\b", vacancy_title):
         return reject("Senior or management vacancy")
     employment = str(post.get("employment_type") or post.get("employmenttype") or "").lower()
     if re.search(r"internship|\bintern\b|part.time|temporary|contract|freelance", title + " " + employment) or re.search(r"(?:employment|job|position) type\s*[:\-]?\s*(?:contract|temporary|part.time|internship)|(?:this is|we offer|position is|role is)\s*(?:an?\s+)?(?:internship|temporary|contract|part.time)", text):
         return reject("Not permanent full-time")
     if not re.search(r"full[ _-]?time|permanent", employment + " " + text):
         result["warnings"].append("Full-time employment not confirmed")
-    if re.search(r"night shift|overnight|rotational shifts?|rotating shifts?|us shifts?|u\.s\. shifts?", text):
+    incompatible_shift = r"night shifts?|overnight|rotational shifts?|rotating shifts?|us shifts?|u\.s\. shifts?"
+    shift_text = re.sub(r"\b(?:no|not|never)\s+(?:required to work\s+)?(?:" + incompatible_shift + r")\b(?:\s+(?:is|are))?(?:\s+required)?", "", text)
+    shift_text = re.sub(r"\b(?:" + incompatible_shift + r")\b\s*(?:(?:is|are)\s+)?not\s+(?:required|applicable|offered)\b", "", shift_text)
+    if re.search(incompatible_shift, shift_text):
         return reject("Incompatible shift")
     if not re.search(r"day shift|daytime|general shift", text):
         result["warnings"].append("Shift undisclosed")
@@ -524,7 +591,8 @@ def evaluate_job(post, profile=None, now=None):
     if re.search(r"(?:mandatory|required|must have).{0,60}(?:fabric certification|production sql pipelines|azure certification)|(?:fabric certification|production sql pipelines|azure certification).{0,30}(?:mandatory|required)", text):
         requirements["mandatory"]["unmet"].append("Specialised certification or production implementation")
         return reject("Mandatory specialised qualification not evidenced")
-    minimum = _experience(text)
+    tenure_requirements = _experience_requirements(text)
+    minimum = max((row["minimum"] for row in tenure_requirements), default=None)
     for key in ("experience_min", "minYears", "minimum_years_experience"):
         if post.get(key) is not None:
             try:
@@ -546,8 +614,11 @@ def evaluate_job(post, profile=None, now=None):
     if minimum is not None and minimum > 3:
         requirements["mandatory"]["unmet"].append(f"Minimum {minimum:g} years experience")
         return reject("Experience exceeds stretch limit")
-    years = experience_years(profile, now, bool(re.search(r"full.time experience|post.qualification|professional experience", text)))
-    if minimum is not None and minimum > years:
+    years = experience_years(profile, now)
+    tenure_deficits = [row for row in tenure_requirements if row["minimum"] > _scoped_years(profile, now, row)]
+    result["experience_assessment"] = [dict(row, evidenced_years=_scoped_years(profile, now, row))
+                                       for row in tenure_requirements[:30]]
+    if minimum is not None and (minimum > years or tenure_deficits):
         requirements["mandatory"]["unmet"].append(f"Minimum {minimum:g} years experience")
         result["tier"] = "stretch"
         result["warnings"].append("Experience stretch; internships are not full-time employment")

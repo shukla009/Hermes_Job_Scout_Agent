@@ -6,14 +6,18 @@ from scout_sources import safe_url
 from scout_state import IST
 
 
-def manual_draft(analysis):
+def manual_draft(analysis, *, route="application"):
     title = re.sub(r"\s+", " ", str(analysis.get("job_title", "this role")))[:140]
     company = re.sub(r"\s+", " ", str(analysis.get("company", "your company")))[:120]
     points = [str(p)[:220] for p in analysis.get("evidence", [])[:1]]
     evidence = (" My background includes: " + points[0]) if points else ""
-    return (f"Hi, I'm interested in the {title} opening at {company}.{evidence} "
-            "If you know my work and feel I am a fit, would you be comfortable referring me? "
-            "No worries if not. I can share my resume. Thank you, Shivank Shukla.")
+    if route == "referral":
+        return (f"Hi, I'm interested in the {title} opening at {company}.{evidence} "
+                "If you know my work and feel I am a fit, would you be comfortable referring me? "
+                "No worries if not. I can share my resume. Thank you, Shivank Shukla.")
+    return (f"I am applying for the {title} role at {company}.{evidence} "
+            "I would welcome the opportunity to discuss how my experience matches the role. "
+            "Shivank Shukla")
 
 
 def reserve_manual_card(store, analysis, *, now=None):
@@ -43,7 +47,9 @@ def reserve_manual_card(store, analysis, *, now=None):
         ledger.pop(old)
     record.update(manual_action_status="notification_reserved", manual_alerted_at=now.isoformat(),
                   manual_expires_at=(published + timedelta(hours=48)).isoformat(),
-                  manual_draft=manual_draft(analysis), reachability_route="manual_optional")
+                  manual_draft=manual_draft(analysis, route=analysis.get("manual_route", "application")),
+                  manual_route="referral" if analysis.get("manual_route") == "referral" else "application",
+                  reachability_route="manual_optional")
     return store.save()
 
 

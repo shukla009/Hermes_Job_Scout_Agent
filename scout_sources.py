@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 
 ROLE = re.compile(r"analyst|research|intelligence|insights|reporting|\bmis\b|business intelligence|data (?:quality|operations)|power bi|(?:junior|associate|graduate) strategy|strategy associate", re.I)
+ROLE_ALIAS = re.compile(r"\b(?:(?:business\s+)?operations|process|data)\s+(?:associate|executive|coordinator)\b", re.I)
 SENIOR = re.compile(r"\b(?:senior|sr|manager|director|principal|head|internship|vp|avp|vice president|chief)\b", re.I)
 POLL_SECONDS = {'high': 0, 'medium': 86400, 'low': 86400}
 MAX_WATCHLIST_POLLS_PER_RUN = 6
@@ -35,7 +36,20 @@ def text(value):
     return re.sub(r'\s+', ' ', unescape(re.sub(r'<[^>]+>', ' ', str(value or '')))).strip()
 
 def suitable(title):
-    return bool(ROLE.search(title or '')) and not SENIOR.search(title or '')
+    # Discovery admits plausible aliases; full JD matching still establishes fit.
+    return bool(ROLE.search(title or '') or ROLE_ALIAS.search(title or '')) and not SENIOR.search(title or '')
+
+def _card_priority(card, now):
+    """Choose detail fetches, not eligibility: relative ages are hints only."""
+    title=card.get('title') or card.get('name') or card.get('Title') or ''
+    value=next((card.get(k) for k in ('first_published','releasedDate','ExternalPostedStartDate','PostedDate') if card.get(k)), '')
+    dt=_publication_time(value)
+    relative=str(card.get('postedOn') or '').lower()
+    fresh=bool(dt and timedelta(0)<=now-dt<=timedelta(hours=48))
+    hinted=bool(re.search(r'\btoday\b|\b(?:[01])\s+days?\s+ago\b',relative))
+    stale=bool(dt and now-dt>timedelta(hours=48))
+    research=bool(re.search(r'research|intelligence|insights',title,re.I))
+    return (not suitable(title), stale, not (fresh or hinted), not research, -(dt.timestamp() if dt else 0))
 
 def _is_watchlist(entry):
     """True only for known generic pages that do not expose vacancy records."""
@@ -96,14 +110,19 @@ def prioritize_registry(registry, jobs, now=None):
     """Outcome-backed ordering, with an exploration slot and no extra requests."""
     now = now or datetime.now(timezone.utc)
     cutoff = (now - timedelta(days=30)).isoformat()
-    scores = {}
+    scores = {}; exposures = {}
     for job in jobs.values():
         if job.get('first_seen', '') < cutoff: continue
         source = job.get('source_name', '')
+        exposures[source] = exposures.get(source, 0) + 1
         score = (20 if job.get('outcome') == 'interview' else 10 if job.get('outcome') == 'reply' else
-                 3 if job.get('emailed') or job.get('submitted') else 1 if job.get('reachability_route') in {'vacancy_email','official_careers_inbox','public_form'} else 0)
+                 3 if job.get('emailed') or job.get('submitted') else
+                 2 if job.get('email_safe') else
+                 1 if job.get('reachability_route') in {'vacancy_email','official_careers_inbox','named_recruiter','public_form'} else 0)
         scores[source] = scores.get(source, 0) + score
-    ranked = sorted(registry, key=lambda e: (-scores.get(f"{e.get('ats','html')}:{e['name']}", 0), registry.index(e)))
+    # Smoothed yield avoids rewarding raw listing volume; exploration remains.
+    ranked = sorted(registry, key=lambda e: (-scores.get(f"{e.get('ats','html')}:{e['name']}", 0) /
+                    (exposures.get(f"{e.get('ats','html')}:{e['name']}", 0)+3), registry.index(e)))
     # Every source still participates; a rotating early slot prevents feedback
     # from starving an employer before it has had a chance to produce outcomes.
     if ranked:
@@ -228,6 +247,14 @@ def _jsonld(content, base, e, now):
             item=post(e,title,loc.group(1).strip(),visible,apply,base)
             if item:
                 item['source_emails']=[] # Footer contacts are not recruiter contacts.
+                # A label-bound absolute date is original publication evidence;
+                # generic <time>, 'updated', relative text and observation dates
+                # never become publication timestamps.
+                labelled=re.search(r'\b(?:date\s+posted|posted\s+on|published\s+on|posting\s+date)\s*:?\s*(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2}))?)(?![\dT])',visible,re.I)
+                if labelled and _publication_time(labelled.group(1)):
+                    published=labelled.group(1)
+                    item.update(first_published=published,posted_at=published,date_posted=published,
+                                date_provenance='official_html_original_date_label')
                 jobs.append(item)
     return jobs,page.links
 
@@ -241,7 +268,7 @@ def _fetch(e, get, now, cursor=0):
         data=get(f'https://boards-api.greenhouse.io/v1/boards/{slug}/jobs',params={'content':'true'},timeout=20).json()
         if not isinstance(data,dict) or not isinstance(data.get('jobs'),list): raise ValueError('schema_changed')
         raw=len(data['jobs'])
-        for x in data['jobs']:
+        for x in sorted(data['jobs'],key=lambda card:_card_priority(card,now)):
             if not suitable(x.get('title')): continue
             location=(x.get('location') or {}).get('name','')
             candidate=post(e,x['title'],location,x.get('content',''),x.get('absolute_url',''),x.get('id'),
@@ -280,9 +307,24 @@ def _fetch(e, get, now, cursor=0):
         # cap at 100 jobs. Smaller pages preserve that safety cap and advance
         # across scheduled runs rather than silently disabling the board.
         page_size=25
-        data=get(f'https://api.lever.co/v0/postings/{slug}',params={'mode':'json','skip':cursor,'limit':page_size},timeout=20).json()
-        if not isinstance(data,list): raise ValueError('schema_changed')
-        raw=len(data); incomplete=raw>=page_size; next_cursor=cursor+raw if incomplete else 0
+        data=[]; head_size=0
+        # Always refresh the head; backlog advances independently, at most two
+        # list requests. New jobs must not wait for a whole cursor cycle.
+        for offset in dict.fromkeys((0,max(0,cursor))):
+            try:
+                page=get(f'https://api.lever.co/v0/postings/{slug}',params={'mode':'json','skip':offset,'limit':page_size},timeout=20).json()
+            except Exception:
+                if offset==0: raise
+                metrics['backlog_errors']=1; incomplete=True; next_cursor=cursor
+                break
+            if not isinstance(page,list): raise ValueError('schema_changed')
+            raw+=len(page); data.extend(page)
+            if offset==0: head_size=len(page)
+            if offset==max(0,cursor):
+                incomplete=len(page)>=page_size
+                next_cursor=offset+len(page) if incomplete else (page_size if cursor and head_size>=page_size else 0)
+        data=list({x.get('id') or x.get('hostedUrl'):x for x in data}.values())
+        metrics['head_refreshed']=True
         for x in data:
             if not suitable(x.get('text')): continue
             c=x.get('categories') or {}; loc='; '.join(c.get('allLocations') or [c.get('location','')])
@@ -292,15 +334,31 @@ def _fetch(e, get, now, cursor=0):
             add(x['text'],loc,desc,x.get('hostedUrl') or x.get('applyUrl',''),x.get('id'),created,employment=c.get('commitment',''))
     elif ats=='smartrecruiters':
         # No title query: MIS/research positions must not disappear behind 'analyst'.
-        data=get(f'https://api.smartrecruiters.com/v1/companies/{slug}/postings',params={'limit':100,'offset':cursor,'country':'in'},timeout=20).json()
-        if not isinstance(data,dict) or not isinstance(data.get('content'),list): raise ValueError('schema_changed')
-        raw=len(data['content']); incomplete=cursor+raw<int(data.get('totalFound',raw)); next_cursor=cursor+raw if incomplete else 0
-        for x in data['content']:
+        cards=[]; head_total=0
+        for offset in dict.fromkeys((0,max(0,cursor))):
+            try:
+                data=get(f'https://api.smartrecruiters.com/v1/companies/{slug}/postings',params={'limit':100,'offset':offset,'country':'in'},timeout=20).json()
+            except Exception:
+                if offset==0: raise
+                metrics['backlog_errors']=1; incomplete=True; next_cursor=cursor
+                break
+            if not isinstance(data,dict) or not isinstance(data.get('content'),list): raise ValueError('schema_changed')
+            page=data['content']; raw+=len(page); cards.extend(page)
+            if offset==0: head_total=int(data.get('totalFound',len(page)))
+            if offset==max(0,cursor):
+                incomplete=offset+len(page)<int(data.get('totalFound',len(page)))
+                next_cursor=offset+len(page) if incomplete else (100 if cursor and head_total>100 else 0)
+        metrics['head_refreshed']=True
+        cards=list({x.get('id') or x.get('ref'):x for x in cards}.values())
+        for x in sorted(cards,key=lambda card:_card_priority(card,now)):
             if not suitable(x.get('name')): continue
             loc=x.get('location') or {}; location=loc.get('fullLocation') or ', '.join(str(loc.get(k,'')) for k in ('city','region','country') if loc.get(k))
             if not re.search(r'gurugram|gurgaon|noida|delhi|remote',location,re.I): continue
             ref=x.get('ref','')
             if not safe_url(ref) or urlparse(ref).hostname!='api.smartrecruiters.com': continue
+            if metrics.get('detail_requests',0)>=min(8,int(e.get('detail_limit',8))):
+                metrics['detail_truncated']=True; continue
+            metrics['detail_requests']=metrics.get('detail_requests',0)+1
             detail=get(ref,timeout=20).json(); sections=((detail.get('jobAd') or {}).get('sections') or {})
             desc=' '.join(str(v.get('text','')) for v in sections.values() if isinstance(v,dict))
             add(x['name'],location,desc,detail.get('applyUrl',''),x.get('id'),x.get('releasedDate',''),employment=(x.get('typeOfEmployment') or {}).get('label',''))
@@ -363,7 +421,7 @@ def _fetch(e, get, now, cursor=0):
                     if isinstance(item,dict): candidates.setdefault(item.get('externalPath',''),item)
         incomplete=incomplete or bool(pending)
         metrics['search_truncated']=incomplete
-        for x in candidates.values():
+        for x in sorted(candidates.values(),key=lambda card:_card_priority(card,now)):
             title=x.get('title',''); location=x.get('locationsText',''); path=x.get('externalPath','')
             if not suitable(title) or not _target_location(location): continue
             if not isinstance(path,str) or not path.startswith('/job/') or '?' in path or '#' in path or '..' in path: continue
@@ -401,7 +459,7 @@ def _fetch(e, get, now, cursor=0):
             if not isinstance(records,list) or not records or not isinstance(records[0].get('requisitionList'),list): raise ValueError('schema_changed')
             result=records[0]; listings=result['requisitionList']; raw+=len(listings); metrics['search_queries']+=1
             incomplete=incomplete or int(result.get('TotalJobsCount',len(listings)))>len(listings)
-            for x in listings:
+            for x in sorted(listings,key=lambda card:_card_priority(card,now)):
                 ident=str(x.get('Id') or ''); location=x.get('PrimaryLocation',''); title=x.get('Title','')
                 if not ident or ident in seen or not suitable(title) or not _target_location(location): continue
                 seen.add(ident)
@@ -489,12 +547,19 @@ def _fetch(e, get, now, cursor=0):
                 url=urljoin(base,href)
                 if safe_url(url) and urlparse(url).hostname in allowed and re.search(r'/jobs?/[^/?#]+|/careers/[^/?#]+|applytojob\.com/apply/',url,re.I) and url!=base and url not in candidates: candidates.append(url)
             raw=len(candidates)+len(jobs)
-            for url in candidates[cursor:cursor+5]:
+            # Three head slots and two backlog slots share the old five-detail
+            # cap; a nonzero cursor can no longer hide newly inserted vacancies.
+            selected=list(dict.fromkeys(candidates[:3]+candidates[max(3,cursor):max(3,cursor)+2])) if cursor else candidates[:5]
+            for url in selected:
                 found,_=_jsonld(get(url,timeout=20).text,url,e,now); jobs.extend(found)
-            incomplete=cursor+5<len(candidates); next_cursor=cursor+5 if incomplete else 0
+            end=max(3,cursor)+2 if cursor else 5
+            incomplete=end<len(candidates); next_cursor=end if incomplete else 0
+            metrics['head_refreshed']=True
     status=dict(status='ok' if jobs or ats in ('greenhouse','lever','smartrecruiters','ashby','workable','workday','oracle','himalayas','xml') else 'link_only',raw_listings=raw,leads=len(jobs),incomplete=incomplete)
     status['original_dates']=sum(_publication_time(j.get('date_posted')) is not None for j in jobs)
     status['missing_original_dates']=len(jobs)-status['original_dates']
+    status['fresh_original_dates']=sum(1 for j in jobs if (published:=_publication_time(j.get('date_posted'))) and
+                                      timedelta(0)<=now-published<=timedelta(hours=48))
     status.update(metrics)
     return jobs,status,next_cursor
 

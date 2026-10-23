@@ -727,6 +727,8 @@ def analyze_post_verbose(post, max_retries=3):
     from scout_mail import recruitment_contacts
     checked = evaluate_job(post)
     fresh, freshness_reason = _structured_freshness(post)
+    # Exact decision evidence belongs in the bounded encrypted audit, not logs.
+    post["eligibility_assessment"] = checked
     if not checked["eligible"] or not fresh:
         post["rejection_reason"] = checked["reason"] if not checked["eligible"] else freshness_reason
         return None, "irrelevant"
@@ -987,9 +989,22 @@ def _send_apply_alert(analysis):
         + "<a href='" + html.escape(str(analysis.get("application_url", "")), quote=True) + "'>Apply on official site</a>"
     )
     if analysis.get("manual_optional"):
+        from scout_state import IST
+        referral = analysis.get("manual_route") == "referral"
+        expiry = "Unknown — check original posting"
+        try:
+            original = analysis.get("date_posted")
+            stamp = datetime.fromisoformat(str(original or analysis.get("manual_expires_at", "")).replace("Z", "+00:00"))
+            if stamp.tzinfo is not None:
+                if original:
+                    stamp += timedelta(hours=48)
+                expiry = stamp.astimezone(IST).strftime("%d %b %Y, %H:%M IST")
+        except (ValueError, TypeError):
+            pass
         message = ("<b>Optional phone action — not an approval</b>\n" + message +
-                   "\nAutomatic applications continue independently. Only contact someone who knows your work.\n" +
-                   "<b>Referral draft:</b>\n" + html.escape(str(analysis.get("manual_draft", ""))[:850]))
+                   "\n48-hour eligibility ends: " + expiry + "\nAutomatic applications continue independently.\n" +
+                   ("Only contact someone who knows your work.\n<b>Referral draft:</b>\n" if referral else "<b>Application draft:</b>\n") +
+                   html.escape(str(analysis.get("manual_draft", ""))[:850]))
     if os.getenv("TELEGRAM_TRACKING_READY", "false").lower() != "true":
         return send_telegram(message)
     pairs = (

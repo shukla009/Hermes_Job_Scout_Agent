@@ -87,7 +87,8 @@ globalThis.fetch=async(url,options)=>{
   if(url.includes('contents/state/scout.json'))return new Response(JSON.stringify({content:Buffer.from(JSON.stringify({version:1,jobs:{},sends:{},budget:{mode:'private_allowance'},
     last_attempt:{at:'2026-10-22T12:30:00Z',status:'private_cadence_skip',reason:'Minimum interval < 5h',next_due_at:'2026-10-22T15:30:00Z'},
     last_run:{at:'2026-10-22T10:30:00Z',status:'partial',results_discovered:16,
-      named_contacts:{contacts_discovered:2,hiring_relevance_confirmed:1,contacts_rejected:1,backend:'free_quota_exhausted',shadow_runs_completed:2,cloud_backend_verified:true,introductions_accepted_by_smtp:1},
+      vacancy_counts:{new_to_scout:8,rechecked:6,introduction_rechecks:2},decision_audit:{recorded:4},
+      named_contacts:{contacts_discovered:2,contacts_new:2,contacts_cached:3,contacts_revalidated:1,hiring_relevance_confirmed:1,contacts_rejected:1,backend:'free_quota_exhausted',shadow_runs_completed:2,cloud_backend_verified:true,introductions_accepted_by_smtp:1},
       discovery_health:{failing_sources:3,alert_failure_categories:{http_access_denied:6}}}})).toString('base64')}));
   return new Response(JSON.stringify({ok:true}));
 };
@@ -101,6 +102,9 @@ assert.match(attemptStatus,/Minimum interval &lt; 5h/);
 assert.match(attemptStatus,/Failing discovery sources: 3/);
 assert.match(attemptStatus,/http access denied: 6/);
 assert.match(attemptStatus,/Named contacts: 2; hiring relevance confirmed: 1; rejected: 1/);
+assert.match(attemptStatus,/New to scout: 8; rechecked: 6; introduction rechecks: 2/);
+assert.match(attemptStatus,/Recorded decision audits: 4/);
+assert.match(attemptStatus,/Contact evidence — new: 2; cached: 3; revalidated: 1/);
 assert.match(attemptStatus,/Named-contact shadow: 2\/3; cloud backend verified: yes/);
 assert.match(attemptStatus,/Optional Exa search: free_quota_exhausted/);
 assert.match(attemptStatus,/Official-page discovery: not checked/);

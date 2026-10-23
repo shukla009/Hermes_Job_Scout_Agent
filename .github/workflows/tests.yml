@@ -41,4 +41,6 @@ jobs:
       - name: Test job scouting
         run: python -m pytest tests -q
       - name: Test Telegram worker feedback and dispatch
-        run: node tests/worker_test.mjs
+        run: |
+          node tests/worker_test.mjs
+          node tests/manual_card_test.mjs
