@@ -6,6 +6,30 @@ const timeIST = value => {
   const stamp = Date.parse(String(value ?? ""));
   return Number.isFinite(stamp) ? new Intl.DateTimeFormat("en-GB", {timeZone:"Asia/Kolkata", dateStyle:"medium", timeStyle:"short"}).format(stamp) + " IST" : "Unknown";
 };
+export function statusSummary(state) {
+  const run = state.last_run || {}, attempt = state.last_attempt || {}, funnel = run.funnel || {};
+  const count = value => Math.max(0, Number(value) || 0);
+  if (!run.at) return "Job Scout\nNo completed search yet.\nUse /run to start a search.\nMore detail: /status details";
+  const paused = state.budget?.paused || ["state_safety_stop", "free_quota_pause"].includes(attempt.status || run.status);
+  const mailFailed = run.outreach?.smtp === "failed";
+  const lines = ["Job Scout — latest search", `Last checked: ${timeIST(run.at)}`];
+  if (String(attempt.status || "").includes("skip")) {
+    lines.push("Latest attempt waited for the next allowed search time.");
+    if (attempt.next_due_at) lines.push(`Next eligible check: ${timeIST(attempt.next_due_at)} (may start later)`);
+  }
+  lines.push(`Jobs checked: ${count(run.results_discovered)}`,
+    `Fresh jobs (last 48 hours): ${count(funnel.verified_fresh)}`,
+    `Suitable jobs: ${funnel.suitable === undefined ? "not recorded" : count(funnel.suitable)}`,
+    `Application emails: ${count(run.emails_accepted_by_smtp)} accepted by Gmail`);
+  if (run.named_contacts?.introductions_accepted_by_smtp) lines.push(`Recruiter introductions: ${count(run.named_contacts.introductions_accepted_by_smtp)} accepted by Gmail`);
+  if (run.applications?.confirmed) lines.push(`Online applications confirmed: ${count(run.applications.confirmed)}`);
+  const sent = count(run.emails_accepted_by_smtp) + count(run.named_contacts?.introductions_accepted_by_smtp) + count(run.applications?.confirmed);
+  lines.push("", paused ? "Sending is paused to protect your saved application records." : mailFailed ? "The Gmail connection failed." : sent ? "Email acceptance does not confirm delivery or a recruiter reply." : funnel.suitable === 0 ? "No email sent: no jobs passed all your requirements." : "No new email sent. Contact availability, safety checks or sending hours may be the reason.");
+  if (run.named_contacts?.validation_mode && run.named_contacts?.cloud_backend_verified) lines.push(`New contact feature: safety checks ${count(run.named_contacts.shadow_runs_completed)}/3 completed.`);
+  if (run.discovery_health?.failing_sources) lines.push("Some job sources were unavailable; results may be incomplete.");
+  lines.push("", paused ? "Your action: check /status details before restarting." : mailFailed ? "Your action: check the saved Gmail login settings." : "Your action: none. The next search is automatic.", "More detail: /status details");
+  return lines.map(escapeHTML).join("\n");
+}
 async function stateKey(env) {
   const secret = env.SCOUT_STATE_KEY || env.TELEGRAM_BOT_TOKEN;
   if (!secret) throw new Error("State key unavailable");
@@ -167,7 +191,7 @@ export default {
             const run = state.last_run || {};
             const forms = run.applications || {};
             if (optionalJobs(jobs).length) await reply(env, env.TELEGRAM_CHAT_ID, "Optional phone-friendly opportunities are available with /actions. These are not approvals and do not block automatic outreach.");
-            await reply(env, env.TELEGRAM_CHAT_ID, `Hands-off application processing\nSMTP accepted in last run: ${run.emails_accepted_by_smtp || 0}\nConfirmed portal applications: ${forms.confirmed || 0}\nVerified form adapters enabled: ${forms.enabled_adapters || 0}\nUnsupported/blocked routes: ${(forms.unsupported || 0) + (forms.blocked || 0)}\n${escapeHTML(Object.keys(run.coverage_gaps || {}).slice(0,3).join(", ") || "No pending action required")}\nNo manual approval queue. Replies and interviews will be reported here.`);
+            await reply(env, env.TELEGRAM_CHAT_ID, `Your applications\nApplication emails: ${run.emails_accepted_by_smtp || 0} accepted by Gmail\nOnline applications confirmed: ${forms.confirmed || 0}\nNo manual approval queue.\nUse the buttons below when you receive a reply, interview or rejection.\nOptional jobs to apply to yourself: /actions`);
             const recent = jobs.filter(j => (j.emailed || j.submitted) && /^[a-f0-9]{24}$/.test(j.id)).sort((a,b) => String(b.applied_at || b.emailed_at || "").localeCompare(String(a.applied_at || a.emailed_at || ""))).slice(0,3);
             for (const job of recent) {
               const actions = [["Reply", "reply"], ["Interview", "interview"], ["Rejected", "rejected"]];
@@ -181,6 +205,10 @@ export default {
           if (!pending.length) await reply(env, env.TELEGRAM_CHAT_ID, "No pending recommendations yet.");
           else for (const job of pending) await queueCard(env, job);
         } else if (command === "/status") {
+          if (!/^\/status(?:@\w+)?\s+details\s*$/i.test(String(message.text || "").trim())) {
+            await reply(env, env.TELEGRAM_CHAT_ID, statusSummary(state));
+            return new Response("OK");
+          }
           const run = state.last_run || {};
           const attempt = state.last_attempt || {};
           const attemptText = attempt.at ? `Latest attempt: ${escapeHTML(attempt.status || "Unknown")}\nAttempt at: ${escapeHTML(timeIST(attempt.at))}\n${attempt.reason ? "Reason: " + escapeHTML(attempt.reason) + "\n" : ""}${attempt.next_due_at ? "Next eligible scheduled run: " + escapeHTML(timeIST(attempt.next_due_at)) + " (GitHub may start later)\n" : ""}` : "";

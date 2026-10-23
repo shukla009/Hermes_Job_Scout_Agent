@@ -151,32 +151,67 @@ def _followups_today(store):
     return count
 
 
+def telegram_summary(report, *, shadow=False):
+    """Outcome first; implementation diagnostics stay in /status details."""
+    funnel = report.get("funnel", {})
+    named = report.get("named_contacts", {})
+    forms = report.get("applications", {})
+    sent = report.get("emails_accepted_by_smtp", 0)
+    intros = report.get("introductions_accepted_by_smtp", 0)
+    paused = report.get("status") in {"state_safety_stop", "free_quota_pause"}
+    smtp_failed = report.get("outreach", {}).get("smtp") == "failed"
+    lines = ["📋 <b>Job Scout — " + ("needs attention" if paused or smtp_failed else "search update") + "</b>",
+             f"Jobs checked: {report.get('results_discovered', 0)}",
+             f"Fresh jobs (last 48 hours): {funnel.get('verified_fresh', 0)}",
+             f"Suitable jobs: {funnel.get('suitable', 0)}",
+             f"Application emails: {sent} accepted by Gmail"]
+    if intros:
+        lines.append(f"Recruiter introductions: {intros} accepted by Gmail")
+    if forms.get("confirmed"):
+        lines.append(f"Online applications confirmed: {forms['confirmed']}")
+    if report.get("follow_ups", {}).get("sent"):
+        lines.append(f"Follow-up emails: {report['follow_ups']['sent']}")
+    if paused:
+        reason, action = "Sending is paused to protect your saved application records.", "Check /status details before restarting."
+    elif smtp_failed:
+        reason, action = "The Gmail connection failed; no new application emails were sent.", "Check the saved Gmail login settings."
+    elif sent or intros or forms.get("confirmed"):
+        reason, action = "Email acceptance does not confirm delivery or a recruiter reply.", "None. Replies will be reported here."
+    elif not funnel.get("suitable"):
+        reason, action = "No email sent: no jobs passed all your requirements.", "None. The next search is automatic."
+    elif shadow:
+        reason, action = "No email sent: automatic sending is completing its safety checks.", "None. Testing continues automatically."
+    elif not funnel.get("reachable"):
+        reason, action = "No email sent: no verified contact or supported application form was found.", "None. The next search is automatic."
+    elif "email_deferred_outside_business_hours" in report.get("coverage_gaps", {}):
+        reason, action = "Email sending waits for weekday business hours.", "None. Freshness is checked again before sending."
+    else:
+        reason, action = "No new email sent: sending safeguards or the allowed sending hours prevented it.", "None. The next search is automatic."
+    lines += ["", reason]
+    if report.get("discovery_health", {}).get("failing_sources") or report.get("status") == "budget_limited":
+        lines.append("Some job sources could not be checked; results may be incomplete.")
+    if named.get("validation_mode") and named.get("cloud_backend_verified"):
+        lines.append(f"New contact feature: safety checks {named.get('shadow_runs_completed', 0)}/3 completed.")
+    if named.get("backend") == "free_quota_exhausted":
+        lines.append("Extra web search is temporarily limited." + (" Company-page checks still work." if named.get("direct_pages") == "available" else ""))
+    if report.get("manual_actions", {}).get("sent"):
+        action = "Optional jobs to apply to yourself: /actions. No approval is required."
+    lines += ["", "Your action: " + action, "More detail: /status details"]
+    return "\n".join(lines)
+
+
 def _weekly(agent, store, notify):
     week = datetime.now(IST).strftime("%G-W%V")
     if not notify or store.data.get("reported_week") == week:
         return
     metrics = store.weekly_metrics()
-    cohorts = store.conversion_cohorts(30)
-    def strongest(rows):
-        usable = [(name, counts) for name, counts in rows.items() if name != "unknown"] or list(rows.items())
-        return max(usable, key=lambda row: (
-            row[1]["interviews"], row[1]["replies"], row[1]["submitted"],
-            row[1]["emailed"], row[1]["alerted"], row[1]["discovered"], row[0]
-        ), default=None)
-    additions = []
-    for label, rows in (("Top 30-day source", cohorts["sources"]), ("Top 30-day role family", cohorts["families"])):
-        row = strongest(rows)
-        if row:
-            name, counts = row
-            additions.append(
-                f"{label}: {html.escape(name)} — found {counts['discovered']}, "
-                f"applied {counts['submitted']}, replies {counts['replies']}, interviews {counts['interviews']}"
-            )
-    message = "📊 <b>Job Scout — last 7 days</b>\n" + "\n".join(
-        f"{html.escape(k.replace('_', ' ').title())}: {v}" for k, v in metrics.items()
-    )
-    if additions:
-        message += "\n\n" + "\n".join(additions)
+    message = ("📊 <b>Your job search — last 7 days</b>\n"
+               f"Jobs found: {metrics['discovered']}\n"
+               f"Application emails: {metrics['emailed']}\n"
+               f"Online/user-reported applications: {metrics['submitted']}\n"
+               f"Recruiter replies: {metrics['replies']}\n"
+               f"Interviews: {metrics['interviews']}\n\n"
+               "Check /stats for your progress.")
     if agent.send_telegram(message):
         store.data["reported_week"] = week
         store.save()
@@ -609,7 +644,7 @@ def run(agent, *, dry_run=False, notify=True):
                 outbound = False
                 report["status"] = "state_safety_stop"
             if notify:
-                agent.send_telegram(("✉️ <b>Recruiter introduction accepted by SMTP</b>\n" if is_intro else "✉️ <b>Application email accepted by SMTP</b>\n") +
+                agent.send_telegram(("✉️ <b>Recruiter introduction accepted by Gmail</b>\n" if is_intro else "✉️ <b>Application email accepted by Gmail</b>\n") +
                     html.escape(str(analysis.get("company", ""))) + " — " +
                     html.escape(str(analysis.get("job_title", ""))))
     if any(x.get("status") == "error" for x in report.get("source_stats", {}).values()) and report["status"] == "healthy":
@@ -692,32 +727,15 @@ def run(agent, *, dry_run=False, notify=True):
         backend_problem = named.stats["backend"] not in {"not_needed", "ready"}
         important = important or (backend_problem and store.data.get("reported_named_backend") != named.stats["backend"])
         if alerts or emails or morning or important or not store or report["applications"]["confirmed"]:
-            agent.send_telegram("📋 <b>Job Scout — " + html.escape(report["status"]) + "</b>\n" +
-                f"Potential matches: {len(candidates)}; alerts: {alerts}\n" +
-                f"Verified recruitment-email leads: {report['relevant_email_leads']}\n" +
-                f"Fresh: {verified_fresh}; suitable: {report['funnel']['suitable']}; reachable: {reachable}\n" +
-                f"Optional phone actions: {report['manual_actions']['sent']} (not approvals)\n" +
-                f"Careers-inbox shadow: {contact_rollout.get('shadow_runs', 0)}/3 scheduled runs\n" +
-                f"Named contacts: {named.stats['contacts_discovered']}; hiring relevance confirmed: {named.stats['hiring_relevance_confirmed']}; rejected: {named.stats['contacts_rejected']}\n" +
-                f"Named-contact shadow: {named_phase.get('shadow_runs', 0)}/3; official pages: {report['named_contacts']['direct_pages']}\n" +
-                f"Optional Exa search: {named.stats['backend']}; Reader: {report['named_contacts']['jina']}\n" +
-                f"Recruiter introductions accepted: {report['introductions_accepted_by_smtp']}\n" +
-                "Fit holds: " + html.escape("; ".join(f"{k.replace('_', ' ')}: {v}" for k, v in report["eligibility_holds"].items()) or "none") + "\n" +
-                f"Application emails accepted: {report['emails_accepted_by_smtp']}\n" +
-                f"Confirmed portal applications: {report['applications']['confirmed']}\n" +
-                f"Unsupported/blocked routes: {report['applications']['unsupported'] + report['applications']['blocked']}\n" +
-                "Email status: " + html.escape(report["outreach"]["status"].replace("_", " ")) + "\n" +
-                html.escape(_discovery_summary(report["discovery_health"])) + "\n" +
-                ("Outreach is in validation mode; no emails sent.\n" if shadow else "") +
-                "Top exclusions: " + html.escape("; ".join(f"{k}: {v}" for k, v in reasons.most_common(3)) or "none"))
-            if store:
+            delivered = agent.send_telegram(telegram_summary(report, shadow=shadow))
+            if store and delivered:
                 store.data["reported_day"] = today
                 store.data["reported_named_backend"] = named.stats["backend"]
                 store.save()
         if report["reply_monitor"]["new_human_replies"]:
             agent.send_telegram("💬 <b>Recruiter reply detected</b>\n" +
                 str(report["reply_monitor"]["new_human_replies"]) +
-                " exact-thread human reply(s) found. Check your Gmail inbox; no automatic reply was sent.")
+                " new reply(s) found. Open Gmail to respond; the agent has not replied for you.")
         if store:
             review = review_reach(store.data)
             if review and agent.send_telegram(html.escape(review)):

@@ -91,7 +91,7 @@ globalThis.fetch=async(url,options)=>{
       discovery_health:{failing_sources:3,alert_failure_categories:{http_access_denied:6}}}})).toString('base64')}));
   return new Response(JSON.stringify({ok:true}));
 };
-assert.equal((await worker.fetch(request({message:{chat:{id:10},from:{id:10},text:'/status'}}),env)).status,200);
+assert.equal((await worker.fetch(request({message:{chat:{id:10},from:{id:10},text:'/status details'}}),env)).status,200);
 const attemptStatus=JSON.parse(calls.find(c=>c.url.includes('/sendMessage')).options.body).text;
 assert.match(attemptStatus,/Latest attempt: private_cadence_skip/);
 assert.match(attemptStatus,/Last scout execution: partial/);
@@ -105,6 +105,14 @@ assert.match(attemptStatus,/Named-contact shadow: 2\/3; cloud backend verified: 
 assert.match(attemptStatus,/Optional Exa search: free_quota_exhausted/);
 assert.match(attemptStatus,/Official-page discovery: not checked/);
 assert.match(attemptStatus,/Introductions accepted by SMTP: 1/);
+calls=[];
+assert.equal((await worker.fetch(request({message:{chat:{id:10},from:{id:10},text:'/status'}}),env)).status,200);
+const simpleStatus=JSON.parse(calls.find(c=>c.url.includes('/sendMessage')).options.body).text;
+assert.match(simpleStatus,/Jobs checked: 16/);
+assert.match(simpleStatus,/Next eligible check:/);
+assert.match(simpleStatus,/More detail: \/status details/);
+assert.ok(!simpleStatus.includes('free_quota_exhausted') && !simpleStatus.includes('Runtime minutes'));
+assert.ok(simpleStatus.length < 1100);
 // Telegram retries must not dispatch twice, even if the first reply is lost.
 calls=[];
 let reservedEvent;

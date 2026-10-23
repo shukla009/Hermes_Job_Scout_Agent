@@ -7,6 +7,10 @@
 
 ## What the scout does
 
+- Telegram updates show results, the reason for no email, and any action needed in plain language.
+  `/status` is a short overview; `/status details` keeps the full technical diagnostics available.
+  Email counts mean Gmail accepted the message, not that delivery or a recruiter reply is confirmed.
+
 - Scheduled triggers are **08:47, 14:47 and 20:47 IST**. GitHub may start them later.
 - For a private repository, at most three scheduled searches run per IST day,
   separated by at least five hours. Delayed starts no longer need an exact clock hour.
