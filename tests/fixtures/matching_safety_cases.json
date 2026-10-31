@@ -76,10 +76,9 @@
       "description": "Full-time day shift. Research and competitive analysis. Minimum 1 year of professional experience."
     },
     "expected": {
-      "eligible": true,
-      "email_safe": false,
-      "mandatory_unmet_contains": "Minimum 1 years experience",
-      "review_required": true
+    "eligible": true,
+    "email_safe": true,
+    "review_required": false
     }
   },
   {

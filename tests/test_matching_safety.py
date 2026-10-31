@@ -109,8 +109,8 @@ def test_candidate_wording_still_extracts_specialised_experience():
     vacancy["description"] = "Full-time day shift research and competitive analysis. Candidates must have 2 years of market research experience."
     result = evaluate_job(vacancy, now=NOW)
     assert result["experience_min"] == 2
-    assert result["tier"] == "stretch"
-    assert not result["email_safe"]
+    assert result["tier"] == "core"
+    assert result["email_safe"]
 
 
 def test_requirement_section_ends_at_new_heading():

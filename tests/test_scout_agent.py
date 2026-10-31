@@ -203,44 +203,29 @@ class TestAnalyzePostVerbose:
     }
 
     def test_ok_verdict(self, monkeypatch):
-        monkeypatch.setattr(scout_agent, "client", MagicMock())
-        monkeypatch.setattr(scout_agent, "USE_LLM_REVIEW", True)
         payload = {"is_relevant": True, "recruiter_email": "hr@realco.io",
                    "job_title": "Data Analyst", "company": "RealCo",
                    "email_subject": "Application - Data Analyst", "email_body": "Hi", "reason": "match"}
-        scout_agent.client.chat.completions.create.return_value = _mock_llm_response(payload)
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST)
         assert verdict == "ok" and parsed["recruiter_email"] == "hr@realco.io"
         assert parsed["score_kind"] == "deterministic_fit_points_not_probability"
         assert "mandatory" in parsed["requirements"]
         assert "risk_assessment" in parsed
-        scout_agent.client.chat.completions.create.assert_not_called()
 
     def test_irrelevant(self, monkeypatch):
-        monkeypatch.setattr(scout_agent, "client", MagicMock())
-        monkeypatch.setattr(scout_agent, "USE_LLM_REVIEW", True)
         payload = {"is_relevant": False, "reason": "job board"}
-        scout_agent.client.chat.completions.create.return_value = _mock_llm_response(payload)
         parsed, verdict = scout_agent.analyze_post_verbose(dict(self.POST, title="Senior Data Analyst"))
         assert parsed is None and verdict == "irrelevant"
-        scout_agent.client.chat.completions.create.assert_not_called()
 
     def test_unverified_model_email_becomes_apply_lead(self, monkeypatch):
-        monkeypatch.setattr(scout_agent, "client", MagicMock())
-        monkeypatch.setattr(scout_agent, "USE_LLM_REVIEW", True)
         payload = {"is_relevant": True, "recruiter_email": "invented@realco.io",
                    "job_title": "Data Analyst", "company": "RealCo", "reason": "match"}
-        scout_agent.client.chat.completions.create.return_value = _mock_llm_response(payload)
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST)
         assert verdict == "ok"
         assert parsed["recruiter_email"] == "hr@realco.io"
-        scout_agent.client.chat.completions.create.assert_not_called()
 
     def test_own_email_not_used(self, monkeypatch):
         # Regression: the agent must never email the candidate's own address
-        monkeypatch.setattr(scout_agent, "client", MagicMock())
-        payload = {"is_relevant": True, "recruiter_email": None, "reason": "x"}
-        scout_agent.client.chat.completions.create.return_value = _mock_llm_response(payload)
         post = {
             "title": "Hiring Data Analyst",
             "body": f"Full-time entry-level data analysis and dashboards. Send resume to {scout_agent.CANDIDATE_EMAIL}",
@@ -258,25 +243,14 @@ class TestAnalyzePostVerbose:
         assert parsed["recruiter_email"] is None
 
     def test_no_client(self, monkeypatch):
-        monkeypatch.setattr(scout_agent, "client", None)
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST)
         assert verdict == "ok" and parsed["recruiter_email"] == "hr@realco.io"
 
     def test_auth_error_verdict(self, monkeypatch):
-        monkeypatch.setattr(scout_agent, "client", MagicMock())
-        monkeypatch.setattr(scout_agent, "USE_LLM_REVIEW", True)
-        scout_agent.client.chat.completions.create.side_effect = Exception("401 Unauthorized: Authentication failed")
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST)
         assert verdict == "ok" and parsed["recruiter_email"] == "hr@realco.io"
 
     def test_json_error_then_gives_up(self, monkeypatch):
-        monkeypatch.setattr(scout_agent, "client", MagicMock())
-        monkeypatch.setattr(scout_agent, "USE_LLM_REVIEW", True)
-        scout_agent.client.chat.completions.create.side_effect = None
-        bad = MagicMock()
-        bad.choices = [MagicMock()]
-        bad.choices[0].message.content = "not json at all {{{"
-        scout_agent.client.chat.completions.create.return_value = bad
         parsed, verdict = scout_agent.analyze_post_verbose(self.POST, max_retries=1)
         assert verdict == "ok" and parsed["recruiter_email"] == "hr@realco.io"
 
@@ -286,12 +260,8 @@ class TestAnalyzePostVerbose:
 # ---------------------------------------------------------------
 class TestPrompt:
     def test_writer_never_invokes_paid_model(self, monkeypatch):
-        client = MagicMock()
-        monkeypatch.setattr(scout_agent, "client", client)
-        monkeypatch.setattr(scout_agent, "USE_LLM_WRITER", True, raising=False)
         written, status = scout_agent.compose_email({}, {"job_title":"Research Analyst", "company":"Acme", "family":"research"})
         assert written["email_subject"] and written["email_body"]
-        client.chat.completions.create.assert_not_called()
 
     def test_example_email_not_banned_opening(self):
         src = open(scout_agent.__file__, encoding="utf-8").read()
@@ -503,10 +473,9 @@ class TestDeterministicEligibility:
         return post
 
     def test_good_direct_apply_lead_passes_without_model(self, monkeypatch):
-        monkeypatch.setattr(scout_agent, "client", None)
         parsed, verdict = scout_agent.analyze_post_verbose(self._post())
         assert verdict == "apply"
-        assert parsed["fit_score"] >= scout_agent.MIN_APPLY_SCORE
+        assert parsed["fit_score"] >= 70
 
     @pytest.mark.parametrize("text", ["night shift", "rotational shift", "US shift"])
     def test_rejects_non_day_shift(self, text):
@@ -551,7 +520,6 @@ class TestATSDiscovery:
 
 class TestReliabilityFallbacks:
     def test_writer_works_without_model(self, monkeypatch):
-        monkeypatch.setattr(scout_agent, "client", None)
         written, status = scout_agent.compose_email({}, {"job_title": "Data Analyst", "company": "Acme"})
         assert status == "fallback"
         assert "My resume is attached" in written["email_body"]
@@ -595,7 +563,6 @@ class TestMainRouting:
         monkeypatch.setattr(scout_agent, "HISTORY_FILE", str(tmp_path / "history.json"))
         monkeypatch.setattr(scout_agent, "FOLLOW_UP_FILE", str(tmp_path / "follow.json"))
         monkeypatch.setattr(scout_agent, "RUN_REPORT_FILE", str(tmp_path / "report.json"))
-        monkeypatch.setattr(scout_agent, "NVIDIA_API_KEY", "nvidia")
         monkeypatch.setattr(scout_agent, "SERPAPI_KEY", "serp")
         monkeypatch.setattr(scout_agent, "TELEGRAM_BOT_TOKEN", "telegram")
         monkeypatch.setattr(scout_agent, "TELEGRAM_CHAT_ID", "chat")

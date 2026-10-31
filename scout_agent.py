@@ -20,11 +20,10 @@ from html.parser import HTMLParser
 
 import requests
 from dotenv import load_dotenv
-from openai import OpenAI
 
 load_dotenv()
 
-NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
+
 GMAIL_SENDER = os.getenv("GMAIL_SENDER_EMAIL")
 GMAIL_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -43,23 +42,20 @@ RUN_REPORT_FILE = "run_report.json"
 SUPPRESSION_FILE = "suppressed_emails.json"
 EMPLOYER_REGISTRY_FILE = os.getenv("EMPLOYER_REGISTRY_FILE", "config/employers.json")
 RESUME_PATH = "Shivank_Shukla_Data_Analyst.pdf"
-NVIDIA_MODEL = os.getenv("NVIDIA_MODEL") or "nvidia/nemotron-3-super-120b-a12b"
 MAX_POST_AGE_DAYS = int(os.getenv("MAX_POST_AGE_DAYS", "4"))
 MAX_POST_AGE_HOURS = int(os.getenv("MAX_POST_AGE_HOURS", "48"))
 MAX_DIRECT_APPLY_AGE_DAYS = int(os.getenv("MAX_DIRECT_APPLY_AGE_DAYS", "21"))
 MAX_SOURCE_CHARS = int(os.getenv("MAX_SOURCE_CHARS", "12000"))
-MAX_APPLY_ALERTS = int(os.getenv("MAX_APPLY_ALERTS", "5"))
-MAX_EMAILS_PER_RUN = int(os.getenv("MAX_EMAILS_PER_RUN", "3"))
-MAX_EMAILS_PER_DAY = int(os.getenv("MAX_EMAILS_PER_DAY", "6"))
+MAX_EMAILS_PER_RUN = int(os.getenv("MAX_EMAILS_PER_RUN", "6"))
+MAX_EMAILS_PER_DAY = int(os.getenv("MAX_EMAILS_PER_DAY", "12"))
 MAX_FOLLOWUPS_PER_RUN = int(os.getenv("MAX_FOLLOWUPS_PER_RUN", "2"))
 RECIPIENT_COOLDOWN_DAYS = int(os.getenv("RECIPIENT_COOLDOWN_DAYS", "30"))
-MIN_APPLY_SCORE = int(os.getenv("MIN_APPLY_SCORE", "54"))
-MIN_EMAIL_SCORE = int(os.getenv("MIN_EMAIL_SCORE", "58"))
 MAX_CANDIDATES_PER_RUN = int(os.getenv("MAX_CANDIDATES_PER_RUN", "50"))
 HTTP_RETRIES = max(1, int(os.getenv("HTTP_RETRIES", "2")))
 SEND_EMAILS = os.getenv("SEND_EMAILS", "true").strip().lower() in {"1", "true", "yes", "on"}
 SMTP_PREFLIGHT = os.getenv("SMTP_PREFLIGHT", "true").strip().lower() in {"1", "true", "yes", "on"}
 USE_LLM_REVIEW = os.getenv("USE_LLM_REVIEW", "false").strip().lower() in {"1", "true", "yes", "on"}
+USE_CV_TAILORING = os.getenv("USE_CV_TAILORING", "false").strip().lower() in {"1", "true", "yes", "on"}
 IMAP_CHECK = os.getenv("IMAP_CHECK", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
@@ -72,7 +68,8 @@ def _parse_follow_up_offsets(raw):
 
 
 FOLLOW_UP_OFFSETS_DAYS = _parse_follow_up_offsets(os.getenv("FOLLOW_UP_OFFSETS_DAYS", "4,9"))
-client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_API_KEY) if NVIDIA_API_KEY else None
+
+
 ACTIVE_BUDGET = None
 ACTIVE_STORE = None
 ACTIVE_MESSAGE_ID = None
@@ -471,8 +468,8 @@ def _deterministic_rejection(post):
     title = str(post.get("job_title") or post.get("title") or "").lower()
     source = str(post.get("source_text") or post.get("body") or "").lower()
     combined = f"{title} {source[:6000]}"
-    if any(word in title for word in ("senior", "sr.", "lead ", "manager", "principal", "director", "head ", "trainer")):
-        return "senior/lead/manager/trainer title"
+    if any(word in title for word in ("senior", "sr.", "manager", "principal", "director", "head ", "trainer")):
+        return "senior/manager/director/trainer title"
     if re.search(r"\b(intern|internship)\b", title):
         return "internship rather than full-time analyst role"
     employment = str(post.get("employment_type") or "").lower()
@@ -693,35 +690,6 @@ def search_recruiter_posts():
     return unique[:MAX_CANDIDATES_PER_RUN]
 
 
-def _call_llm_json(prompt, *, max_tokens=900, max_retries=3):
-    if not client:
-        return None, "no_client"
-    for attempt in range(max_retries):
-        try:
-            response = client.chat.completions.create(model=NVIDIA_MODEL, messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"}, temperature=0.1, max_tokens=max_tokens)
-            content = response.choices[0].message.content
-            if not content or not content.strip():
-                raise ValueError("empty response")
-            parsed = json.loads(content)
-            if not isinstance(parsed, dict):
-                raise ValueError("response was not a JSON object")
-            return parsed, "ok"
-        except (json.JSONDecodeError, ValueError) as exc:
-            if attempt == max_retries - 1:
-                return None, f"json_error: {str(exc)[:100]}"
-            time.sleep(2 ** attempt)
-        except Exception as exc:
-            message, lowered = str(exc), str(exc).lower()
-            if "401" in message or "unauthorized" in lowered or "authentication failed" in lowered:
-                return None, "auth_error"
-            retryable = any(token in lowered for token in ("429", "rate limit", "503", "502", "504", "overloaded"))
-            if retryable and attempt < max_retries - 1:
-                time.sleep(3 * (2 ** attempt))
-                continue
-            return None, f"llm_error: {message[:100]}"
-    return None, "llm_error"
-
-
 def analyze_post_verbose(post, max_retries=3):
     from scout_matching import evaluate_job
     from scout_mail import recruitment_contacts
@@ -825,7 +793,39 @@ def _fallback_email(analysis, post=None):
     return {"email_subject": f"{prefix}: {title} - {CANDIDATE_NAME}", "email_body": body}
 
 
+def _tailored_email(analysis):
+    """Opt-in per-role tailored email (no LLM, no LaTeX).
+
+    Builds a role-specific body from matched skills and evidence points.
+    Falls back to _fallback_email if evidence is unavailable.
+    """
+    from scout_matching import proof_points, load_profile
+    title=analysis.get("job_title") or "Analyst"
+    company=analysis.get("company") or "your team"
+    family=analysis.get("family") or "data"
+    points=analysis.get("evidence") or proof_points(family) or []
+    matched=analysis.get("matched_skills") or []
+    listed_only={skill.lower() for skill in load_profile().get("listed_only_skills", [])}
+    supported=[s for s in matched if s.lower() not in listed_only][:3]
+    skill_line=("Relevant skills for this opening: " + ", ".join(supported) + ".\n\n") if supported else ""
+    evidence_lines="\n".join("- " + str(p) for p in points[:2])
+    body=(
+        f"Hello,\n\nI am writing to apply for the {title} role at {company}.\n"
+        f"My background combines {family}-focused research, reporting, and data analysis "
+        f"with hands-on experience in SQL, Power BI, Tableau, and Python.\n\n"
+        + skill_line
+        + evidence_lines
+        + f"\n\nRelevant work: {CANDIDATE_PORTFOLIO}\n"
+        + f"Vacancy: {analysis.get('application_url','')}\n\n"
+        + "I have attached my resume for review. I would welcome an opportunity to discuss the role.\n\n"
+        + f"Regards,\n{CANDIDATE_NAME}\n{CANDIDATE_PHONE}\n{CANDIDATE_LINKEDIN}"
+    )
+    return {"email_subject": f"Application for {title} at {company} - {CANDIDATE_NAME}", "email_body": body}
+
+
 def compose_email(post, analysis, max_retries=3):
+    if USE_CV_TAILORING:
+        return _tailored_email(analysis), "tailored"
     # The zero-cost production path never invokes a metered inference service.
     return _fallback_email(analysis, post), "fallback"
 
