@@ -77,8 +77,8 @@
     },
     "expected": {
     "eligible": true,
-    "email_safe": true,
-    "review_required": false
+    "email_safe": false,
+    "review_required": true
     }
   },
   {

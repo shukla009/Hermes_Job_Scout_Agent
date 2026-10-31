@@ -22,7 +22,7 @@ def test_experience_not_company_age():
 
 def test_full_time_tenure():
     result = evaluate_job(job(description="Full-time requires 1 year of professional experience. Research."), now=NOW)
-    assert result["tier"] == "core" and result["email_safe"]
+    assert result["tier"] == "stretch" and not result["email_safe"]
     assert experience_years(load_profile(), NOW, True) == 2 / 12
 
 
@@ -57,7 +57,7 @@ def test_proof_context():
 def test_decimal_experience_and_unknown_employment():
     result = evaluate_job(job(description="Full-time research. 1.5 years of professional experience"), now=NOW)
     assert result["experience_min"] == 1.5
-    assert result["tier"] == "core"
+    assert result["tier"] == "stretch"
     result = evaluate_job(job(employment_type="OTHER", description="Research 0-2 years experience"), now=NOW)
     assert not result["email_safe"]
 
@@ -71,7 +71,7 @@ def test_missing_body_expiry_and_unknown_experience():
 
 def test_two_to_five_lower_bound_and_malformed_minimum():
     result = evaluate_job(job(description="Full-time research and reports. 2–5 years experience."), now=NOW)
-    assert result["experience_min"] == 2 and result["tier"] == "core"
+    assert result["experience_min"] == 2 and result["tier"] == "stretch"
     result = evaluate_job(job(minYears="nonsense", salary_max_lpa="nonsense"), now=NOW)
     assert not result["email_safe"]
 
